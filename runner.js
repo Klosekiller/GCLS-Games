@@ -964,8 +964,11 @@ function goBack() {
 // ---------- Layout: wide (desktop, tablets, phones on their side) or tall (phones held upright) ----------
 // The game area changes shape to suit the screen, but never mid-run: a new layout is only
 // applied on the start screen (and the screens opened from it), when paused, or on game over.
-const LAYOUTS = { wide: { w: 800, h: 320 }, tall: { w: 450, h: 640 } };
+// worldY: how far down the screen the library strip is drawn. In the tall layout it sits in the
+// middle, with a dark ceiling above (where the buttons and score go) and the floor below.
+const LAYOUTS = { wide: { w: 800, h: 320, worldY: 0 }, tall: { w: 450, h: 640, worldY: 140 } };
 let layout = "wide";
+let WORLD_Y = 0;
 const tall = () => layout === "tall";
 function wantedLayout() {
   return window.innerHeight > window.innerWidth && window.innerWidth <= 600
@@ -978,11 +981,13 @@ function applyLayout(name) {
   canvas.height = LAYOUTS[name].h;
   W = canvas.width;
   H = canvas.height;
+  WORLD_Y = LAYOUTS[name].worldY;
   canvas.style.setProperty("--ratio", W / H); // lets the page shrink the game to fit the screen's height
   PROFILE = { x: W - 12 - 112, y: 12, w: 112, h: 32 }; // top-right corner either way
-  // wide: the score bar sits beside the profile; tall: there isn't room, so it goes under the floor line
+  // wide: the score bar sits beside the profile; tall: there isn't room, so it goes on the
+  // ceiling, under the row of buttons
   SCORE = tall()
-    ? { x: W / 2 - 179, y: FLOOR + 14 }
+    ? { x: W / 2 - 179, y: 54 }
     : { x: PROFILE.x - 8 - 358, y: 12 };
   makeButtons();
 }
@@ -1571,14 +1576,30 @@ function drawBackground() {
 }
 
 // ---------- Drawing ----------
-// In the tall layout the floor carries on below the action: shade it so it reads as floor,
-// and for the first few seconds of a run, show the touch controls there.
+// In the tall layout the library strip sits in the middle of the screen. Above it: a dark
+// ceiling (the buttons and score bar sit on it). Below it: the floor carries on.
+function drawTallCeiling() {
+  const g = ctx.createLinearGradient(0, 0, 0, WORLD_Y);
+  g.addColorStop(0, "#1a1512");
+  g.addColorStop(1, "#2e2724");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, WORLD_Y);
+  // a row of soft ceiling lights just above the room
+  for (let lx = 45; lx < W; lx += 90) {
+    oval(lx, WORLD_Y - 12, 16, 3, "rgba(255, 236, 190, 0.18)");
+    oval(lx, WORLD_Y - 12, 7, 1.6, "rgba(255, 244, 214, 0.8)");
+  }
+  R(0, WORLD_Y - 3, W, 3, "#14100d"); // where the ceiling meets the room
+}
+// Shade the floor below the room so it reads as floor, and for the first few seconds of a
+// run, show the touch controls there.
 function drawTallFloor() {
-  const g = ctx.createLinearGradient(0, FLOOR + 30, 0, H);
+  const bottom = H - WORLD_Y; // the bottom of the screen, in room coordinates
+  const g = ctx.createLinearGradient(0, FLOOR + 30, 0, bottom);
   g.addColorStop(0, "rgba(20, 14, 10, 0)");
   g.addColorStop(1, "rgba(20, 14, 10, 0.55)");
   ctx.fillStyle = g;
-  ctx.fillRect(0, FLOOR + 2, W, H - FLOOR);
+  ctx.fillRect(0, FLOOR + 2, W, bottom - FLOOR);
   if (state === "running" && runTime < 6000) {
     ctx.globalAlpha = Math.min(1, (6000 - runTime) / 1000); // fades out over the last second
     ctx.textAlign = "center";
@@ -1599,6 +1620,10 @@ function draw() {
   if (shake > 0) {
     const s = Math.min(1, shake / 200) * 4;
     ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+  }
+  if (WORLD_Y) {
+    drawTallCeiling();
+    ctx.translate(0, WORLD_Y); // everything in the room is drawn lower down the screen
   }
   drawBackground();
   if (tall()) drawTallFloor();
