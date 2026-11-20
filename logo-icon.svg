@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 122 182" width="122" height="182">
+  <title>Greenville County Library System icon</title>
+  <!-- The book icon from gcls-logo-color (5).svg, without the wordmark -->
+  <path fill="#42c4dc" fill-rule="evenodd" d="M100.76 21.76h7.32s13 0 13 13v113.57s0 13-13 13H96.57v20.46l-34.41-20.53 38.6-19.85z"/>
+  <path fill="#0d84c7" fill-rule="evenodd" d="M62.97 21.76v133.33l32.39-16.53V0L62.97 21.76z"/>
+  <path fill="#fbaf45" d="M58 161.26l-37.56-19.85V21.76H13s-13 0-13 13v113.57s0 13 13 13z"/>
+  <path fill="#bf4097" d="M57.16 155.09l-31.31-16.53V0l31.31 21.75v133.34z"/>
+</svg>

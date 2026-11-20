@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Library Games</title>
+  <link rel="stylesheet" href="index.css" />
+</head>
+<body>
+  <svg class="banners" viewBox="0 0 900 70" preserveAspectRatio="none" aria-hidden="true">
+    <rect width="900" height="70" fill="#2b2b30" />
+    <rect width="900" height="10" fill="#e9e6df" />
+    <path d="M0 42 Q112 30 225 42 T450 42 T675 42 T900 42 V52 Q787 64 675 52 T450 52 T225 52 T0 52 Z" fill="#f1f0ec" />
+    <path d="M0 34 Q112 50 225 34 T450 34 T675 34 T900 34 V46 Q787 30 675 46 T450 46 T225 46 T0 46 Z" fill="#e8b52a" />
+    <path d="M0 14 Q112 24 225 14 T450 14 T675 14 T900 14 V40 Q787 30 675 40 T450 40 T225 40 T0 40 Z" fill="#3d4c8c" />
+    <path d="M0 18 Q112 10 225 18 T450 18 T675 18 T900 18 V54 Q787 62 675 54 T450 54 T225 54 T0 54 Z" fill="#c92a2f" />
+  </svg>
+
+  <header>
+    <h1 class="sign">Library Games</h1>
+    <p>Pick a game to play. No sign-in, just click and go!</p>
+  </header>
+
+  <main>
+    <section class="group" aria-labelledby="featured">
+      <h2 class="group-title" id="featured">Featured games</h2>
+      <div class="grid">
+      <a class="game" href="game.html?g=runner">
+        <!-- Stacks Dash preview: the book hero leaping over a book stack -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="A little book character jumping over a stack of books">
+          <rect width="400" height="200" fill="#8b919a" />
+          <rect width="150" height="170" fill="#aab3c1" />
+          <rect x="250" width="22" height="170" fill="#c62a2f" />
+          <rect x="20" y="104" width="160" height="66" fill="#cda46c" />
+          <rect x="25" y="109" width="150" height="56" fill="#efe6d4" />
+          <g fill="#d94b4b"><rect x="30" y="115" width="7" height="22" /><rect x="88" y="140" width="6" height="22" /></g>
+          <g fill="#4b79d9"><rect x="38" y="118" width="6" height="19" /><rect x="120" y="142" width="7" height="20" /></g>
+          <g fill="#f2c14e"><rect x="45" y="114" width="8" height="23" /><rect x="60" y="141" width="8" height="21" /></g>
+          <g fill="#5cb85c"><rect x="54" y="117" width="6" height="20" /><rect x="140" y="140" width="6" height="22" /></g>
+          <g fill="#9b59b6"><rect x="70" y="116" width="7" height="21" /><rect x="100" y="143" width="8" height="19" /></g>
+          <rect x="25" y="137" width="150" height="3" fill="#b88e55" />
+          <circle cx="70" cy="90" r="14" fill="#1c1817" /><circle cx="84" cy="78" r="9" fill="#1c1817" />
+          <rect y="170" width="400" height="30" fill="#c3b493" />
+          <rect y="170" width="400" height="10" fill="#5e6e8b" />
+          <!-- book stack -->
+          <rect x="300" y="158" width="34" height="12" fill="#8c2f39" /><rect x="304" y="160" width="30" height="8" fill="#f3ead7" />
+          <rect x="296" y="146" width="36" height="12" fill="#2f5d62" /><rect x="300" y="148" width="32" height="8" fill="#f3ead7" />
+          <rect x="302" y="135" width="30" height="11" fill="#b5893b" /><rect x="306" y="137" width="26" height="7" fill="#f3ead7" />
+          <!-- bookmark -->
+          <path d="M316 70 h14 v26 l-7 -6 l-7 6 z" fill="#c92a2f" stroke="#fff" stroke-width="1.5" />
+          <!-- hero mid-jump -->
+          <g transform="translate(200 70) rotate(-8)">
+            <rect x="4" y="3" width="38" height="44" rx="3" fill="#f3ead7" />
+            <rect width="36" height="50" rx="4" fill="#2f5d62" />
+            <rect width="7" height="50" fill="#234548" />
+            <rect x="10" y="38" width="22" height="3" fill="#d4a64a" />
+            <circle cx="18" cy="15" r="5" fill="none" stroke="#d4a64a" stroke-width="1.5" />
+            <circle cx="28" cy="15" r="5" fill="none" stroke="#d4a64a" stroke-width="1.5" />
+            <rect x="17" y="14" width="3" height="4" fill="#1a1a1a" /><rect x="27" y="14" width="3" height="4" fill="#1a1a1a" />
+            <rect x="8" y="50" width="5" height="8" fill="#1e2b2c" /><rect x="24" y="50" width="5" height="8" fill="#1e2b2c" />
+          </g>
+          <g fill="#f3ead7" opacity="0.7"><rect x="180" y="160" width="4" height="3" /><rect x="190" y="155" width="4" height="3" /><rect x="172" y="152" width="4" height="3" /></g>
+        </svg>
+        <div class="info">
+          <h3>Stacks Dash</h3>
+          <p>Run through the library as a speedy little book! Jump over stacks of books, duck under flying ones and grab bookmarks for bonus pages.</p>
+          <div class="tags"><span>Runner</span><span>Keyboard or touch</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=books">
+        <!-- Shelf Help preview: a bookcase filling up with colorful book bundles -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="A bookcase filling up with falling bundles of colorful books">
+          <rect width="400" height="200" fill="#8b919a" />
+          <rect x="110" y="6" width="180" height="194" fill="#cda46c" />
+          <rect x="120" y="14" width="160" height="186" fill="#3a2e25" />
+          <g fill="rgba(205,164,108,0.35)">
+            <rect x="120" y="38" width="160" height="2" /><rect x="120" y="62" width="160" height="2" /><rect x="120" y="86" width="160" height="2" />
+            <rect x="120" y="110" width="160" height="2" /><rect x="120" y="134" width="160" height="2" /><rect x="120" y="158" width="160" height="2" />
+            <rect x="120" y="182" width="160" height="2" />
+          </g>
+          <!-- falling T piece (purple) -->
+          <g fill="#6b3e75"><rect x="185" y="17" width="10" height="20" /><rect x="161" y="41" width="10" height="20" /><rect x="185" y="41" width="10" height="20" /><rect x="209" y="41" width="10" height="20" /></g>
+          <g fill="#87538f"><rect x="196" y="20" width="10" height="17" /><rect x="172" y="44" width="10" height="17" /><rect x="196" y="41" width="10" height="20" /><rect x="220" y="44" width="10" height="17" /></g>
+          <!-- stacked rows -->
+          <g id="row">
+            <rect x="121" y="136" width="10" height="22" fill="#3d4c8c" /><rect x="132" y="139" width="10" height="19" fill="#5466b0" />
+            <rect x="145" y="136" width="10" height="22" fill="#e8b52a" /><rect x="156" y="136" width="10" height="22" fill="#f2c94e" />
+            <rect x="169" y="139" width="10" height="19" fill="#c92a2f" /><rect x="180" y="136" width="10" height="22" fill="#de4a4e" />
+            <rect x="193" y="136" width="10" height="22" fill="#4f7942" /><rect x="204" y="139" width="10" height="19" fill="#669456" />
+            <rect x="241" y="136" width="10" height="22" fill="#d9773a" /><rect x="252" y="136" width="10" height="22" fill="#ea9257" />
+            <rect x="265" y="139" width="10" height="19" fill="#2f7d84" />
+          </g>
+          <g>
+            <rect x="121" y="160" width="10" height="22" fill="#2f7d84" /><rect x="132" y="160" width="10" height="22" fill="#3f9aa2" />
+            <rect x="145" y="163" width="10" height="19" fill="#d9773a" /><rect x="156" y="160" width="10" height="22" fill="#ea9257" />
+            <rect x="169" y="160" width="10" height="22" fill="#6b3e75" /><rect x="180" y="163" width="10" height="19" fill="#87538f" />
+            <rect x="217" y="160" width="10" height="22" fill="#3d4c8c" /><rect x="228" y="160" width="10" height="22" fill="#5466b0" />
+            <rect x="241" y="163" width="10" height="19" fill="#e8b52a" /><rect x="252" y="160" width="10" height="22" fill="#f2c94e" />
+            <rect x="265" y="160" width="10" height="22" fill="#c92a2f" /><rect x="276" y="163" width="3" height="19" fill="#de4a4e" />
+          </g>
+          <rect x="121" y="184" width="158" height="16" fill="#3a2e25" />
+          <g fill="#4f7942"><rect x="121" y="184" width="10" height="16" /><rect x="145" y="184" width="10" height="16" /><rect x="169" y="184" width="10" height="16" /><rect x="193" y="184" width="10" height="16" /><rect x="217" y="184" width="10" height="16" /><rect x="241" y="184" width="10" height="16" /><rect x="265" y="184" width="10" height="16" /></g>
+          <g fill="#669456"><rect x="132" y="184" width="10" height="16" /><rect x="156" y="184" width="10" height="16" /><rect x="180" y="184" width="10" height="16" /><rect x="204" y="184" width="10" height="16" /><rect x="228" y="184" width="10" height="16" /><rect x="252" y="184" width="10" height="16" /></g>
+          <!-- "Shelved!" flash on the full bottom row -->
+          <rect x="120" y="184" width="160" height="16" fill="rgba(255,246,220,0.45)" />
+          <!-- ghost landing outline -->
+          <g fill="none" stroke="#87538f" stroke-width="2"><rect x="219" y="140" width="20" height="16" /></g>
+          <!-- side columns -->
+          <rect x="300" width="16" height="200" fill="#c62a2f" />
+          <rect x="20" y="40" width="70" height="40" rx="4" fill="#34404f" stroke="#d7a35e" stroke-width="2" />
+          <text x="55" y="66" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="14" fill="#f3ead7">NEXT</text>
+        </svg>
+        <div class="info">
+          <h3>Shelf Help</h3>
+          <p>Bundles of books are falling! Turn and slide them into place, and fill a whole shelf to clear it. How many shelves can you fill?</p>
+          <div class="tags"><span>Puzzle</span><span>Keyboard or touch</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=globe">
+        <!-- Globe Trotter preview: the lobby globe with a pin, a clue card and a passport stamp -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="The library lobby globe with a map pin on Africa, next to a clue card and a passport stamp">
+          <defs>
+            <radialGradient id="gt-sea" cx="0.38" cy="0.32" r="0.75">
+              <stop offset="0" stop-color="#6fb0e0" />
+              <stop offset="1" stop-color="#1f5f99" />
+            </radialGradient>
+            <clipPath id="gt-clip"><circle cx="140" cy="88" r="68" /></clipPath>
+          </defs>
+          <rect width="400" height="200" fill="#c8cdd4" />
+          <rect y="22" width="400" height="148" fill="#d49853" />
+          <rect y="22" width="400" height="12" fill="#cf914b" />
+          <g fill="#b07636"><rect x="60" y="34" width="2" height="136" /><rect x="170" y="34" width="2" height="136" /><rect x="280" y="34" width="2" height="136" /></g>
+          <rect y="170" width="400" height="30" fill="#3b3c43" />
+          <!-- back rail, pedestal -->
+          <ellipse cx="140" cy="160" rx="92" ry="10" fill="none" stroke="#cfa265" stroke-width="4" />
+          <path d="M128 168 L134 154 H146 L152 168 Z" fill="#b9bec4" />
+          <rect x="112" y="166" width="56" height="5" fill="#222" />
+          <!-- globe -->
+          <circle cx="140" cy="88" r="68" fill="url(#gt-sea)" />
+          <g clip-path="url(#gt-clip)">
+            <path d="M110 30 L150 26 L178 36 L196 50 L210 40 L210 20 L100 20 Z" fill="#b48ad0" />
+            <path d="M118 52 L150 46 L170 54 L176 70 L188 74 L182 96 L168 112 L160 140 L150 146 L142 128 L136 104 L120 96 L108 80 L110 62 Z" fill="#e3c25a" />
+            <path d="M72 40 L96 30 L104 44 L92 60 L82 70 L74 58 Z" fill="#6dbb6a" />
+            <path d="M80 96 L96 92 L104 108 L96 132 L88 140 L84 118 Z" fill="#a9d36b" />
+            <path d="M190 70 L210 62 L210 100 L198 92 Z" fill="#e39b5a" />
+          </g>
+          <circle cx="140" cy="88" r="68" fill="none" stroke="rgba(15,40,70,0.7)" stroke-width="2" />
+          <ellipse cx="118" cy="62" rx="22" ry="14" fill="rgba(255,255,255,0.15)" />
+          <!-- pin on Africa -->
+          <path d="M152 94 l-6 -12 a7 7 0 1 1 12 0 z" fill="#2f9e44" stroke="#fff" stroke-width="2" />
+          <circle cx="152" cy="78" r="2.5" fill="#fff" />
+          <!-- front rail and glass -->
+          <path d="M48 160 A92 10 0 0 0 232 160 L232 172 A92 10 0 0 1 48 172 Z" fill="rgba(200,230,240,0.25)" />
+          <path d="M48 160 A92 10 0 0 0 232 160" fill="none" stroke="#d6a868" stroke-width="4" />
+          <!-- clue card -->
+          <rect x="258" y="40" width="126" height="70" rx="4" fill="#34404f" stroke="#d7a35e" stroke-width="2" />
+          <text x="268" y="56" font-family="system-ui, sans-serif" font-weight="bold" font-size="8" fill="#d4a64a">STOP 2 OF 10</text>
+          <text x="268" y="74" font-family="Georgia, serif" font-weight="bold" font-size="11" fill="#f3ead7">Where do lions</text>
+          <text x="268" y="88" font-family="Georgia, serif" font-weight="bold" font-size="11" fill="#f3ead7">and giraffes roam?</text>
+          <text x="268" y="102" font-family="Georgia, serif" font-style="italic" font-size="9" fill="#a6e08f">Yes! That's Africa!</text>
+          <!-- passport stamp -->
+          <rect x="262" y="122" width="118" height="44" rx="4" fill="#6e1f2b" stroke="#d7a35e" stroke-width="2" />
+          <g transform="rotate(-6 321 144)">
+            <rect x="290" y="129" width="62" height="30" rx="4" fill="#f3ead7" />
+            <rect x="293" y="132" width="56" height="24" fill="none" stroke="#b08a1f" stroke-width="2" />
+            <text x="321" y="148" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#b08a1f">AFRICA</text>
+          </g>
+        </svg>
+        <div class="info">
+          <h3>Globe Trotter</h3>
+          <p>Spin our lobby globe and go on a trip around the world! Read each clue, find the right continent or ocean, and fill your passport with stamps.</p>
+          <div class="tags"><span>Geography</span><span>Drag or keyboard</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=bookmobile">
+        <!-- Bookmobile Route preview: the Bookmobile driving a town maze toward stops asking for items -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="The Bookmobile driving through a maze of town streets toward stops that want a book and a DVD">
+          <defs>
+            <clipPath id="bm-clip"><rect width="400" height="200" /></clipPath>
+          </defs>
+          <g clip-path="url(#bm-clip)">
+            <rect width="400" height="200" fill="#86bd68" />
+            <!-- streets -->
+            <g fill="#5c6068">
+              <rect x="0" y="40" width="400" height="34" />
+              <rect x="0" y="140" width="400" height="34" />
+              <rect x="60" y="40" width="34" height="134" />
+              <rect x="220" y="40" width="34" height="134" />
+              <rect x="330" y="0" width="34" height="74" />
+            </g>
+            <g fill="#e8d27a">
+              <rect x="110" y="56" width="18" height="2" /><rect x="150" y="56" width="18" height="2" /><rect x="270" y="56" width="18" height="2" />
+              <rect x="110" y="156" width="18" height="2" /><rect x="150" y="156" width="18" height="2" /><rect x="290" y="156" width="18" height="2" />
+              <rect x="76" y="96" width="2" height="18" /><rect x="236" y="96" width="2" height="18" />
+            </g>
+            <!-- houses and trees on the blocks -->
+            <g>
+              <rect x="120" y="96" width="26" height="20" fill="#f3ead7" /><path d="M115 98 L133 82 L151 98 Z" fill="#c92a2f" /><rect x="130" y="104" width="6" height="12" fill="#7a4a2a" />
+              <rect x="275" y="96" width="26" height="20" fill="#f3ead7" /><path d="M270 98 L288 82 L306 98 Z" fill="#3d4c8c" /><rect x="285" y="104" width="6" height="12" fill="#7a4a2a" />
+              <circle cx="180" cy="110" r="14" fill="#3f7a3a" /><circle cx="176" cy="105" r="8" fill="#5c9a4c" />
+              <circle cx="20" cy="110" r="14" fill="#3f7a3a" /><circle cx="16" cy="105" r="8" fill="#5c9a4c" />
+              <ellipse cx="350" cy="110" rx="22" ry="14" fill="#4f9fd6" />
+              <rect x="120" y="0" width="26" height="20" fill="#f3ead7" /><path d="M115 4 L133 -10 L151 4 Z" fill="#e8b52a" />
+              <rect x="275" y="184" width="26" height="16" fill="#f3ead7" /><path d="M270 186 L288 172 L306 186 Z" fill="#2f7d84" />
+            </g>
+            <!-- library -->
+            <rect x="4" y="2" width="70" height="34" fill="#a8593a" />
+            <rect x="2" y="0" width="74" height="6" fill="#3d6b5f" />
+            <rect x="34" y="20" width="9" height="16" fill="#2b211d" />
+            <rect x="31" y="6" width="15" height="12" rx="3" fill="#fff" />
+            <rect x="34" y="8" width="3" height="8" fill="#fbaf45" /><rect x="37" y="8" width="3" height="8" fill="#bf4097" /><rect x="40" y="8" width="3" height="8" fill="#0d84c7" />
+            <!-- traffic cones -->
+            <rect x="222" y="118" width="30" height="5" fill="#f2f2f2" /><rect x="226" y="118" width="6" height="5" fill="#e07b39" /><rect x="240" y="118" width="6" height="5" fill="#e07b39" />
+            <!-- stops with speech bubbles -->
+            <circle cx="237" cy="157" r="13" fill="#e8b52a" opacity="0.5" />
+            <rect x="212" y="114" width="52" height="22" rx="5" fill="#fff" stroke="#3d4c8c" stroke-width="2" />
+            <rect x="217" y="118" width="10" height="14" fill="#3d4c8c" /><circle cx="224" cy="125" r="5" fill="#d9dde3" />
+            <text x="231" y="130" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#2a1d12">DVD</text>
+            <circle cx="347" cy="57" r="13" fill="#c92a2f" opacity="0.5" />
+            <rect x="316" y="14" width="56" height="22" rx="5" fill="#fff" stroke="#c92a2f" stroke-width="2" />
+            <rect x="321" y="18" width="10" height="14" fill="#c92a2f" /><rect x="323" y="22" width="6" height="2" fill="#d4a64a" />
+            <text x="335" y="30" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#2a1d12">Book</text>
+            <!-- bookmark on the road -->
+            <path d="M180 148 h8 v16 l-4 -4 l-4 4 z" fill="#c92a2f" stroke="#fff" stroke-width="1" />
+            <!-- ducks -->
+            <ellipse cx="300" cy="160" rx="8" ry="5" fill="#f4f4f0" /><circle cx="306" cy="155" r="3.5" fill="#f4f4f0" /><path d="M309 154 l4 1 l-4 1 z" fill="#e8743a" />
+            <ellipse cx="288" cy="161" rx="5" ry="3" fill="#f2c14e" /><ellipse cx="279" cy="161" rx="5" ry="3" fill="#f2c14e" />
+            <!-- the Bookmobile -->
+            <ellipse cx="140" cy="72" rx="30" ry="4" fill="rgba(0,0,0,0.25)" />
+            <rect x="112" y="40" width="58" height="30" rx="6" fill="#f6efdc" />
+            <rect x="158" y="44" width="9" height="11" fill="#9fd0ea" />
+            <rect x="112" y="58" width="58" height="2" fill="#c92a2f" />
+            <rect x="112" y="60" width="58" height="5" fill="#2f7d84" />
+            <rect x="116" y="44" width="11" height="11" fill="#2a1d14" />
+            <rect x="117" y="47" width="2" height="8" fill="#c92a2f" /><rect x="120" y="46" width="2" height="9" fill="#e8b52a" /><rect x="123" y="48" width="2" height="7" fill="#3d4c8c" />
+            <rect x="141" y="44" width="11" height="11" fill="#2a1d14" />
+            <rect x="142" y="47" width="2" height="8" fill="#4f7942" /><rect x="145" y="46" width="2" height="9" fill="#6b3e75" /><rect x="148" y="48" width="2" height="7" fill="#e07b39" />
+            <rect x="130" y="43" width="9" height="11" rx="2" fill="#fff" />
+            <rect x="132" y="45" width="2" height="7" fill="#fbaf45" /><rect x="134" y="45" width="2" height="7" fill="#bf4097" /><rect x="136" y="45" width="2" height="7" fill="#0d84c7" />
+            <circle cx="125" cy="70" r="6" fill="#222" /><circle cx="157" cy="70" r="6" fill="#222" />
+            <circle cx="125" cy="70" r="2.5" fill="#aab0b6" /><circle cx="157" cy="70" r="2.5" fill="#aab0b6" />
+          </g>
+        </svg>
+        <div class="info">
+          <h3>Bookmobile Route</h3>
+          <p>Drive the Bookmobile through a twisty town! Bring each stop the book, DVD, magazine or audiobook they asked for, dodge the ducks, and head back to the Library before closing time.</p>
+          <div class="tags"><span>Maze</span><span>Keyboard, swipe or touch</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=faves">
+        <!-- Fave Finder preview: a patron at the library window with a request, and the pick that becomes a new fave -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="A patron at the library service window asking for a book, next to shelves of covers and a New fave! badge">
+          <defs>
+            <clipPath id="ff-win"><rect x="18" y="30" width="190" height="104" /></clipPath>
+          </defs>
+          <rect width="400" height="200" fill="#34404f" />
+          <!-- window with the lobby behind -->
+          <g clip-path="url(#ff-win)">
+            <rect x="18" y="30" width="190" height="104" fill="#e7e2d6" />
+            <rect x="28" y="46" width="70" height="52" fill="#cda46c" />
+            <rect x="32" y="50" width="62" height="20" fill="#efe6d4" />
+            <rect x="32" y="74" width="62" height="20" fill="#efe6d4" />
+            <g><rect x="34" y="54" width="5" height="16" fill="#c92a2f" /><rect x="40" y="56" width="5" height="14" fill="#3d4c8c" /><rect x="46" y="53" width="6" height="17" fill="#e8b52a" /><rect x="53" y="57" width="5" height="13" fill="#4f7942" /><rect x="59" y="54" width="5" height="16" fill="#6b3e75" /><rect x="65" y="55" width="6" height="15" fill="#d9773a" /><rect x="72" y="53" width="5" height="17" fill="#2f7d84" /><rect x="78" y="56" width="5" height="14" fill="#c92a2f" /><rect x="84" y="54" width="6" height="16" fill="#3d4c8c" /></g>
+            <g><rect x="34" y="78" width="6" height="16" fill="#e8b52a" /><rect x="41" y="80" width="5" height="14" fill="#c92a2f" /><rect x="47" y="77" width="5" height="17" fill="#2f7d84" /><rect x="53" y="79" width="6" height="15" fill="#6b3e75" /><rect x="60" y="78" width="5" height="16" fill="#4f7942" /><rect x="66" y="80" width="5" height="14" fill="#d9773a" /><rect x="72" y="77" width="6" height="17" fill="#3d4c8c" /><rect x="79" y="79" width="5" height="15" fill="#e8b52a" /><rect x="85" y="78" width="5" height="16" fill="#c92a2f" /></g>
+            <rect x="18" y="116" width="190" height="18" fill="#c3b493" />
+            <!-- patron -->
+            <rect x="120" y="102" width="44" height="50" rx="12" fill="#2f7d84" />
+            <circle cx="142" cy="84" r="17" fill="#c98a5e" />
+            <path d="M125 80 A17 17 0 0 1 159 80 Z" fill="#2a1d12" />
+            <circle cx="136" cy="85" r="2" fill="#2a1d12" /><circle cx="148" cy="85" r="2" fill="#2a1d12" />
+            <path d="M136 92 Q142 97 148 92" fill="none" stroke="#2a1d12" stroke-width="2" />
+          </g>
+          <rect x="13" y="25" width="200" height="114" fill="none" stroke="#d7a35e" stroke-width="10" />
+          <rect x="8" y="134" width="210" height="16" fill="#d7a35e" />
+          <rect x="8" y="134" width="210" height="4" fill="#2b2d31" />
+          <!-- request bubble -->
+          <rect x="14" y="160" width="200" height="34" rx="8" fill="#fbf7ee" />
+          <path d="M134 160 L142 151 L150 160 Z" fill="#fbf7ee" />
+          <text x="24" y="175" font-family="Georgia, serif" font-size="10" fill="#2a1d12">I&#39;m 9! Something funny about</text>
+          <text x="24" y="188" font-family="Georgia, serif" font-size="10" fill="#2a1d12">animals. Nothing too scary!</text>
+          <!-- shelves of covers -->
+          <rect x="228" y="12" width="160" height="176" rx="8" fill="#2e2219" />
+          <g>
+            <rect x="240" y="26" width="36" height="46" rx="3" fill="#c92a2f" /><rect x="282" y="26" width="36" height="46" rx="3" fill="#3d4c8c" /><rect x="324" y="26" width="36" height="46" rx="3" fill="#e8b52a" />
+            <rect x="240" y="82" width="36" height="46" rx="3" fill="#4f7942" /><rect x="324" y="82" width="36" height="46" rx="3" fill="#6b3e75" />
+          </g>
+          <!-- the chosen book, glowing -->
+          <rect x="278" y="78" width="44" height="54" rx="5" fill="#d4a64a" />
+          <rect x="282" y="82" width="36" height="46" rx="3" fill="#d9773a" />
+          <circle cx="300" cy="104" r="7" fill="#fff" /><circle cx="292" cy="95" r="3" fill="#fff" /><circle cx="300" cy="92" r="3" fill="#fff" /><circle cx="308" cy="95" r="3" fill="#fff" />
+          <!-- New fave! badge -->
+          <rect x="250" y="146" width="116" height="30" rx="15" fill="#2f9e44" />
+          <text x="308" y="166" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="14" fill="#fff">New fave!</text>
+        </svg>
+        <div class="info">
+          <h3>Fave Finder</h3>
+          <p>Patrons line up at the library window looking for something new to read, watch or listen to. Figure out what they&#39;d love, avoid what they don&#39;t, and find their next favorite before closing time! Inspired by our Next Five Faves service.</p>
+          <div class="tags"><span>Matching</span><span>Mouse, touch or keyboard</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="more">
+      <h2 class="group-title" id="more">More games</h2>
+      <div class="grid">
+      <a class="game" href="game.html?g=sort">
+        <!-- Book Drop Sort preview: items riding a conveyor from the return cabinet toward labeled carts -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="Returned books and DVDs riding a conveyor belt from the book drop toward labeled book carts">
+          <rect width="400" height="200" fill="#bcc6d1" />
+          <!-- return cabinet -->
+          <rect x="16" y="14" width="368" height="6" fill="#e3b06a" />
+          <rect x="20" y="20" width="360" height="52" fill="#d7a35e" />
+          <rect x="20" y="21" width="360" height="17" fill="#cf9a55" />
+          <text x="80" y="34" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#eceef0">A/V DROP</text>
+          <text x="200" y="34" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#eceef0">BOOK DROP</text>
+          <text x="320" y="34" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#eceef0">BOOK DROP</text>
+          <g fill="#1c1c1c"><rect x="60" y="44" width="40" height="6" /><rect x="180" y="44" width="40" height="6" /><rect x="300" y="44" width="40" height="6" /></g>
+          <rect x="20" y="68" width="360" height="4" fill="#2a2c30" />
+          <!-- conveyor -->
+          <rect x="10" y="112" width="380" height="6" fill="#2a2c31" />
+          <rect x="6" y="118" width="388" height="8" fill="#5b6068" />
+          <circle cx="10" cy="120" r="7" fill="#8a9098" /><circle cx="390" cy="120" r="7" fill="#8a9098" />
+          <g fill="#e8b52a"><rect x="360" y="119" width="4" height="7" /><rect x="372" y="119" width="4" height="7" /></g>
+          <!-- DVD dropping from the A/V slot -->
+          <rect x="70" y="78" width="20" height="27" rx="2" fill="#1d2a4a" />
+          <rect x="70" y="78" width="20" height="5" fill="#e8e8ef" />
+          <circle cx="80" cy="96" r="7" fill="#c9ced6" />
+          <!-- chapter book on the belt -->
+          <rect x="160" y="82" width="15" height="30" fill="#8c2f39" />
+          <rect x="164" y="85" width="9" height="2" fill="#d4a64a" /><rect x="164" y="91" width="9" height="7" fill="#f3ead7" />
+          <!-- audiobook on the belt -->
+          <rect x="222" y="87" width="24" height="25" rx="3" fill="#2f7d84" />
+          <path d="M227 102 a7 7 0 0 1 14 0" fill="none" stroke="#fff" stroke-width="2.5" />
+          <!-- picture book at the front, with the gold "sort me" arrow -->
+          <rect x="296" y="88" width="32" height="24" fill="#d94b4b" />
+          <rect x="301" y="91" width="24" height="18" fill="#fbf6e9" />
+          <circle cx="318" cy="97" r="3" fill="#e8b52a" />
+          <path d="M301 109 Q312 96 325 109 Z" fill="#5cb85c" />
+          <rect x="292" y="84" width="40" height="32" fill="none" stroke="#d4a64a" stroke-width="2.5" />
+          <path d="M305 70 h14 l-7 9 z" fill="#d4a64a" />
+          <!-- floor and carts -->
+          <rect y="150" width="400" height="50" fill="#4a3a3b" />
+          <g>
+            <rect x="14" y="146" width="86" height="18" rx="4" fill="#34404f" stroke="#d4a64a" stroke-width="1.5" />
+            <text x="57" y="159" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="9" fill="#f3ead7">Picture Books</text>
+            <rect x="18" y="164" width="78" height="30" fill="#c08f48" /><rect x="22" y="168" width="70" height="22" fill="#3a2e25" />
+            <g fill="#e8b52a"><rect x="25" y="173" width="5" height="16" /><rect x="32" y="175" width="5" height="14" /><rect x="39" y="173" width="5" height="16" /></g>
+          </g>
+          <g>
+            <rect x="110" y="146" width="86" height="18" rx="4" fill="#34404f" stroke="#d4a64a" stroke-width="1.5" />
+            <text x="153" y="159" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="9" fill="#f3ead7">Chapter Books</text>
+            <rect x="114" y="164" width="78" height="30" fill="#c08f48" /><rect x="118" y="168" width="70" height="22" fill="#3a2e25" />
+            <g fill="#2f5d62"><rect x="121" y="172" width="5" height="17" /><rect x="128" y="174" width="5" height="15" /><rect x="135" y="172" width="5" height="17" /><rect x="142" y="173" width="5" height="16" /></g>
+          </g>
+          <g>
+            <rect x="206" y="146" width="86" height="18" rx="4" fill="#34404f" stroke="#d4a64a" stroke-width="1.5" />
+            <text x="249" y="159" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="9" fill="#f3ead7">DVDs</text>
+            <rect x="210" y="164" width="78" height="30" fill="#c08f48" /><rect x="214" y="168" width="70" height="22" fill="#3a2e25" />
+            <g fill="#3d4c8c"><rect x="217" y="173" width="5" height="16" /><rect x="224" y="173" width="5" height="16" /></g>
+          </g>
+          <g>
+            <rect x="302" y="146" width="86" height="18" rx="4" fill="#34404f" stroke="#d4a64a" stroke-width="1.5" />
+            <text x="345" y="159" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="9" fill="#f3ead7">Audiobooks</text>
+            <rect x="306" y="164" width="78" height="30" fill="#c08f48" /><rect x="310" y="168" width="70" height="22" fill="#3a2e25" />
+            <g fill="#6b3e75"><rect x="313" y="173" width="5" height="16" /><rect x="320" y="174" width="5" height="15" /><rect x="327" y="173" width="5" height="16" /></g>
+          </g>
+        </svg>
+        <div class="info">
+          <h3>Book Drop Sort</h3>
+          <p>Books, DVDs and audiobooks are pouring out of the return slots! Tap the right cart to sort each one before it rolls off the end of the belt.</p>
+          <div class="tags"><span>Sorting</span><span>Keyboard or touch</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=shush">
+        <!-- Shush! preview: a patron with a ringing phone, a calm reader, and the noise meter -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="Library patrons in the children's area: one has a ringing phone, another reads quietly after being shushed, under a noise meter">
+          <rect width="400" height="200" fill="#8b919a" />
+          <rect width="140" height="110" fill="#aab3c1" />
+          <rect width="400" height="28" fill="#2b2b30" />
+          <path d="M0 8 Q100 2 200 8 T400 8 V24 Q300 30 200 24 T0 24 Z" fill="#c92a2f" />
+          <path d="M0 20 Q100 28 200 20 T400 20 V28 Q300 22 200 28 T0 28 Z" fill="#e8b52a" />
+          <rect x="0" y="24" width="14" height="86" fill="#c62a2f" />
+          <rect x="386" y="24" width="14" height="86" fill="#c62a2f" />
+          <!-- low shelf along the wall -->
+          <rect x="150" y="80" width="200" height="30" fill="#cda46c" />
+          <rect x="154" y="84" width="192" height="22" fill="#efe6d4" />
+          <g fill="#d94b4b"><rect x="158" y="88" width="6" height="18" /><rect x="230" y="90" width="5" height="16" /><rect x="300" y="88" width="6" height="18" /></g>
+          <g fill="#4b79d9"><rect x="166" y="90" width="5" height="16" /><rect x="250" y="88" width="6" height="18" /><rect x="320" y="91" width="5" height="15" /></g>
+          <g fill="#f2c14e"><rect x="180" y="89" width="7" height="17" /><rect x="270" y="90" width="6" height="16" /><rect x="334" y="88" width="6" height="18" /></g>
+          <g fill="#5cb85c"><rect x="200" y="88" width="5" height="18" /><rect x="285" y="89" width="6" height="17" /></g>
+          <!-- floor -->
+          <rect y="110" width="400" height="40" fill="#5e6e8b" />
+          <rect y="150" width="400" height="50" fill="#c3b493" />
+          <!-- noise meter -->
+          <rect x="120" y="34" width="160" height="22" rx="6" fill="rgba(20,14,10,0.75)" />
+          <text x="130" y="50" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#d4a64a">NOISE</text>
+          <rect x="168" y="40" width="104" height="10" fill="#1a1410" />
+          <rect x="168" y="40" width="70" height="10" fill="#f2c14e" />
+        
+          <!-- noisy patron with a ringing phone, in a polka-dot armchair -->
+          <rect x="50" y="108" width="90" height="62" rx="12" fill="#b8262c" />
+          <rect x="80" y="126" width="34" height="44" rx="10" fill="#5cb85c" />
+          <circle cx="97" cy="112" r="15" fill="#c68642" />
+          <path d="M82 108 A15 11 0 0 1 112 108 Z" fill="#1a1a1a" />
+          <circle cx="91" cy="111" r="2" fill="#2a1d16" /><circle cx="103" cy="111" r="2" fill="#2a1d16" />
+          <ellipse cx="97" cy="119" rx="4" ry="3.5" fill="#6a2a2a" />
+          <rect x="113" y="98" width="8" height="14" fill="#222" /><rect x="114.5" y="100" width="5" height="9" fill="#7fc4e8" />
+          <circle cx="117" cy="114" r="4" fill="#c68642" />
+          <rect x="44" y="140" width="106" height="34" rx="9" fill="#c92f35" />
+          <g fill="#f2c14e"><circle cx="60" cy="150" r="2.5" /><circle cx="120" cy="160" r="2.5" /><circle cx="70" cy="118" r="2.5" /></g>
+          <g fill="#4b79d9"><circle cx="90" cy="162" r="2.5" /><circle cx="134" cy="148" r="2.5" /><circle cx="128" cy="118" r="2.5" /></g>
+          <g fill="#5cb85c"><circle cx="105" cy="150" r="2.5" /><circle cx="56" cy="165" r="2.5" /></g>
+          <rect x="58" y="70" width="80" height="22" rx="9" fill="#fff" />
+          <path d="M92 92 h10 l-5 7 z" fill="#fff" />
+          <text x="98" y="86" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="bold" font-size="13" fill="#1c140f">Ring ring!</text>
+          <g fill="none" stroke="#fff" stroke-width="2"><path d="M72 104 a12 12 0 0 0 0 16" /><path d="M66 100 a18 18 0 0 0 0 24" /></g>
+        
+          <!-- calm reader after a shush -->
+          <rect x="248" y="126" width="34" height="44" rx="10" fill="#9b59b6" />
+          <circle cx="265" cy="112" r="15" fill="#f1c7a5" />
+          <path d="M250 108 A15 11 0 0 1 280 108 Z" fill="#d9a441" />
+          <circle cx="265" cy="93" r="6" fill="#d9a441" />
+          <path d="M256 111 q3 3 6 0 M268 111 q3 3 6 0 M261 118 q4 3 8 0" fill="none" stroke="#2a1d16" stroke-width="1.5" />
+          <path d="M265 150 L248 142 L248 158 L265 164 L282 158 L282 142 Z" fill="#3d4c8c" />
+          <path d="M265 148 L251 142 L251 156 L265 161 Z" fill="#f3ead7" />
+          <path d="M265 148 L279 142 L279 156 L265 161 Z" fill="#e6dcc5" />
+          <rect x="215" y="170" width="100" height="6" fill="#e9d7a8" />
+          <rect x="220" y="176" width="4" height="24" fill="#222" /><rect x="306" y="176" width="4" height="24" fill="#222" />
+          <rect x="236" y="68" width="60" height="24" rx="10" fill="#34404f" />
+          <text x="266" y="85" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="bold" font-size="15" fill="#f3ead7">Shh…</text>
+          <!-- tap ripple -->
+          <g fill="none" stroke="#bfe3ff" stroke-width="2" opacity="0.8"><circle cx="300" cy="120" r="8" /><circle cx="300" cy="120" r="14" /></g>
+        </svg>
+        <div class="info">
+          <h3>Shush!</h3>
+          <p>Things are getting noisy in the library! Tap the ringing phones, squeaky chairs and giggling kids to shush them before the noise meter fills. But don&#39;t shush the quiet readers!</p>
+          <div class="tags"><span>Quick reflexes</span><span>Mouse or touch</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=catch">
+        <!-- Bookmark Catch preview: items drifting down from the banners into a navy book cart -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="Bookmarks, a page and a library card falling from colorful ceiling banners into a book cart, with a coffee cup to dodge">
+          <rect width="400" height="200" fill="#8b919a" />
+          <rect width="140" height="200" fill="#aab3c1" />
+          <rect x="140" y="30" width="20" height="148" fill="#c62a2f" />
+          <rect x="152" y="30" width="8" height="148" fill="#a31f24" />
+          <!-- low bookcase -->
+          <rect x="180" y="128" width="200" height="50" fill="#cda46c" />
+          <rect x="185" y="133" width="190" height="40" fill="#efe6d4" />
+          <g fill="#d94b4b"><rect x="190" y="138" width="6" height="15" /><rect x="250" y="156" width="6" height="15" /><rect x="330" y="138" width="7" height="15" /></g>
+          <g fill="#4b79d9"><rect x="197" y="140" width="5" height="13" /><rect x="280" y="157" width="6" height="14" /><rect x="350" y="156" width="5" height="15" /></g>
+          <g fill="#f2c14e"><rect x="214" y="138" width="7" height="15" /><rect x="300" y="139" width="6" height="14" /><rect x="205" y="157" width="6" height="14" /></g>
+          <g fill="#5cb85c"><rect x="230" y="139" width="5" height="14" /><rect x="320" y="157" width="7" height="14" /></g>
+          <rect x="185" y="153" width="190" height="3" fill="#b88e55" />
+          <!-- carpet -->
+          <rect y="178" width="400" height="22" fill="#c3b493" />
+          <rect y="178" width="400" height="7" fill="#5e6e8b" />
+          <!-- falling items -->
+          <path d="M60 64 h12 v22 l-6 -5 l-6 5 z" fill="#c92a2f" stroke="#fff" stroke-width="1.5" />
+          <path d="M250 70 h12 v22 l-6 -5 l-6 5 z" fill="#3d4c8c" stroke="#fff" stroke-width="1.5" />
+          <path d="M120 110 h12 v22 l-6 -5 l-6 5 z" fill="#e8b52a" stroke="#fff" stroke-width="1.5" />
+          <g transform="translate(190 95) rotate(-18)">
+            <rect x="-9" y="-12" width="18" height="24" fill="#f3ead7" stroke="rgba(0,0,0,0.25)" />
+            <g fill="#9a8f7c"><rect x="-5" y="-6" width="10" height="1" /><rect x="-5" y="-2" width="10" height="1" /><rect x="-5" y="2" width="10" height="1" /><rect x="-5" y="6" width="10" height="1" /></g>
+          </g>
+          <ellipse cx="330" cy="62" rx="26" ry="20" fill="rgba(255,246,200,0.4)" />
+          <rect x="316" y="53" width="28" height="19" rx="3" fill="#0d84c7" />
+          <rect x="316" y="57" width="28" height="3" fill="#42c4dc" />
+          <rect x="320" y="63" width="8" height="6" fill="#fff" />
+          <g fill="#fff"><rect x="331" y="63" width="1" height="6" /><rect x="333" y="63" width="1.5" height="6" /><rect x="336" y="63" width="1" height="6" /><rect x="338" y="63" width="1" height="6" /><rect x="340" y="63" width="1.5" height="6" /></g>
+          <!-- coffee to dodge -->
+          <g transform="translate(372 110)">
+            <path d="M-8 -7 H8 L6 12 H-6 Z" fill="#f2efe9" />
+            <rect x="-7" y="-1" width="14" height="6" fill="#8a5a36" />
+            <rect x="-10" y="-11" width="20" height="5" rx="2" fill="#3b2a20" />
+            <path d="M-3 -13 q4 -5 0 -10 M3 -13 q4 -5 0 -10" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+          </g>
+          <!-- banners (in front, items drift out from behind them) -->
+          <rect width="400" height="30" fill="#2b2b30" />
+          <rect width="400" height="6" fill="#e9e6df" />
+          <path d="M0 26 Q50 18 100 26 T200 26 T300 26 T400 26 V32 Q350 40 300 32 T200 32 T100 32 T0 32 Z" fill="#f1f0ec" />
+          <path d="M0 22 Q50 32 100 22 T200 22 T300 22 T400 22 V30 Q350 20 300 30 T200 30 T100 30 T0 30 Z" fill="#e8b52a" />
+          <path d="M0 8 Q50 14 100 8 T200 8 T300 8 T400 8 V26 Q350 20 300 26 T200 26 T100 26 T0 26 Z" fill="#3d4c8c" />
+          <path d="M0 10 Q50 5 100 10 T200 10 T300 10 T400 10 V34 Q350 39 300 34 T200 34 T100 34 T0 34 Z" fill="#c92a2f" />
+          <!-- book cart -->
+          <ellipse cx="120" cy="180" rx="44" ry="4" fill="rgba(0,0,0,0.25)" />
+          <path d="M100 136 h12 v22 l-6 -5 l-6 5 z" fill="#c92a2f" stroke="#fff" stroke-width="1.5" transform="rotate(-12 106 147)" />
+          <rect x="122" y="132" width="18" height="16" fill="#f3ead7" transform="rotate(14 131 140)" />
+          <rect x="80" y="144" width="5" height="32" fill="#5d6670" />
+          <rect x="155" y="144" width="5" height="32" fill="#5d6670" />
+          <rect x="76" y="144" width="88" height="16" fill="#34404f" />
+          <rect x="76" y="144" width="88" height="2" fill="#d4a64a" />
+          <rect x="113" y="146" width="14" height="13" rx="3" fill="#fff" />
+          <rect x="116" y="148" width="3" height="9" fill="#fbaf45" /><rect x="119" y="148" width="2" height="9" fill="#bf4097" /><rect x="121" y="148" width="2" height="9" fill="#0d84c7" /><rect x="123" y="148" width="2" height="9" fill="#42c4dc" />
+          <g fill="#d94b4b"><rect x="86" y="162" width="5" height="11" /></g><g fill="#4b79d9"><rect x="92" y="164" width="5" height="9" /></g>
+          <g fill="#f2c14e"><rect x="98" y="162" width="6" height="11" /></g><g fill="#5cb85c"><rect x="105" y="163" width="5" height="10" /></g>
+          <g fill="#9b59b6"><rect x="111" y="162" width="5" height="11" /></g><g fill="#f39c4a"><rect x="117" y="164" width="6" height="9" /></g>
+          <g fill="#3aa6a6"><rect x="124" y="162" width="5" height="11" /></g><g fill="#d94b4b"><rect x="130" y="163" width="5" height="10" /></g>
+          <g fill="#4b79d9"><rect x="136" y="162" width="6" height="11" /></g><g fill="#f2c14e"><rect x="143" y="164" width="5" height="9" /></g>
+          <rect x="76" y="173" width="88" height="4" fill="#34404f" />
+          <circle cx="86" cy="179" r="5" fill="#2a2a2a" /><circle cx="154" cy="179" r="5" fill="#2a2a2a" />
+        </svg>
+        <div class="info">
+          <h3>Bookmark Catch</h3>
+          <p>Bookmarks, pages and library cards are falling from the banners! Slide your book cart to catch them, but watch out for spilled drinks.</p>
+          <div class="tags"><span>Arcade</span><span>Keyboard or touch</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=match">
+        <!-- Spine Match preview: book spines on a shelf, some face down with the library logo, two matched pairs -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="Book spines on a library shelf, some showing the library logo and some flipped to reveal matching pictures">
+          <defs>
+            <!-- library logo icon (from logo-icon.svg), 122 x 182 units -->
+            <g id="pm-logo">
+              <path fill="#42c4dc" d="M100.76 21.76h7.32s13 0 13 13v113.57s0 13-13 13H96.57v20.46l-34.41-20.53 38.6-19.85z"/>
+              <path fill="#0d84c7" d="M62.97 21.76v133.33l32.39-16.53V0L62.97 21.76z"/>
+              <path fill="#fbaf45" d="M58 161.26l-37.56-19.85V21.76H13s-13 0-13 13v113.57s0 13 13 13z"/>
+              <path fill="#bf4097" d="M57.16 155.09l-31.31-16.53V0l31.31 21.75v133.34z"/>
+            </g>
+            <!-- face-down spine: navy binding, gold bands, logo badge -->
+            <g id="pm-back">
+              <rect width="44" height="84" rx="3" fill="#34404f" />
+              <rect y="2" width="5" height="80" fill="#26303c" />
+              <rect x="7" y="7" width="31" height="3" fill="#d4a64a" />
+              <rect x="7" y="74" width="31" height="3" fill="#d4a64a" />
+              <rect x="11" y="28" width="24" height="30" rx="4" fill="#ffffff" />
+              <use href="#pm-logo" transform="translate(16 31) scale(0.133)" />
+            </g>
+          </defs>
+          <!-- lobby wall, maple paneling, banners -->
+          <rect width="400" height="200" fill="#c8cdd4" />
+          <rect y="110" width="400" height="90" fill="#d49853" />
+          <g fill="#b07636"><rect y="110" width="400" height="3" /><rect x="40" y="110" width="2" height="90" /><rect x="360" y="110" width="2" height="90" /></g>
+          <rect width="400" height="22" fill="#2b2b30" />
+          <path d="M0 6 Q100 16 200 6 T400 6 V18 Q300 8 200 18 T0 18 Z" fill="#c92a2f" />
+          <path d="M0 14 Q100 6 200 14 T400 14 V22 Q300 30 200 22 T0 22 Z" fill="#3d4c8c" />
+          <!-- bookcase -->
+          <rect x="58" y="34" width="290" height="160" fill="#cda46c" />
+          <rect x="66" y="42" width="274" height="146" fill="#3a2e25" />
+          <rect x="66" y="132" width="274" height="7" fill="#d7a35e" />
+          <rect x="66" y="181" width="274" height="7" fill="#d7a35e" />
+          <!-- top shelf: back, heart, back, heart (matched), back -->
+          <use href="#pm-back" x="76" y="47" />
+          <g transform="translate(128 47)">
+            <rect width="44" height="84" rx="3" fill="#bf4097" /><rect y="2" width="5" height="80" fill="#86306a" />
+            <rect x="7" y="7" width="31" height="3" fill="#d4a64a" /><rect x="7" y="74" width="31" height="3" fill="#d4a64a" />
+            <circle cx="23" cy="42" r="16" fill="#f3ead7" />
+            <path d="M23 52 C10 43 15 31 23 38 C31 31 36 43 23 52 Z" fill="#d94b7a" />
+            <path d="M30 -8 h8 v14 l-4 -4 l-4 4 z" fill="#c92a2f" />
+          </g>
+          <use href="#pm-back" x="180" y="47" />
+          <g transform="translate(232 47)">
+            <rect width="44" height="84" rx="3" fill="#bf4097" /><rect y="2" width="5" height="80" fill="#86306a" />
+            <rect x="7" y="7" width="31" height="3" fill="#d4a64a" /><rect x="7" y="74" width="31" height="3" fill="#d4a64a" />
+            <circle cx="23" cy="42" r="16" fill="#f3ead7" />
+            <path d="M23 52 C10 43 15 31 23 38 C31 31 36 43 23 52 Z" fill="#d94b7a" />
+            <path d="M30 -8 h8 v14 l-4 -4 l-4 4 z" fill="#c92a2f" />
+          </g>
+          <use href="#pm-back" x="284" y="47" />
+          <!-- bottom shelf (peeking): rocket and its "Space" topic, just flipped -->
+          <g transform="translate(76 142)">
+            <rect width="44" height="40" rx="3" fill="#34404f" /><rect x="7" y="7" width="31" height="3" fill="#d4a64a" />
+          </g>
+          <g transform="translate(128 142)">
+            <rect width="44" height="40" rx="3" fill="#3d4c8c" /><rect x="7" y="6" width="31" height="3" fill="#d4a64a" />
+            <circle cx="23" cy="28" r="12" fill="#f3ead7" />
+            <ellipse cx="23" cy="28" rx="4" ry="8" fill="#e8e8ee" /><path d="M20 22 L23 17 L26 22 Z" fill="#c92a2f" /><circle cx="23" cy="27" r="2" fill="#4b79d9" />
+          </g>
+          <g transform="translate(180 142)">
+            <rect width="44" height="40" rx="3" fill="#3d4c8c" /><rect x="7" y="6" width="31" height="3" fill="#d4a64a" />
+            <rect x="6" y="16" width="32" height="20" rx="3" fill="#f3ead7" />
+            <text x="22" y="30" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#2a2320">Space</text>
+          </g>
+          <g transform="translate(232 142)">
+            <rect width="44" height="40" rx="3" fill="#34404f" /><rect x="7" y="7" width="31" height="3" fill="#d4a64a" />
+          </g>
+          <g transform="translate(284 142)">
+            <rect width="44" height="40" rx="3" fill="#34404f" /><rect x="7" y="7" width="31" height="3" fill="#d4a64a" />
+          </g>
+          <!-- stars -->
+          <g fill="#e8b52a">
+            <path d="M362 50 l4 9 10 1 -7.5 6.5 2.5 9.5 -9 -5 -9 5 2.5 -9.5 -7.5 -6.5 10 -1 z" />
+            <path d="M30 62 l3 6.5 7 .7 -5.3 4.6 1.7 6.7 -6.4 -3.5 -6.4 3.5 1.7 -6.7 -5.3 -4.6 7 -.7 z" />
+          </g>
+        </svg>
+        <div class="info">
+          <h3>Spine Match</h3>
+          <p>Flip the book spines to find matching pairs! Later shelves get bigger, and you&#39;ll match pictures to their book topics, like a rocket to Space.</p>
+          <div class="tags"><span>Memory</span><span>Keyboard or touch</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=pinquest">
+        <!-- Pin Quest preview: big friendly activity circles and a tote bag collecting pins -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="Colorful activity circles with a heart, a music note, 123, a star and a book, next to a tote bag holding earned pins">
+          <rect width="400" height="200" fill="#8b919a" />
+          <rect y="22" width="140" height="138" fill="#aab3c1" />
+          <rect width="400" height="22" fill="#2b2b30" />
+          <path d="M0 10 Q100 4 200 10 T400 10 V20 Q300 26 200 20 T0 20 Z" fill="#3d4c8c" />
+          <path d="M0 6 Q100 12 200 6 T400 6 V18 Q300 12 200 18 T0 18 Z" fill="#c92a2f" />
+          <rect x="146" y="18" width="12" height="142" fill="#c62a2f" />
+          <rect y="160" width="400" height="40" fill="#c3b493" />
+          <rect y="160" width="400" height="7" fill="#5e6e8b" />
+          <!-- activity circles -->
+          <g stroke="#fff" stroke-width="4">
+            <circle cx="52" cy="66" r="30" fill="#e0488f" />
+            <circle cx="126" cy="66" r="30" fill="#3d7fd9" />
+            <circle cx="200" cy="66" r="30" fill="#e0a020" />
+            <circle cx="89" cy="132" r="30" fill="#3f9e4f" />
+            <circle cx="163" cy="132" r="30" fill="#d9673a" />
+          </g>
+          <path d="M52 78 C36 68 42 54 52 62 C62 54 68 68 52 78 Z" fill="#fff" />
+          <g fill="#fff">
+            <ellipse cx="122" cy="76" rx="6" ry="5" />
+            <rect x="126" y="52" width="3" height="24" />
+            <path d="M129 52 q10 4 7 12 l-2 -1 q2 -6 -5 -8 z" />
+          </g>
+          <text x="200" y="73" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="18" fill="#fff">123</text>
+          <path d="M89 116 l5 10 11 1 -8 7 3 11 -11 -6 -11 6 3 -11 -8 -7 11 -1 z" fill="#fff" />
+          <path d="M163 124 q-8 -4 -16 -1 v18 q8 -3 16 2 q8 -5 16 -2 v-18 q-8 -3 -16 1 z" fill="#fff" />
+          <!-- check mark on an earned activity -->
+          <circle cx="74" cy="44" r="9" fill="#d4a64a" />
+          <path d="M70 44 l3 3 5 -6" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          <!-- tote bag with pins -->
+          <g fill="none" stroke="#b89a6a" stroke-width="6">
+            <path d="M276 70 a18 18 0 0 1 36 0" />
+            <path d="M320 70 a18 18 0 0 1 36 0" />
+          </g>
+          <path d="M262 70 H370 L380 176 H252 Z" fill="#efe3c8" />
+          <rect x="262" y="70" width="108" height="7" fill="#d8c7a3" />
+          <g stroke="#d4a64a" stroke-width="3">
+            <circle cx="288" cy="112" r="14" fill="#e0488f" />
+            <circle cx="316" cy="112" r="14" fill="#3d7fd9" />
+            <circle cx="344" cy="112" r="14" fill="#e0a020" />
+            <circle cx="302" cy="146" r="14" fill="#3f9e4f" />
+          </g>
+          <circle cx="330" cy="146" r="13" fill="none" stroke="rgba(120,95,60,0.5)" stroke-width="2" stroke-dasharray="4 3" />
+          <path d="M288 118 C281 113 284 106 288 110 C292 106 295 113 288 118 Z" fill="#fff" />
+          <path d="M302 139 l2.5 5 5.5 .5 -4 3.5 1.5 5.5 -5.5 -3 -5.5 3 1.5 -5.5 -4 -3.5 5.5 -.5 z" fill="#fff" />
+          <!-- a falling pin, just earned -->
+          <circle cx="232" cy="40" r="16" fill="#d9673a" stroke="#d4a64a" stroke-width="3" />
+          <path d="M232 36 q-5 -2 -9 0 v10 q5 -2 9 1 q4 -3 9 -1 v-10 q-4 -2 -9 0 z" fill="#fff" />
+          <g fill="#e8b52a"><circle cx="214" cy="28" r="2" /><circle cx="250" cy="24" r="2" /><circle cx="246" cy="58" r="2" /></g>
+        </svg>
+        <div class="info">
+          <h3>Little Learners Pin Quest</h3>
+          <p>Five gentle little games for ages 2–5: breathe with a balloon, find toys, count books, jump and pop bubbles, and choose a story&#39;s ending. Every game is read aloud, and each one earns a pin for your tote bag!</p>
+          <div class="tags"><span>Ages 2–5</span><span>Read aloud</span><span>Touch friendly</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+
+      <a class="game" href="game.html?g=garden">
+        <!-- Seed Library Garden preview: a seed packet from the Seed Library and a garden bed with a sunflower, milkweed with a monarch, and bee balm with a bee -->
+        <svg viewBox="0 0 400 200" role="img" aria-label="A seed packet from the library's Seed Library next to a garden bed with a sunflower, milkweed with a monarch butterfly, and bee balm with a bumblebee">
+          <defs>
+            <linearGradient id="sg-sky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#8fcbf2" />
+              <stop offset="1" stop-color="#e3f3fb" />
+            </linearGradient>
+          </defs>
+          <rect width="400" height="200" fill="url(#sg-sky)" />
+          <circle cx="382" cy="22" r="14" fill="#ffd84a" />
+          <rect y="96" width="400" height="104" fill="#7fb069" />
+          <!-- picket fence -->
+          <rect y="82" width="400" height="3" fill="#e9e2d0" />
+          <rect y="92" width="400" height="3" fill="#e9e2d0" />
+          <g fill="#f4efe2">
+            <path d="M6 100 V78 L10 74 L14 78 V100 Z" /><path d="M26 100 V78 L30 74 L34 78 V100 Z" /><path d="M46 100 V78 L50 74 L54 78 V100 Z" /><path d="M66 100 V78 L70 74 L74 78 V100 Z" />
+            <path d="M86 100 V78 L90 74 L94 78 V100 Z" /><path d="M106 100 V78 L110 74 L114 78 V100 Z" /><path d="M126 100 V78 L130 74 L134 78 V100 Z" /><path d="M146 100 V78 L150 74 L154 78 V100 Z" />
+            <path d="M166 100 V78 L170 74 L174 78 V100 Z" /><path d="M186 100 V78 L190 74 L194 78 V100 Z" /><path d="M206 100 V78 L210 74 L214 78 V100 Z" /><path d="M226 100 V78 L230 74 L234 78 V100 Z" />
+            <path d="M246 100 V78 L250 74 L254 78 V100 Z" /><path d="M266 100 V78 L270 74 L274 78 V100 Z" /><path d="M286 100 V78 L290 74 L294 78 V100 Z" /><path d="M306 100 V78 L310 74 L314 78 V100 Z" />
+            <path d="M326 100 V78 L330 74 L334 78 V100 Z" /><path d="M346 100 V78 L350 74 L354 78 V100 Z" /><path d="M366 100 V78 L370 74 L374 78 V100 Z" /><path d="M386 100 V78 L390 74 L394 78 V100 Z" />
+          </g>
+          <!-- raised bed -->
+          <rect x="120" y="160" width="270" height="10" fill="#6b4a2f" />
+          <rect x="120" y="168" width="270" height="26" fill="#a8743f" />
+          <rect x="120" y="168" width="270" height="4" fill="#c08a4c" />
+          <g fill="#5fb0ee"><circle cx="130" cy="186" r="3" /><circle cx="140" cy="186" r="3" /><circle cx="150" cy="186" r="3" /></g>
+          <!-- sunflower -->
+          <path d="M170 162 V62" stroke="#3f8f3a" stroke-width="4" stroke-linecap="round" />
+          <g fill="#5aae4a">
+            <ellipse cx="160" cy="130" rx="12" ry="5" transform="rotate(25 160 130)" /><ellipse cx="180" cy="120" rx="12" ry="5" transform="rotate(-25 180 120)" />
+            <ellipse cx="160" cy="100" rx="12" ry="5" transform="rotate(25 160 100)" /><ellipse cx="180" cy="90" rx="12" ry="5" transform="rotate(-25 180 90)" />
+          </g>
+          <g fill="#f2c14e">
+            <ellipse cx="170" cy="44" rx="5" ry="11" /><ellipse cx="170" cy="80" rx="5" ry="11" /><ellipse cx="152" cy="62" rx="11" ry="5" /><ellipse cx="188" cy="62" rx="11" ry="5" />
+            <ellipse cx="157" cy="49" rx="5" ry="11" transform="rotate(-45 157 49)" /><ellipse cx="183" cy="75" rx="5" ry="11" transform="rotate(-45 183 75)" />
+            <ellipse cx="183" cy="49" rx="5" ry="11" transform="rotate(45 183 49)" /><ellipse cx="157" cy="75" rx="5" ry="11" transform="rotate(45 157 75)" />
+          </g>
+          <circle cx="170" cy="62" r="11" fill="#7a4b25" />
+          <!-- milkweed with a monarch -->
+          <path d="M250 162 V90" stroke="#3f8f3a" stroke-width="3" stroke-linecap="round" />
+          <g fill="#6aa86a">
+            <ellipse cx="240" cy="140" rx="11" ry="4" transform="rotate(25 240 140)" /><ellipse cx="260" cy="132" rx="11" ry="4" transform="rotate(-25 260 132)" />
+            <ellipse cx="240" cy="116" rx="11" ry="4" transform="rotate(25 240 116)" /><ellipse cx="260" cy="108" rx="11" ry="4" transform="rotate(-25 260 108)" />
+          </g>
+          <g fill="#c06aa0"><circle cx="244" cy="88" r="3.5" /><circle cx="251" cy="84" r="3.5" /><circle cx="258" cy="88" r="3.5" /></g>
+          <g fill="#d68fb8"><circle cx="247" cy="91" r="3.5" /><circle cx="255" cy="91" r="3.5" /><circle cx="251" cy="89" r="3" /></g>
+          <g transform="translate(276 70)">
+            <ellipse cx="-8" cy="-5" rx="8" ry="6" fill="#f08a24" stroke="#1d1d1d" stroke-width="1.4" transform="rotate(20 -8 -5)" />
+            <ellipse cx="8" cy="-5" rx="8" ry="6" fill="#f08a24" stroke="#1d1d1d" stroke-width="1.4" transform="rotate(-20 8 -5)" />
+            <ellipse cx="-6" cy="5" rx="6" ry="4.5" fill="#f08a24" /><ellipse cx="6" cy="5" rx="6" ry="4.5" fill="#f08a24" />
+            <ellipse cx="0" cy="0" rx="1.6" ry="7" fill="#1d1d1d" />
+          </g>
+          <g><circle cx="240" cy="146" r="2.3" fill="#f2c14e" /><circle cx="236.8" cy="146" r="2.3" fill="#222" /><circle cx="233.6" cy="146" r="2.3" fill="#fff" /><circle cx="230.4" cy="146" r="2.3" fill="#222" /></g>
+          <!-- bee balm with a bee -->
+          <path d="M330 162 L322 112 M330 162 L338 104 M330 162 L346 118" stroke="#3f8f3a" stroke-width="2.5" stroke-linecap="round" />
+          <g stroke="#c43b6d" stroke-width="2">
+            <path d="M322 112 l10 -2 M322 112 l-10 -2 M322 112 l6 -8 M322 112 l-6 -8 M322 112 l0 -10 M322 112 l8 6 M322 112 l-8 6" />
+            <path d="M346 118 l10 -2 M346 118 l-10 -2 M346 118 l6 -8 M346 118 l-6 -8 M346 118 l0 -10 M346 118 l8 6 M346 118 l-8 6" />
+          </g>
+          <g stroke="#8e44ad" stroke-width="2"><path d="M338 104 l10 -2 M338 104 l-10 -2 M338 104 l6 -8 M338 104 l-6 -8 M338 104 l0 -10 M338 104 l8 6 M338 104 l-8 6" /></g>
+          <circle cx="322" cy="112" r="4.5" fill="#c43b6d" /><circle cx="346" cy="118" r="4.5" fill="#c43b6d" /><circle cx="338" cy="104" r="4.5" fill="#8e44ad" />
+          <g transform="translate(362 92)">
+            <ellipse cx="-2" cy="-6" rx="4" ry="5" fill="rgba(255,255,255,0.85)" /><ellipse cx="3" cy="-6" rx="4" ry="5" fill="rgba(255,255,255,0.85)" />
+            <ellipse cx="0" cy="0" rx="7" ry="5" fill="#f2c14e" /><rect x="-2" y="-5" width="2" height="10" fill="#222" /><rect x="3" y="-4.5" width="2" height="9" fill="#222" /><circle cx="-6" cy="-1" r="2.5" fill="#222" />
+          </g>
+          <!-- seed packet with the library logo -->
+          <g transform="rotate(-6 60 120)">
+            <rect x="22" y="70" width="80" height="106" rx="5" fill="rgba(0,0,0,0.2)" />
+            <rect x="18" y="66" width="80" height="106" rx="5" fill="#f2c14e" />
+            <rect x="23" y="71" width="70" height="66" fill="#fdf8ec" />
+            <rect x="27" y="75" width="14" height="19" rx="3" fill="#fff" stroke="#ddd" />
+            <path d="M30 79 h3 v12 h-3 z" fill="#fbaf45" /><path d="M33 79 h2 v12 h-2 z" fill="#bf4097" /><path d="M35 79 h2 v12 h-2 z" fill="#0d84c7" /><path d="M37 81 h2 v10 h-2 z" fill="#42c4dc" />
+            <path d="M58 132 V104" stroke="#3f8f3a" stroke-width="2.5" />
+            <ellipse cx="52" cy="120" rx="7" ry="3" fill="#5aae4a" transform="rotate(25 52 120)" /><ellipse cx="64" cy="114" rx="7" ry="3" fill="#5aae4a" transform="rotate(-25 64 114)" />
+            <circle cx="58" cy="100" r="9" fill="#f2c14e" stroke="#e0a92e" stroke-width="3" /><circle cx="58" cy="100" r="5" fill="#7a4b25" />
+            <text x="58" y="157" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="13" fill="#2a1d12">Sunflower</text>
+          </g>
+          <!-- library sign -->
+          <rect x="200" y="10" width="160" height="40" fill="#d7a35e" />
+          <rect x="200" y="46" width="160" height="4" fill="#b07636" />
+          <text x="280" y="28" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="14" fill="#3a2512">Seed Library Garden</text>
+          <text x="280" y="43" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="10" fill="#5a3a1c">Grow your world!</text>
+        </svg>
+        <div class="info">
+          <h3>Seed Library Garden</h3>
+          <p>Pick free seed packets at the Seed Library, then plant, water and weed your own garden! Watch for bees, butterflies and hummingbirds, and fill your Garden Journal.</p>
+          <div class="tags"><span>Nature</span><span>Mouse, touch or keyboard</span><span>Sound</span></div>
+          <span class="play">Play →</span>
+        </div>
+      </a>
+      </div>
+    </section>
+  </main>
+
+  <footer>Made for our library. Your best scores are saved on this device.</footer>
+
+  <!-- The game player. Each card still links to its game page, so a game also
+       opens on its own (new tab, middle-click, or if scripts are off). -->
+  <dialog class="player" id="player" aria-labelledby="player-title">
+    <div class="player-bar">
+      <img src="logo-icon.svg" alt="" />
+      <h2 id="player-title">Game</h2>
+      <button type="button" id="player-fs" aria-label="Full screen" title="Full screen">⛶</button>
+      <a id="player-tab" href="#" target="_blank" rel="noopener" aria-label="Open in a new tab" title="Open in a new tab">↗</a>
+      <button type="button" id="player-close" aria-label="Close game" title="Close (Esc)">✕</button>
+    </div>
+    <iframe id="player-frame" title="Game" allow="fullscreen; autoplay"></iframe>
+  </dialog>
+
+  <script>
+    (function () {
+      const player = document.getElementById("player");
+      const frame = document.getElementById("player-frame");
+      const title = document.getElementById("player-title");
+      const fsBtn = document.getElementById("player-fs");
+      const tabLink = document.getElementById("player-tab");
+      const closeBtn = document.getElementById("player-close");
+      if (!player.showModal) return; // very old browser: cards just open the game pages
+      let openedFrom = null;
+      let pushedHistory = false;
+
+      if (!document.fullscreenEnabled) fsBtn.hidden = true;
+
+      function openGame(href, name, card) {
+        openedFrom = card;
+        title.textContent = name;
+        frame.title = name;
+        tabLink.href = href;
+        frame.src = href + "&embed=1";
+        player.showModal();
+        // On phones the Back button should close the game, not leave the page.
+        history.pushState({ player: true }, "");
+        pushedHistory = true;
+      }
+
+      // Hand the keyboard to the game as soon as it loads.
+      frame.addEventListener("load", () => {
+        if (!player.open) return;
+        try {
+          frame.contentWindow.focus();
+        } catch {
+          frame.focus();
+        }
+      });
+
+      function closeGame() {
+        if (player.open) player.close();
+      }
+
+      player.addEventListener("close", () => {
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        frame.src = "about:blank"; // stops the game and its sound
+        if (pushedHistory) {
+          pushedHistory = false;
+          history.back();
+        }
+        if (openedFrom) openedFrom.focus();
+      });
+
+      window.addEventListener("popstate", () => {
+        if (player.open) {
+          pushedHistory = false; // Back was already pressed
+          player.close();
+        }
+      });
+
+      closeBtn.addEventListener("click", closeGame);
+      // Clicking the dark area around the player closes it too.
+      player.addEventListener("click", (e) => {
+        if (e.target === player) closeGame();
+      });
+
+      fsBtn.addEventListener("click", () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else player.requestFullscreen().catch(() => {});
+      });
+      document.addEventListener("fullscreenchange", () => {
+        const on = !!document.fullscreenElement;
+        fsBtn.textContent = on ? "🗗" : "⛶";
+        fsBtn.setAttribute("aria-label", on ? "Exit full screen" : "Full screen");
+        fsBtn.title = on ? "Exit full screen" : "Full screen";
+      });
+
+      for (const card of document.querySelectorAll("a.game")) {
+        card.addEventListener("click", (e) => {
+          // Let ctrl/cmd/shift/middle-click open the game page normally.
+          if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          openGame(card.getAttribute("href"), card.querySelector("h3").textContent, card);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

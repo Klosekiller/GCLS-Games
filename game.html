@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Library Games</title>
+  <script src="embed.js"></script>
+  <link rel="stylesheet" href="game.css" />
+</head>
+<body>
+  <!-- Every game plays on this page: game.html?g=catch loads catch.js.
+       Each game's instructions (and touch controls, if it has them) live in a
+       <template> below. The template's data- attributes give the page title
+       and the canvas size. To add a game, add a template and a .js file. -->
+  <canvas id="game" width="640" height="480"></canvas>
+
+  <template id="game-bookmobile" data-title="Bookmobile Route" data-width="900" data-height="600">
+    <div class="controls">
+      <button class="up" data-dir="up" aria-label="Drive up">▲</button>
+      <button class="left" data-dir="left" aria-label="Drive left">◀</button>
+      <button class="down" data-dir="down" aria-label="Drive down">▼</button>
+      <button class="right" data-dir="right" aria-label="Drive right">▶</button>
+    </div>
+    <div class="hint">
+      <p><strong>Drive the Bookmobile through town, bring each stop what they asked for, then head back to the Library!</strong></p>
+      <p>Arrow keys / WASD or swipe to steer · 1–4 pick an item · H honk · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <template id="game-books" data-title="Shelf Help" data-width="520" data-height="640">
+    <div class="controls">
+      <button data-action="left" aria-label="Move left">◀</button>
+      <button data-action="right" aria-label="Move right">▶</button>
+      <button data-action="cw" aria-label="Rotate">⟳</button>
+      <button data-action="down" aria-label="Soft drop">▼</button>
+      <button data-action="drop" aria-label="Hard drop">⤓</button>
+      <button data-action="hold" aria-label="Hold" class="small">Hold</button>
+    </div>
+    <div class="hint">
+      <p><strong>Fill a whole shelf with books to clear it!</strong></p>
+      <p>← → move · ↑ / X rotate · Z rotate back · ↓ soft drop · Space hard drop · C hold · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a> &nbsp; <a href="game.html?g=runner">Play Stacks Dash →</a></p>
+    </div>
+  </template>
+
+  <template id="game-catch" data-title="Bookmark Catch" data-width="640" data-height="480">
+    <div class="hint">
+      <p><strong>Catch bookmarks, pages and library cards in your book cart. Dodge the drinks!</strong></p>
+      <p>← → or A / D to move · or slide your finger / mouse across the game · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <template id="game-faves" data-title="Fave Finder" data-width="960" data-height="640"
+            data-label="Fave Finder: recommend books, movies and music to library patrons">
+    <div class="hint">
+      <p><strong>Patrons come to the window looking for something new. Read what they want, browse the shelves, and recommend ONE item that fits!</strong></p>
+      <p>Tap a cover, then <strong>Recommend</strong> · Watch for things they <em>don't</em> want · Keyboard: arrows move, Enter chooses, R recommends, L looks up their favorite · P pause · M mute</p>
+      <p><em>Inspired by the library's Next Five Faves service</em> &nbsp; <button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <template id="game-garden" data-title="Seed Library Garden" data-width="860" data-height="560"
+            data-label="Seed Library Garden game">
+    <div class="hint">
+      <p><strong>Pick free seed packets at the Seed Library, then plant, water and weed your garden!</strong></p>
+      <p>Tap a drawer to take a packet · Tap a garden spot to plant, pull weeds, water or harvest · N next day · J journal · Arrow keys + Enter also work · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <template id="game-globe" data-title="Globe Trotter" data-width="860" data-height="560">
+    <div class="hint">
+      <p><strong>Spin the lobby globe and find places all around the world!</strong></p>
+      <p>Drag to spin · Tap the place that matches the clue · Keyboard: arrow keys spin, Enter picks the spot inside the ring · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <template id="game-match" data-title="Spine Match" data-width="520" data-height="640"
+            data-label="Spine Match memory game">
+    <div class="hint">
+      <p><strong>Flip two book spines at a time to find the matching pairs!</strong></p>
+      <p>Tap or click a book to flip it · Arrow keys + Enter also work · R restart level · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <template id="game-pinquest" data-title="Pin Quest" data-width="800" data-height="600"
+            data-label="Pin Quest: five little learning games for ages 2 to 5">
+    <div class="hint">
+      <p><strong>For ages 2–5. Play together! Every game is read aloud, and there's no wrong way to play.</strong></p>
+      <p>Finish a game to earn its pin for the tote bag · The speaker button repeats what was said · Grown-ups: hold "reset" for 2 seconds to clear pins · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <template id="game-runner" data-title="Stacks Dash" data-width="800" data-height="320">
+    <div class="hint">
+      <p><strong>Hop the book stacks, duck the flying books, grab bookmarks!</strong></p>
+      <p>Space / ↑ / tap to jump (hold for higher) · ↓ / S / tap the bottom of the screen to duck · P to pause · M to mute</p>
+      <p><a href="index.html">← All games</a> &nbsp; <a href="game.html?g=books">Play Shelf Help →</a></p>
+    </div>
+  </template>
+
+  <template id="game-shush" data-title="Shush!" data-width="800" data-height="450">
+    <div class="hint">
+      <p><strong>Keep the library calm! Tap noisy patrons to shush them before the noise meter fills.</strong></p>
+      <p>Don't shush the quiet readers! · Click / tap a patron, or press 1–6 · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <template id="game-sort" data-title="Book Drop Sort" data-width="720" data-height="440">
+    <div class="hint">
+      <p><strong>Send each returned item to the cart where it belongs!</strong></p>
+      <p>Sort the item with the gold arrow: tap its cart, or press 1 Picture Books · 2 Chapter Books · 3 DVDs · 4 Audiobooks</p>
+      <p>Don't let items fall off the end of the belt · P pause · M mute</p>
+      <p><button id="mute">Sound: on</button> &nbsp; <a href="index.html">← All games</a></p>
+    </div>
+  </template>
+
+  <script>
+    // Set the page up for the game named in ?g=, then load that game's script.
+    (function () {
+      const id = new URLSearchParams(location.search).get("g") || "";
+      const tpl = /^[a-z]+$/.test(id) && document.getElementById("game-" + id);
+      if (!tpl) {
+        location.replace("index.html"); // missing or unknown game: back to the list
+        return;
+      }
+      const canvas = document.getElementById("game");
+      const d = tpl.dataset;
+      document.title = d.title;
+      document.body.dataset.game = id;
+      document.body.style.setProperty("--w", d.width + "px");
+      canvas.width = +d.width;
+      canvas.height = +d.height;
+      if (d.label) canvas.setAttribute("aria-label", d.label);
+      document.body.appendChild(tpl.content.cloneNode(true));
+
+      const script = document.createElement("script");
+      script.src = id + ".js";
+      document.body.appendChild(script);
+    })();
+  </script>
+</body>
+</html>

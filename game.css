@@ -1,0 +1,89 @@
+/* Styles for game.html, the page every game plays on.
+   --w is each game's canvas width, set on <body> by game.html.
+   (Bookmobile, Fave Finder, Garden and Globe also set the canvas max-width
+   themselves, because they switch to a different layout on phones.) */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #1c140f;
+  color: #e8dcc0;
+  font-family: Georgia, serif;
+  padding: 16px;
+}
+canvas {
+  width: 100%;
+  max-width: var(--w);
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  touch-action: none;
+  cursor: pointer;
+}
+.hint {
+  width: 100%;
+  max-width: var(--w);
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #2e2219;
+  border: 1px solid #d4a64a;
+  text-align: center;
+  line-height: 1.5;
+  font-size: 14px;
+}
+.hint strong { color: #f3ead7; }
+.hint em { color: #d4a64a; font-style: italic; }
+.hint a { color: #d4a64a; }
+button {
+  font: bold 14px Georgia, serif;
+  color: #f3ead7;
+  background: #34404f;
+  border: 1px solid #d4a64a;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+/* On-screen controls, shown on touch screens only */
+.controls {
+  display: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+@media (hover: none) { .controls { display: grid; } }
+
+/* ---------- Per-game tweaks ---------- */
+
+/* Globe Trotter: you drag the globe to spin it */
+[data-game="globe"] canvas { cursor: grab; }
+[data-game="globe"] canvas:active { cursor: grabbing; }
+
+/* Pin Quest: little fingers shouldn't select things by accident */
+[data-game="pinquest"] canvas { user-select: none; -webkit-user-select: none; }
+
+/* Shelf Help: a row of six buttons */
+[data-game="books"] .controls {
+  width: 100%;
+  max-width: var(--w);
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+[data-game="books"] .controls button { padding: 14px 0; font-size: 20px; }
+[data-game="books"] .controls .small { font-size: 14px; }
+
+/* Bookmobile Route: an arrow-key steering pad */
+[data-game="bookmobile"] .controls {
+  grid-template-columns: repeat(3, 64px);
+  grid-template-rows: repeat(2, 56px);
+  gap: 8px;
+}
+[data-game="bookmobile"] .controls button { font-size: 24px; padding: 0; }
+[data-game="bookmobile"] .controls .up { grid-column: 2; grid-row: 1; }
+[data-game="bookmobile"] .controls .left { grid-column: 1; grid-row: 2; }
+[data-game="bookmobile"] .controls .down { grid-column: 2; grid-row: 2; }
+[data-game="bookmobile"] .controls .right { grid-column: 3; grid-row: 2; }
