@@ -135,6 +135,7 @@ body:has(dialog[open]) { overflow: hidden; }
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 .player[open] { display: flex; flex-direction: column; }
+.player-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
 .player::backdrop { background: rgba(10, 7, 5, 0.75); }
 .player-bar {
   display: flex;
@@ -172,7 +173,7 @@ body:has(dialog[open]) { overflow: hidden; }
   outline: none;
 }
 .player iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
-.player:fullscreen { width: 100vw; height: 100vh; border: 0; border-radius: 0; }
+.player-inner:fullscreen { width: 100vw; height: 100vh; }
 
 /* Phones: the game takes over the whole screen */
 @media (max-width: 620px), (max-height: 500px) {

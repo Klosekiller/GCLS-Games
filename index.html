@@ -767,19 +767,23 @@
   <!-- The game player. Each card still links to its game page, so a game also
        opens on its own (new tab, middle-click, or if scripts are off). -->
   <dialog class="player" id="player" aria-labelledby="player-title">
-    <div class="player-bar">
-      <img src="logo-icon.svg" alt="" />
-      <h2 id="player-title">Game</h2>
-      <button type="button" id="player-fs" aria-label="Full screen" title="Full screen">⛶</button>
-      <a id="player-tab" href="#" target="_blank" rel="noopener" aria-label="Open in a new tab" title="Open in a new tab">↗</a>
-      <button type="button" id="player-close" aria-label="Close game" title="Close (Esc)">✕</button>
+    <!-- Browsers won't make a <dialog> itself full screen, so this wrapper is what goes full screen. -->
+    <div class="player-inner" id="player-inner">
+      <div class="player-bar">
+        <img src="logo-icon.svg" alt="" />
+        <h2 id="player-title">Game</h2>
+        <button type="button" id="player-fs" aria-label="Full screen" title="Full screen">⛶</button>
+        <a id="player-tab" href="#" target="_blank" rel="noopener" aria-label="Open in a new tab" title="Open in a new tab">↗</a>
+        <button type="button" id="player-close" aria-label="Close game" title="Close (Esc)">✕</button>
+      </div>
+      <iframe id="player-frame" title="Game" allow="fullscreen; autoplay"></iframe>
     </div>
-    <iframe id="player-frame" title="Game" allow="fullscreen; autoplay"></iframe>
   </dialog>
 
   <script>
     (function () {
       const player = document.getElementById("player");
+      const playerInner = document.getElementById("player-inner");
       const frame = document.getElementById("player-frame");
       const title = document.getElementById("player-title");
       const fsBtn = document.getElementById("player-fs");
@@ -803,15 +807,16 @@
         pushedHistory = true;
       }
 
-      // Hand the keyboard to the game as soon as it loads.
-      frame.addEventListener("load", () => {
+      // Hand the keyboard to the game.
+      function focusGame() {
         if (!player.open) return;
         try {
           frame.contentWindow.focus();
         } catch {
           frame.focus();
         }
-      });
+      }
+      frame.addEventListener("load", focusGame);
 
       function closeGame() {
         if (player.open) player.close();
@@ -841,14 +846,15 @@
       });
 
       fsBtn.addEventListener("click", () => {
-        if (document.fullscreenElement) document.exitFullscreen();
-        else player.requestFullscreen().catch(() => {});
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        else playerInner.requestFullscreen().catch((err) => console.warn("Full screen failed:", err));
       });
       document.addEventListener("fullscreenchange", () => {
         const on = !!document.fullscreenElement;
         fsBtn.textContent = on ? "🗗" : "⛶";
         fsBtn.setAttribute("aria-label", on ? "Exit full screen" : "Full screen");
         fsBtn.title = on ? "Exit full screen" : "Full screen";
+        focusGame(); // clicking the button took the keyboard away from the game
       });
 
       for (const card of document.querySelectorAll("a.game")) {

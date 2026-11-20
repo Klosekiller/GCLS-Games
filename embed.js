@@ -1,6 +1,6 @@
 // When a game is opened inside the Library Games player (index.html adds embed=1 to the address),
-// tidy the page (hide the "All games" links, shrink the instructions) and scale the
-// game to fill the player. Opened on its own, a game page is left exactly as is.
+// shrink the instructions and scale the game to fill the player. Opened on its own,
+// a game page is left exactly as is.
 (function () {
   if (!new URLSearchParams(location.search).has("embed")) return;
   document.documentElement.classList.add("embed");
@@ -8,8 +8,6 @@
   const style = document.createElement("style");
   style.textContent = `
     html.embed body { min-height: 100vh; min-height: 100dvh; padding: 8px; gap: 8px; }
-    html.embed .hint a { display: none; }
-    html.embed .hint p:has(> a):not(:has(button)) { display: none; } /* a line that only held links */
     html.embed .hint { padding: 6px 12px; line-height: 1.4; }
     html.embed .hint, html.embed .hint p { font-size: 12px; }
     html.embed canvas { max-width: none !important; }

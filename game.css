@@ -37,7 +37,6 @@ canvas {
 }
 .hint strong { color: #f3ead7; }
 .hint em { color: #d4a64a; font-style: italic; }
-.hint a { color: #d4a64a; }
 button {
   font: bold 14px Georgia, serif;
   color: #f3ead7;
