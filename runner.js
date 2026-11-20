@@ -174,6 +174,180 @@ const sfx = {
   },
 };
 
+// ---------- Music (generated in code, like the sound effects: no files) ----------
+// A bouncy "storybook chiptune" loop at 150 BPM, two of the book's hops to a beat. It follows
+// the game: plucks and bass on the start screen, the full tune while running, an extra
+// sparkly layer later in a run, muffled when paused, a dip on a bump, and a little "aww" at
+// game over. The Sound button turns it off with everything else.
+const MUSIC_BPM = 150;
+const MUSIC_VOLUME = 0.55; // overall music level (the sound effects aren't affected)
+const MUSIC_STEP = 60 / MUSIC_BPM / 4; // one 16th note, in seconds
+const noteHz = (n) => 440 * Math.pow(2, (n - 69) / 12); // MIDI note number → frequency
+// 8 bars in C major: C  G  Am  F | F  G  Am  G
+const MUSIC_CHORDS = [[60, 64, 67], [59, 62, 67], [57, 60, 64], [57, 60, 65], [57, 60, 65], [59, 62, 67], [57, 60, 64], [59, 62, 67]];
+const MUSIC_BASS = [48, 43, 45, 41, 41, 43, 45, 43];
+// the tune, bar by bar: [16th-note step, note, length in steps]
+const MUSIC_MELODY = [
+  [[0, 76, 2], [2, 79, 2], [4, 76, 2], [6, 72, 2], [8, 74, 2], [10, 76, 2], [12, 79, 4]],
+  [[0, 74, 2], [2, 71, 2], [4, 74, 2], [6, 79, 2], [8, 77, 2], [10, 76, 2], [12, 74, 4]],
+  [[0, 72, 2], [2, 76, 2], [4, 81, 2], [6, 79, 2], [8, 76, 2], [10, 72, 2], [12, 76, 4]],
+  [[0, 77, 2], [2, 76, 2], [4, 74, 2], [6, 72, 2], [8, 69, 4], [12, 72, 4]],
+  [[0, 69, 2], [2, 72, 2], [4, 77, 3], [7, 76, 1], [8, 77, 2], [10, 81, 2], [12, 79, 4]],
+  [[0, 79, 2], [2, 77, 2], [4, 76, 2], [6, 74, 2], [8, 71, 2], [10, 74, 2], [12, 79, 4]],
+  [[0, 76, 2], [2, 74, 2], [4, 72, 2], [6, 76, 2], [8, 81, 3], [11, 79, 1], [12, 76, 4]],
+  [[0, 74, 2], [2, 76, 2], [4, 77, 2], [6, 74, 2], [8, 71, 2], [10, 74, 2], [12, 71, 2], [14, 74, 2]],
+];
+let music = null; // the music's audio nodes, made the first time it plays
+let musicStep = 0, // where we are in the loop (128 sixteenths = 8 bars)
+  musicNext = 0, // when the next 16th is due, on the audio clock
+  musicMode = "", // menu | run | build | paused | over
+  musicLevel = -1, // the volume last asked for
+  musicUnlocked = false; // browsers only allow sound after the player taps or presses a key
+
+// The chain every note goes through: input → muffle filter (for pause) → duck (for bumps) → volume.
+function buildMusicNodes(a) {
+  const input = a.createGain();
+  const filter = a.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 18000;
+  const duck = a.createGain();
+  const out = a.createGain();
+  out.gain.value = 0;
+  input.connect(filter).connect(duck).connect(out).connect(a.destination);
+  const len = Math.floor(a.sampleRate * 0.05); // a short burst of noise, for the hi-hat
+  const noise = a.createBuffer(1, len, a.sampleRate);
+  const d = noise.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  return { a, input, filter, duck, out, noise };
+}
+function musicNodes() {
+  return (music ??= buildMusicNodes(getAudio()));
+}
+
+// One note: a quick fade in, then it dies away (plucky), on the audio clock at time t.
+function mNote(freq, t, dur, type, vol, attack = 0.005) {
+  const { a, input } = music;
+  const o = a.createOscillator(),
+    g = a.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(input);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+function mThump(t) {
+  // a soft kick: a low sine that drops in pitch
+  const { a, input } = music;
+  const o = a.createOscillator(),
+    g = a.createGain();
+  o.frequency.setValueAtTime(130, t);
+  o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+  g.gain.setValueAtTime(0.09, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+  o.connect(g).connect(input);
+  o.start(t);
+  o.stop(t + 0.16);
+}
+function mHat(t, vol) {
+  // a soft "tsk": a sliver of high noise
+  const { a, input, noise } = music;
+  const src = a.createBufferSource(),
+    hp = a.createBiquadFilter(),
+    g = a.createGain();
+  src.buffer = noise;
+  hp.type = "highpass";
+  hp.frequency.value = 7000;
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+  src.connect(hp).connect(g).connect(input);
+  src.start(t);
+  src.stop(t + 0.05);
+}
+
+// Everything that plays on one 16th note of the loop.
+function scheduleMusicStep(step, t, mode) {
+  const bar = Math.floor(step / 16) % 8,
+    s = step % 16;
+  const chord = MUSIC_CHORDS[bar],
+    root = MUSIC_BASS[bar];
+  // bass: the root on the beat, bouncing up an octave in between
+  if (s === 0 || s === 8) mNote(noteHz(root), t, MUSIC_STEP * 3, "triangle", 0.09);
+  if (s === 6 || s === 14) mNote(noteHz(root + 12), t, MUSIC_STEP * 1.5, "triangle", 0.06);
+  // plucked chords, up and down on the 8ths
+  if (s % 2 === 0) mNote(noteHz(chord[[0, 1, 2, 1][(s / 2) % 4]]), t, 0.2, "triangle", mode === "menu" ? 0.03 : 0.036);
+  if (mode === "menu") return; // the start screen gets just those two
+  // the tune
+  for (const [ms, n, len] of MUSIC_MELODY[bar]) if (ms === s) mNote(noteHz(n), t, MUSIC_STEP * len * 0.9, "square", 0.02, 0.01);
+  // light percussion
+  if (s === 0 || s === 8) mThump(t);
+  if (s === 4 || s === 12) mNote(1600, t, 0.03, "sine", 0.04); // woodblock
+  if (s % 4 === 2) mHat(t, 0.025);
+  if (mode === "build") {
+    // later in a run: busier hats and a high, sparkly arpeggio
+    if (s % 2 === 1) mHat(t, 0.012);
+    if (s % 2 === 1) mNote(noteHz(chord[(s >> 1) % 3] + 24), t, 0.14, "sine", 0.014);
+  }
+}
+
+// A little "aww" for game over: three notes stepping down.
+function playMusicSting(t) {
+  [67, 63, 60].forEach((n, i) => mNote(noteHz(n), t + i * 0.28, i === 2 ? 0.8 : 0.3, "triangle", 0.07, 0.02));
+}
+
+// A quick dip in the music when the book gets bumped.
+function musicDuck() {
+  if (!music) return;
+  const t = music.a.currentTime,
+    g = music.duck.gain;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(0.4, t);
+  g.linearRampToValueAtTime(1, t + 0.5);
+}
+
+// Called every frame: picks the mood from what's on screen, and schedules the next few notes.
+function updateMusic() {
+  if (!musicUnlocked) return;
+  const mode =
+    state === "over" ? "over"
+    : state === "paused" || (state === "howto" && howtoFrom === "paused") ? "paused"
+    : state === "running" ? (runTime > SWOOP_START_MS ? "build" : "run")
+    : "menu";
+  const m = musicNodes(),
+    now = m.a.currentTime;
+  if (mode !== musicMode) {
+    if (mode === "over") playMusicSting(now + 0.05);
+    else if (musicMode === "over" || musicMode === "") {
+      musicStep = 0; // a fresh start after game over (or the very first time)
+      musicNext = now + 0.05;
+    }
+    m.filter.frequency.setTargetAtTime(mode === "paused" ? 650 : 18000, now, 0.1); // muffled when paused
+    musicMode = mode;
+  }
+  const level = muted ? 0 : mode === "menu" ? MUSIC_VOLUME * 0.75 : mode === "paused" ? MUSIC_VOLUME * 0.6 : MUSIC_VOLUME;
+  if (level !== musicLevel) {
+    m.out.gain.setTargetAtTime(level, now, 0.08);
+    musicLevel = level;
+  }
+  if (mode === "over" || muted) return; // (the sting plays out by itself)
+  if (musicNext < now - 0.2) musicNext = now + 0.05; // fell behind (the tab was hidden): pick up from now
+  while (musicNext < now + 0.15) {
+    scheduleMusicStep(musicStep, musicNext, mode === "paused" ? "run" : mode);
+    musicStep = (musicStep + 1) % 128;
+    musicNext += MUSIC_STEP;
+  }
+}
+// The first tap or key press is allowed to start sound, so the music can begin.
+for (const ev of ["keydown", "pointerdown"]) {
+  document.addEventListener(ev, () => {
+    if (musicUnlocked) return;
+    musicUnlocked = true;
+    getAudio(); // create / wake the audio inside the tap, as browsers require
+  });
+}
+
 const MUTE_BTN = { x: 12, y: 12, w: 120, h: 32 };
 // The profile badge in the top-right corner: the chosen character's name and portrait.
 // It shows on every screen; on the start screen, tapping it opens the Characters screen.
@@ -732,6 +906,7 @@ function takeHit() {
   hurtTime = HURT_MS;
   shake = 200;
   sfx.hurt();
+  musicDuck();
   const b = playerBox();
   burst(b.x + b.w / 2, b.y + b.h / 2, 10, PAPER, 6);
   popups.push({
@@ -1000,6 +1175,7 @@ function checkLayout() {
 let last = performance.now();
 function frame(now) {
   checkLayout();
+  updateMusic();
   const dt = Math.min(now - last, 50); // clamp so tab-switching doesn't teleport things
   last = now;
   if (state === "running") update(dt);
