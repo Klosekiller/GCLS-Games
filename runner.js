@@ -13,7 +13,7 @@ const FLOOR = GROUND_Y + 44; // y of the floor line
 const CEIL = 64; // y where ceiling meets wall
 // The run goes at one steady speed for now. To have it speed up over a run again,
 // lower START_SPEED and set SPEED_RAMP above 0 (it used to be 0.35 → 0.95, ramp 0.000008).
-const START_SPEED = 0.5, // px per ms
+const START_SPEED = 0.3, // px per ms
   MAX_SPEED = 0.95,
   SPEED_RAMP = 0; // speed gained per ms
 const BG_PARALLAX = 0.25; // background scrolls at a quarter of the ground speed, so it feels far away
@@ -44,10 +44,48 @@ const SWOOP_HIGH = 140; // y of a swooper's underside at the top: clears a stand
 const SWOOP_LOW = FLOOR - 16; // …and at the bottom (too low to duck under)
 const SWOOP_PERIOD_MS = 1800; // one full rise and dive
 const SWOOP_COLOR = "#e07b39";
+// Wet floor: a yellow sign to jump (a normal bump if you hit it), then 1–3 puddles. Splashing
+// through a puddle soaks a page and makes the book slip: it can't jump for a moment.
+const WET_START_MS = 18000; // wet floor stretches join the run after this long
+const WET_CHANCE = 0.15; // chance that the next obstacle is a wet floor stretch
+// Furniture to jump onto and run along: a book cart and three kinds of reading furniture.
+// Running into the side is a hard stop: the book smashes into it and falls over backwards.
+const PLATFORM_START_MS = 30000; // furniture joins the run after this long
+const PLATFORM_CHANCE = 0.15; // chance that the next obstacle is a piece of furniture
+const PLATFORMS = {
+  cart: { w: 200, h: 72 }, // a book cart (the tallest)
+  bench: { w: 220, h: 44 }, // a padded reading bench
+  chair: { w: 190, h: 50 }, // a big comfy reading chair (you run along the seat)
+  table: { w: 180, h: 64 }, // a reading table with chairs tucked behind (you run along the top)
+};
+const SMASH_MS = 1150; // a smash from start to finish: hit, fall back, lie there, get up
+const SLIP_MS = 1500; // no jumping for this long after a puddle (bumps still happen as normal)
+const SLIP_JUMP_BUFFER_MS = 250; // a jump pressed this close to the end of a slip happens as it ends
+const PUDDLE_W = 54;
+const PUDDLE_GAP = 340; // from one puddle to the next (a slip lasts longer, so one splash usually means more)
+const AFTER_WET_GAP = 380; // room after the last puddle before the next obstacle
 
 // ---------- Palette ----------
-const SPINES = ["#8c2f39", "#2f5d62", "#b5893b", "#3b4a7a", "#6b3e75", "#a0522d", "#4f7942", "#c2b280"];
-const BRIGHT = ["#d94b4b", "#4b79d9", "#f2c14e", "#5cb85c", "#9b59b6", "#f39c4a", "#e8e8e8", "#3aa6a6"];
+const SPINES = [
+  "#8c2f39",
+  "#2f5d62",
+  "#b5893b",
+  "#3b4a7a",
+  "#6b3e75",
+  "#a0522d",
+  "#4f7942",
+  "#c2b280",
+];
+const BRIGHT = [
+  "#d94b4b",
+  "#4b79d9",
+  "#f2c14e",
+  "#5cb85c",
+  "#9b59b6",
+  "#f39c4a",
+  "#e8e8e8",
+  "#3aa6a6",
+];
 const COLORFUL = BRIGHT.filter((c) => c !== "#e8e8e8"); // for decorations on pale backgrounds
 const RIBBON_RED = "#c92a2f",
   RIBBON_BLUE = "#3d4c8c",
@@ -69,11 +107,17 @@ let shake = 0; // ms left of screen shake
 let heartPop = null; // { index, life }: the heart that was just lost, popping away
 let shedTimer = 0; // on the last heart, the book drops a loose page now and then
 let tumble = null; // after the last bump: { x, y, vx, vy, rot, shed } of the book flying off screen
+let smash = null; // a hard stop into furniture: { t, final, faceX, groundY }
+let standingOn = null; // the piece of furniture the book is standing on, if any
 let lostPages = []; // pages knocked loose by a bump, flying off: { x, y, vx, vy, rot, spin, life }
 let pageLoss = null; // { amount, life }: the page counter flashes red and shows "−3"
 let repairWait = REPAIR_FIRST_MS; // ms of being hurt until the next roll of tape can appear
 let healTime = 0; // ms left of the tape-sweeping-across-the-book animation
 let heartGain = null; // { index, life }: the heart that was just won back, popping in
+let slipTime = 0; // ms left of slipping after a puddle (no jumping)
+let jumpQueued = false; // jump pressed while slipping: it happens as soon as the slip ends
+let accLift = 0, // hats / glasses lifted by a jump: 0 in place … about 1 floating (see updateAccessories)
+  accVel = 0;
 let best = Number(safeGet("runner-best-pages")) || 0; // most pages collected in one run
 
 // ---------- Sound (generated with the Web Audio API, no files needed) ----------
@@ -93,10 +137,28 @@ const sfx = {
     tone(f, f, 0.07, "sine", 0.14);
     tone(f * 1.5, f * 1.5, 0.12, "sine", 0.12, 0.06);
   },
-  bookmark: () => [784, 988, 1175, 1568].forEach((f, i) => tone(f, f, 0.12, "sine", 0.13, i * 0.06)),
+  bookmark: () =>
+    [784, 988, 1175, 1568].forEach((f, i) =>
+      tone(f, f, 0.12, "sine", 0.13, i * 0.06),
+    ),
   // pages fluttering away
-  lose: () => [1100, 900, 700].forEach((f, i) => tone(f, f * 0.8, 0.07, "triangle", 0.06, 0.08 + i * 0.06)),
-  heal: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, f * 1.02, 0.14, "sine", 0.12, i * 0.07)),
+  thunk: () => {
+    tone(130, 55, 0.22, "square", 0.16);
+    tone(85, 40, 0.3, "triangle", 0.14, 0.02);
+    [1400, 1700, 1500].forEach((f, i) => tone(f, f * 1.1, 0.06, "sine", 0.05, 0.25 + i * 0.09)); // seeing stars
+  },
+  lose: () =>
+    [1100, 900, 700].forEach((f, i) =>
+      tone(f, f * 0.8, 0.07, "triangle", 0.06, 0.08 + i * 0.06),
+    ),
+  heal: () =>
+    [523, 659, 784, 1047].forEach((f, i) =>
+      tone(f, f * 1.02, 0.14, "sine", 0.12, i * 0.07),
+    ),
+  splash: () => {
+    tone(900, 320, 0.12, "sine", 0.1);
+    tone(620, 220, 0.14, "sine", 0.08, 0.06);
+  },
   hurt: () => {
     tone(330, 160, 0.16, "triangle", 0.16);
     tone(160, 90, 0.12, "square", 0.06, 0.04);
@@ -140,11 +202,17 @@ function reset() {
   heartPop = null;
   shedTimer = 0;
   tumble = null;
+  smash = null;
+  standingOn = null;
   lostPages = [];
   pageLoss = null;
   repairWait = REPAIR_FIRST_MS;
   healTime = 0;
   heartGain = null;
+  slipTime = 0;
+  jumpQueued = false;
+  accLift = 0;
+  accVel = 0;
 }
 reset();
 state = "ready"; // ready | running | paused | over
@@ -152,11 +220,16 @@ state = "ready"; // ready | running | paused | over
 // ---------- Player ----------
 let jumpCount = 0; // goes up by one with every jump that actually happens
 function jump() {
+  if (slipTime > 0) {
+    // no jumping while slipping; a press right at the end is remembered for when it ends
+    if (slipTime <= SLIP_JUMP_BUFFER_MS) jumpQueued = true;
+    return;
+  }
   if (player.onGround) {
     jumpCount++;
     player.vy = JUMP_VELOCITY;
     player.onGround = false;
-    burst(player.x + player.w / 2, FLOOR, 6, PAPER);
+    burst(player.x + player.w / 2, player.y + player.h, 6, PAPER);
     sfx.jump();
   }
 }
@@ -168,23 +241,66 @@ function releaseJump() {
 function updatePlayer(dt) {
   // Holding duck in the air pulls you down faster so you can drop under a flying book.
   const gravity = duckHeld && !player.onGround ? GRAVITY * 2.5 : GRAVITY;
+  const prevBottom = player.y + player.h;
   player.vy += gravity * dt;
   player.y += player.vy * dt;
-  if (player.y >= GROUND_Y) {
+  // What's under the book: the floor, or the top of a piece of furniture it was above
+  // (or standing on) a moment ago. Run off the end and there's nothing under it, so it drops.
+  let support = GROUND_Y;
+  standingOn = null;
+  for (const o of obstacles) {
+    if (o.type !== "platform") continue;
+    const over = player.x + 8 < o.x + o.w && player.x + player.w - 8 > o.x;
+    if (over && prevBottom <= o.y + 2 && o.y - player.h < support) {
+      support = o.y - player.h;
+      standingOn = o;
+    }
+  }
+  if (player.y >= support) {
     if (!player.onGround) {
-      burst(player.x + player.w / 2, FLOOR, 4, PAPER);
+      burst(player.x + player.w / 2, support + player.h, 4, PAPER);
       sfx.land();
     }
-    player.y = GROUND_Y;
+    player.y = support;
     player.vy = 0;
     player.onGround = true;
+  } else {
+    player.onGround = false;
+    if (player.y < support - 1) standingOn = null;
   }
   player.ducking = duckHeld && player.onGround;
+  updateAccessories(dt);
+
+  // every few steps, a little puff of dust kicks up behind the back foot
+  if (player.onGround && !player.ducking) {
+    const footfall = Math.floor(
+      (runTime * RUN_CADENCE + Math.PI / 2) / Math.PI,
+    ); // counts each foot landing
+    if (footfall !== lastFootfall) {
+      lastFootfall = footfall;
+      if (++steps % 3 === 0) {
+        for (let i = 0; i < 3; i++) {
+          particles.push({
+            x: player.x + 4,
+            y: player.y + player.h - 2,
+            vx: -0.06 - Math.random() * 0.06,
+            vy: -0.04 - Math.random() * 0.05,
+            life: 300 + Math.random() * 150,
+            color: "#cdbfa3",
+            size: 2.5 + Math.random() * 1.5,
+          });
+        }
+      }
+    }
+  }
 }
+let lastFootfall = 0,
+  steps = 0;
 
 // The player's collision box: shorter and a bit wider while ducking.
 function playerBox() {
-  if (player.ducking) return { x: player.x, y: FLOOR - DUCK_H, w: DUCK_W, h: DUCK_H };
+  if (player.ducking)
+    return { x: player.x, y: player.y + player.h - DUCK_H, w: DUCK_W, h: DUCK_H }; // (on the floor or on furniture)
   return { x: player.x, y: player.y, w: player.w, h: player.h };
 }
 
@@ -213,7 +329,10 @@ function makeStack(x, stackW, targetH) {
 }
 
 function spawnObstacle() {
-  const count = runTime > DOUBLE_STACKS_START_MS && Math.random() < 0.35 ? 2 + (Math.random() < 0.3) : 1;
+  const count =
+    runTime > DOUBLE_STACKS_START_MS && Math.random() < 0.35
+      ? 2 + (Math.random() < 0.3)
+      : 1;
   const stackW = count === 1 ? 30 : 26;
   const targetH = 26 + Math.random() * 26;
   const x = W + 10;
@@ -221,7 +340,11 @@ function spawnObstacle() {
   let h = 0;
   for (let i = 0; i < count; i++) {
     // neighbouring stacks vary in height a little
-    const s = makeStack(x + i * (stackW + 4), stackW, targetH * (i % 2 ? 0.75 : 1));
+    const s = makeStack(
+      x + i * (stackW + 4),
+      stackW,
+      targetH * (i % 2 ? 0.75 : 1),
+    );
     books.push(...s.books);
     h = Math.max(h, s.h);
   }
@@ -256,13 +379,20 @@ function updateObstacles(dt) {
   for (const o of obstacles) {
     o.x -= dx;
     for (const b of o.books) b.x -= dx;
-    if (o.type === "flyer") o.y = o.swoop ? swoopBottom(o) - o.h : FLYER_BOTTOM - o.h + Math.sin(runTime * 0.006 + o.phase) * 2;
+    if (o.type === "flyer")
+      o.y = o.swoop
+        ? swoopBottom(o) - o.h
+        : FLYER_BOTTOM - o.h + Math.sin(runTime * 0.006 + o.phase) * 2;
   }
   obstacles = obstacles.filter((o) => o.x + o.w > -20);
 
   // Spawn based on distance so gaps stay jumpable as speed rises.
   nextSpawn -= dx;
-  if (nextSpawn <= 0) {
+  if (nextSpawn <= 0 && runTime > WET_START_MS && Math.random() < WET_CHANCE) {
+    spawnWetFloor();
+  } else if (nextSpawn <= 0 && runTime > PLATFORM_START_MS && Math.random() < PLATFORM_CHANCE) {
+    spawnPlatform();
+  } else if (nextSpawn <= 0) {
     const flyer = runTime > FLYER_START_MS && Math.random() < FLYER_CHANCE;
     const o = flyer ? spawnFlyer() : spawnObstacle();
     const airTime = (2 * -JUMP_VELOCITY) / GRAVITY; // ms spent in a full jump
@@ -271,19 +401,134 @@ function updateObstacles(dt) {
   }
 }
 
-function hits(o) {
+// A piece of furniture to jump onto, with a row of pages along the top for anyone who lands on it.
+// Nothing else turns up until well after it.
+function spawnPlatform() {
+  const kinds = Object.keys(PLATFORMS);
+  const kind = kinds[(Math.random() * kinds.length) | 0];
+  const { w, h } = PLATFORMS[kind];
+  const o = { type: "platform", kind, x: W + 10, y: FLOOR - h, w, h, books: [], seed: Math.random() * 1000 };
+  obstacles.push(o);
+  for (let cx = o.x + 30; cx < o.x + w - 20; cx += 45) addPickup(cx, o.y - 34);
+  const airTime = (2 * -JUMP_VELOCITY) / GRAVITY;
+  nextSpawn = w + speed * airTime * 1.3 + 80;
+}
+
+// A wet floor sign, then 1–3 puddles, each with an arc of pages over it (jump them to keep
+// your pages dry). The next obstacle waits until well after the last puddle.
+function spawnWetFloor() {
+  const airTime = (2 * -JUMP_VELOCITY) / GRAVITY;
+  const sign = {
+    type: "sign",
+    x: W + 10,
+    y: FLOOR - 46,
+    w: 34,
+    h: 46,
+    books: [],
+  };
+  obstacles.push(sign);
+  const count = 1 + Math.floor(Math.random() * 3);
+  let px = sign.x + 260;
+  for (let i = 0; i < count; i++) {
+    obstacles.push({
+      type: "puddle",
+      x: px,
+      y: FLOOR - 3,
+      w: PUDDLE_W,
+      h: 8,
+      books: [],
+      soaked: false,
+      phase: Math.random() * 6,
+    });
+    // pages in a jump arc over the puddle
+    const cx = px + PUDDLE_W / 2,
+      side = speed * airTime * 0.25;
+    addPickup(cx - side, GROUND_Y - 100);
+    addPickup(cx, GROUND_Y - 136);
+    addPickup(cx + side, GROUND_Y - 100);
+    px += PUDDLE_GAP;
+  }
+  nextSpawn = px - PUDDLE_GAP + PUDDLE_W - (W + 10) + AFTER_WET_GAP;
+}
+
+// Running (or ducking) through a puddle: splash, lose a soggy page, and slip for a moment.
+function checkPuddles() {
+  if (!player.onGround || standingOn || hurtTime > 0) return; // jumping over is safe, so is furniture, and so is the blink after a bump
   const p = playerBox();
+  for (const o of obstacles) {
+    if (o.type !== "puddle" || o.soaked) continue;
+    if (p.x + 8 < o.x + o.w - 8 && p.x + p.w - 8 > o.x + 8) soak(o);
+  }
+}
+function soak(o) {
+  o.soaked = true;
+  slipTime = SLIP_MS;
+  sfx.splash();
+  const b = playerBox();
+  for (let i = 0; i < 12; i++) {
+    particles.push({
+      x: b.x + b.w / 2 + (Math.random() - 0.5) * 30,
+      y: FLOOR - 2,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: -0.2 - Math.random() * 0.3,
+      life: 400 + Math.random() * 300,
+      color: Math.random() < 0.5 ? "#7fb8e0" : "#cfe6f5",
+      size: 3 + Math.random() * 2,
+    });
+  }
+  popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Slippery!", life: 700 });
+  if (pages > 0) {
+    // one soggy page comes loose
+    pages--;
+    pageLoss = { amount: 1, life: 900 };
+    lostPages.push({
+      x: b.x + b.w / 2,
+      y: b.y + b.h * 0.4,
+      vx: 0.05,
+      vy: -0.4,
+      rot: 0.2,
+      spin: 0.008,
+      life: 900,
+    });
+  }
+}
+
+function hits(o) {
+  if (o.type === "puddle") return false; // puddles soak instead (see checkPuddles)
+  const p = playerBox();
+  // furniture only counts if you run into its side: standing on top is fine
+  if (o.type === "platform" && p.y + p.h <= o.y + 6) return false;
   const pad = 6; // forgiving hitbox
-  return p.x + pad < o.x + o.w && p.x + p.w - pad > o.x && p.y + pad < o.y + o.h && p.y + p.h > o.y + 2;
+  return (
+    p.x + pad < o.x + o.w &&
+    p.x + p.w - pad > o.x &&
+    p.y + pad < o.y + o.h &&
+    p.y + p.h > o.y + 2
+  );
 }
 
 // ---------- Pages to collect (and the rare bookmark) ----------
 // `cx` is the item's center, `y` the top of where a bookmark would hang.
 function addPickup(cx, y) {
   if (Math.random() < BOOKMARK_CHANCE) {
-    pickups.push({ kind: "bookmark", x: cx - 7, y, w: 14, h: 26, color: MARK_COLORS[(Math.random() * MARK_COLORS.length) | 0], phase: Math.random() * Math.PI * 2 });
+    pickups.push({
+      kind: "bookmark",
+      x: cx - 7,
+      y,
+      w: 14,
+      h: 26,
+      color: MARK_COLORS[(Math.random() * MARK_COLORS.length) | 0],
+      phase: Math.random() * Math.PI * 2,
+    });
   } else {
-    pickups.push({ kind: "page", x: cx - 8, y: y + 3, w: 16, h: 20, phase: Math.random() * Math.PI * 2 });
+    pickups.push({
+      kind: "page",
+      x: cx - 8,
+      y: y + 3,
+      w: 16,
+      h: 20,
+      phase: Math.random() * Math.PI * 2,
+    });
   }
 }
 
@@ -292,10 +537,14 @@ function spawnPickups(o, airTime) {
   if (o.type === "flyer") {
     if (o.swoop) return; // nothing under a swooper, so nobody gets lured in as it dives
     // A pair tucked right under the flying book, a reward for ducking.
-    if (r < 0.5) for (let k = 0; k < 2; k++) addPickup(o.x + 8 + k * 28, FLOOR - 28);
+    if (r < 0.5)
+      for (let k = 0; k < 2; k++) addPickup(o.x + 8 + k * 28, FLOOR - 28);
     return;
   }
-  const tape = lives < LIVES && repairWait <= 0 && !pickups.some((b) => b.kind === "repair");
+  const tape =
+    lives < LIVES &&
+    repairWait <= 0 &&
+    !pickups.some((b) => b.kind === "repair");
   if (tape || r < 0.4) {
     // An arc over the stack that traces a full jump. The side items sit where the
     // player is a quarter of the jump away from the peak, so this works at any speed.
@@ -304,7 +553,14 @@ function spawnPickups(o, airTime) {
     addPickup(cx - side, GROUND_Y - 100);
     if (tape) {
       // the roll of book tape takes the top spot, where only a full jump reaches
-      pickups.push({ kind: "repair", x: cx - 11, y: GROUND_Y - 138, w: 22, h: 22, phase: Math.random() * Math.PI * 2 });
+      pickups.push({
+        kind: "repair",
+        x: cx - 11,
+        y: GROUND_Y - 138,
+        w: 22,
+        h: 22,
+        phase: Math.random() * Math.PI * 2,
+      });
       repairWait = REPAIR_EVERY_MS;
     } else addPickup(cx, GROUND_Y - 136);
     addPickup(cx + side, GROUND_Y - 100);
@@ -321,7 +577,8 @@ function updatePickups(dt) {
   const p = playerBox();
   pickups = pickups.filter((b) => {
     if (b.x + b.w < -10) return false;
-    const touching = p.x < b.x + b.w && p.x + p.w > b.x && p.y < b.y + b.h && p.y + p.h > b.y;
+    const touching =
+      p.x < b.x + b.w && p.x + p.w > b.x && p.y < b.y + b.h && p.y + p.h > b.y;
     if (!touching) return true;
     if (b.kind === "page") {
       pages++;
@@ -333,7 +590,12 @@ function updatePickups(dt) {
       pages += BOOKMARK_PAGES;
       sfx.bookmark();
       burst(b.x + b.w / 2, b.y + b.h / 2, 14, b.color);
-      popups.push({ x: b.x + b.w / 2, y: b.y, text: `Bookmark! +${BOOKMARK_PAGES} pages`, life: 900 });
+      popups.push({
+        x: b.x + b.w / 2,
+        y: b.y,
+        text: `Bookmark! +${BOOKMARK_PAGES} pages`,
+        life: 900,
+      });
     }
     return false;
   });
@@ -350,14 +612,20 @@ function heal(b) {
   lives++;
   heartGain = { index: lives - 1, life: 600 };
   healTime = 700;
-  popups.push({ x: b.x + b.w / 2, y: b.y, text: "Taped up! +1 heart", life: 900 });
+  popups.push({
+    x: b.x + b.w / 2,
+    y: b.y,
+    text: "Taped up! +1 heart",
+    life: 900,
+  });
 }
 
 // ---------- Particles & popups ----------
 function burst(x, y, n, color, size = 4) {
   for (let i = 0; i < n; i++) {
     particles.push({
-      x, y,
+      x,
+      y,
       vx: (Math.random() - 0.5) * 0.3,
       vy: -Math.random() * 0.25,
       life: 400 + Math.random() * 300,
@@ -389,6 +657,16 @@ function updateParticles(dt) {
 
 // ---------- Game loop ----------
 function update(dt) {
+  // a hard stop into furniture: the whole run freezes while the book smashes and falls back
+  if (smash) {
+    smash.t += dt;
+    updateParticles(dt);
+    if (smash.t >= SMASH_MS) {
+      smash = null;
+      hurtTime = HURT_MS; // blink, so the book can get past the furniture
+    }
+    return;
+  }
   runTime += dt;
   speed = Math.min(MAX_SPEED, speed + SPEED_RAMP * dt);
   runDist += speed * dt;
@@ -401,6 +679,13 @@ function update(dt) {
 
   if (hurtTime > 0) hurtTime -= dt;
   if (healTime > 0) healTime -= dt;
+  if (slipTime > 0) {
+    slipTime -= dt;
+    if (slipTime <= 0 && jumpQueued) {
+      jumpQueued = false;
+      jump(); // the jump pressed during the slip
+    }
+  }
   if (lives < LIVES && repairWait > 0) repairWait -= dt; // the clock only runs while hurt
   if (lives === 1) {
     // hanging on by a thread: the occasional loose page flutters off
@@ -412,7 +697,31 @@ function update(dt) {
     }
   }
 
-  if (hurtTime <= 0 && obstacles.some(hits)) takeHit();
+  checkPuddles();
+  if (hurtTime <= 0) {
+    const hit = obstacles.find(hits);
+    if (hit) hit.type === "platform" ? smashInto(hit) : takeHit();
+  }
+}
+
+// Running into furniture: a hard stop, and the end of the run. The run freezes while the book
+// smashes into it and falls over backwards, and it stays down (see drawSmash) as the game ends.
+function smashInto(o) {
+  // running into furniture takes every heart you have left: the run ends with the smash
+  heartPop = { index: 0, count: lives, life: 500 };
+  lives = 0;
+  const b = playerBox();
+  smash = { t: 0, final: true, faceX: o.x, groundY: player.y + player.h };
+  player.ducking = false;
+  duckHeld = false;
+  shake = 260;
+  sfx.thunk();
+  for (let i = 0; i < 6; i++) {
+    // little stars burst off the impact
+    particles.push({ x: o.x, y: b.y + 10 + Math.random() * 20, vx: -0.05 - Math.random() * 0.15, vy: -0.15 - Math.random() * 0.2, life: 500 + Math.random() * 200, color: i % 2 ? "#ffe27a" : "#fff6c8", size: 4 });
+  }
+  popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Thunk!", life: 900 });
+  gameOver(true);
 }
 
 // A bump costs one heart. The last heart ends the run.
@@ -425,7 +734,12 @@ function takeHit() {
   sfx.hurt();
   const b = playerBox();
   burst(b.x + b.w / 2, b.y + b.h / 2, 10, PAPER, 6);
-  popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: lives === 1 ? "Last heart!" : "Ouch!", life: 700 });
+  popups.push({
+    x: b.x + b.w / 2,
+    y: b.y - 8,
+    text: lives === 1 ? "Last heart!" : "Ouch!",
+    life: 700,
+  });
   losePages(b);
 }
 
@@ -462,16 +776,28 @@ function updateLostPages(dt) {
   if (pageLoss && (pageLoss.life -= dt) <= 0) pageLoss = null;
 }
 
-function gameOver() {
+function gameOver(fromSmash = false) {
   state = "over";
-  shake = 300;
-  sfx.crash();
-  // loose pages fly everywhere…
   const b = playerBox();
-  burst(b.x + b.w / 2, b.y + b.h / 2, 18, PAPER, 7);
-  burst(b.x + b.w / 2, b.y + b.h / 2, 8, "#2f5d62", 5);
-  // …and the book gets knocked up and backwards, tumbling off the bottom of the screen
-  tumble = { x: b.x + b.w / 2, y: b.y + b.h / 2, vx: TUMBLE.vx, vy: TUMBLE.vy, rot: 0, shed: 0 };
+  if (fromSmash) {
+    // smashed into furniture on the last heart: the book stays flat on its back (see drawSmash)
+    burst(b.x + b.w / 2, b.y + b.h / 2, 10, PAPER, 6);
+  } else {
+    shake = 300;
+    sfx.crash();
+    // loose pages fly everywhere…
+    burst(b.x + b.w / 2, b.y + b.h / 2, 18, PAPER, 7);
+    burst(b.x + b.w / 2, b.y + b.h / 2, 8, "#2f5d62", 5);
+    // …and the book gets knocked up and backwards, tumbling off the bottom of the screen
+    tumble = {
+      x: b.x + b.w / 2,
+      y: b.y + b.h / 2,
+      vx: TUMBLE.vx,
+      vy: TUMBLE.vy,
+      rot: 0,
+      shed: 0,
+    };
+  }
   player.ducking = false; // it tumbles as the standing book
   player.vy = 0;
   newBest = saveBest();
@@ -532,21 +858,46 @@ function buttonRow(y, ...items) {
   const w = items.length > 2 ? 140 : 160,
     gap = 16,
     total = items.length * w + (items.length - 1) * gap;
-  return items.map(([id, label], i) => ({ id, label, x: W / 2 - total / 2 + i * (w + gap), y, w, h: 42 }));
+  return items.map(([id, label], i) => ({
+    id,
+    label,
+    x: W / 2 - total / 2 + i * (w + gap),
+    y,
+    w,
+    h: 42,
+  }));
 }
 // A column of buttons, centered (the tall layout, on phones held upright).
 function buttonCol(y, ...items) {
   const w = 240,
     h = 46,
     gap = 12;
-  return items.map(([id, label], i) => ({ id, label, x: W / 2 - w / 2, y: y + i * (h + gap), w, h }));
+  return items.map(([id, label], i) => ({
+    id,
+    label,
+    x: W / 2 - w / 2,
+    y: y + i * (h + gap),
+    w,
+    h,
+  }));
 }
 const MENU = {
-  ready: [["start", "Start"], ["chars", "Characters"], ["howto", "How to play"]],
+  ready: [
+    ["start", "Start"],
+    ["chars", "Characters"],
+    ["howto", "How to play"],
+  ],
   chars: [["done", "Done"]],
-  paused: [["resume", "Resume"], ["howto", "How to play"], ["quit", "Quit"]],
+  paused: [
+    ["resume", "Resume"],
+    ["howto", "How to play"],
+    ["quit", "Quit"],
+  ],
   howto: [["back", "Back"]],
-  over: [["again", "Play again"], ["menu", "Main menu"]],
+  over: [
+    ["again", "Play again"],
+    ["menu", "Main menu"],
+  ],
 };
 // Where each screen's buttons go: a row in the wide layout, a column in the tall one.
 const BUTTON_Y = {
@@ -557,12 +908,18 @@ let BUTTONS = {};
 function makeButtons() {
   BUTTONS = {};
   for (const [screen, items] of Object.entries(MENU)) {
-    BUTTONS[screen] = (tall() ? buttonCol : buttonRow)(BUTTON_Y[layout][screen], ...items);
+    BUTTONS[screen] = (tall() ? buttonCol : buttonRow)(
+      BUTTON_Y[layout][screen],
+      ...items,
+    );
   }
 }
 const isMenu = () => state in BUTTONS;
 // Is the start screen (or a screen opened from it) showing? Then there's no score bar.
-const onStartScreen = () => state === "ready" || state === "chars" || (state === "howto" && howtoFrom === "ready");
+const onStartScreen = () =>
+  state === "ready" ||
+  state === "chars" ||
+  (state === "howto" && howtoFrom === "ready");
 
 function startRun() {
   reset(); // a fresh run (the start screen's animation clock kept ticking)
@@ -611,7 +968,9 @@ const LAYOUTS = { wide: { w: 800, h: 320 }, tall: { w: 450, h: 640 } };
 let layout = "wide";
 const tall = () => layout === "tall";
 function wantedLayout() {
-  return window.innerHeight > window.innerWidth && window.innerWidth <= 600 ? "tall" : "wide";
+  return window.innerHeight > window.innerWidth && window.innerWidth <= 600
+    ? "tall"
+    : "wide";
 }
 function applyLayout(name) {
   layout = name;
@@ -622,7 +981,9 @@ function applyLayout(name) {
   canvas.style.setProperty("--ratio", W / H); // lets the page shrink the game to fit the screen's height
   PROFILE = { x: W - 12 - 112, y: 12, w: 112, h: 32 }; // top-right corner either way
   // wide: the score bar sits beside the profile; tall: there isn't room, so it goes under the floor line
-  SCORE = tall() ? { x: W / 2 - 179, y: FLOOR + 14 } : { x: PROFILE.x - 8 - 358, y: 12 };
+  SCORE = tall()
+    ? { x: W / 2 - 179, y: FLOOR + 14 }
+    : { x: PROFILE.x - 8 - 358, y: 12 };
   makeButtons();
 }
 function checkLayout() {
@@ -639,6 +1000,7 @@ function frame(now) {
   if (state === "running") update(dt);
   else if (state === "over") {
     updateTumble(dt);
+    if (smash) smash.t += dt; // a final smash keeps animating (the book lies there, seeing stars)
     updateParticles(dt);
     overTime += dt;
   } else if (onStartScreen()) {
@@ -682,8 +1044,10 @@ function label(text, x, y, size, color, family = "system-ui, sans-serif") {
 function tiles(x, w, base, line) {
   R(x, FLOOR, w, H - FLOOR, base);
   R(x, FLOOR + 13, w, 1, line);
-  for (let tx = -((distance * 0.9) % 56); tx < W; tx += 56) R(tx, FLOOR, 1, 13, line);
-  for (let tx = -((distance * 1.1 + 30) % 72); tx < W; tx += 72) R(tx, FLOOR + 14, 1, H - FLOOR, line);
+  for (let tx = -((distance * 0.9) % 56); tx < W; tx += 56)
+    R(tx, FLOOR, 1, 13, line);
+  for (let tx = -((distance * 1.1 + 30) % 72); tx < W; tx += 72)
+    R(tx, FLOOR + 14, 1, H - FLOOR, line);
 }
 function carpet(x, w, base, fleck) {
   R(x, FLOOR, w, H - FLOOR, base);
@@ -692,7 +1056,8 @@ function carpet(x, w, base, fleck) {
   }
 }
 function recessedLights(x, w, y, spacing) {
-  for (let lx = x + spacing / 2; lx < x + w; lx += spacing) oval(lx, y, 8, 2.5, "#fff6d8");
+  for (let lx = x + spacing / 2; lx < x + w; lx += spacing)
+    oval(lx, y, 8, 2.5, "#fff6d8");
 }
 
 // A low kids' bookcase with bright spines.
@@ -729,7 +1094,14 @@ function sceneKids(x, w) {
   }
   R(x, CEIL, w, FLOOR - CEIL, "#8b919a");
   R(x, CEIL, 330, FLOOR - CEIL, "#aab3c1");
-  label("a b c", x + 165, CEIL + 120, 80, "rgba(70, 85, 130, 0.25)", "Georgia, serif");
+  label(
+    "a b c",
+    x + 165,
+    CEIL + 120,
+    80,
+    "rgba(70, 85, 130, 0.25)",
+    "Georgia, serif",
+  );
 
   // red columns
   for (const cx of [x + 345, x + 770]) {
@@ -757,7 +1129,14 @@ function sceneKids(x, w) {
   R(x + 430, CEIL + 28, 150, 56, "#c9c6c0");
   R(x + 430, CEIL + 28, 150, 4, RIBBON_YELLOW);
   R(x + 430, CEIL + 80, 150, 4, "#5cb85c");
-  for (let i = 0; i < 5; i++) R(x + 442 + i * 27, CEIL + 40 + (i % 2) * 8, 18, 24, i === 2 ? "#4b79d9" : "#fbfaf6");
+  for (let i = 0; i < 5; i++)
+    R(
+      x + 442 + i * 27,
+      CEIL + 40 + (i % 2) * 8,
+      18,
+      24,
+      i === 2 ? "#4b79d9" : "#fbfaf6",
+    );
   R(x + 840, CEIL + 24, 130, 56, "#4caa3a");
   label("SUMMER", x + 905, CEIL + 47, 15, "#fff");
   label("READING", x + 905, CEIL + 67, 15, "#fff");
@@ -788,7 +1167,14 @@ function sceneKids(x, w) {
   for (const lvl of [30, 62, 94]) {
     const hw = 45 * (1 - lvl / 134) + 12;
     R(ax - hw, FLOOR - lvl, hw * 2, 4, "#b82222");
-    for (let i = 0; i < 4; i++) R(ax - hw + 4 + i * (hw / 2), FLOOR - lvl - 16, 8, 16, BRIGHT[(i + lvl) % BRIGHT.length]);
+    for (let i = 0; i < 4; i++)
+      R(
+        ax - hw + 4 + i * (hw / 2),
+        FLOOR - lvl - 16,
+        8,
+        16,
+        BRIGHT[(i + lvl) % BRIGHT.length],
+      );
   }
   oval(ax - 38, FLOOR - 2, 3, 3, "#333");
   oval(ax + 38, FLOOR - 2, 3, 3, "#333");
@@ -800,7 +1186,13 @@ function sceneKids(x, w) {
     ctx.fillStyle = "#c92f35";
     roundRect(cx - 4, FLOOR - 36, 78, 30, 8);
     for (let i = 0; i < 14; i++) {
-      oval(cx + 4 + hash(i, cx) * 62, FLOOR - 58 + hash(cx, i) * 48, 2.5, 2.5, BRIGHT[i % BRIGHT.length]);
+      oval(
+        cx + 4 + hash(i, cx) * 62,
+        FLOOR - 58 + hash(cx, i) * 48,
+        2.5,
+        2.5,
+        BRIGHT[i % BRIGHT.length],
+      );
     }
     R(cx + 4, FLOOR - 6, 3, 6, "#888");
     R(cx + 63, FLOOR - 6, 3, 6, "#888");
@@ -816,7 +1208,13 @@ function ribbon(x, w, baseY, amp, thickness, phase, color) {
     else ctx.lineTo(x + i, y);
   }
   for (let i = w; i >= 0; i -= 10) {
-    ctx.lineTo(x + i, baseY + Math.sin(i * 0.013 + phase) * amp + thickness + Math.sin(i * 0.02 + phase) * 3);
+    ctx.lineTo(
+      x + i,
+      baseY +
+        Math.sin(i * 0.013 + phase) * amp +
+        thickness +
+        Math.sin(i * 0.02 + phase) * 3,
+    );
   }
   ctx.fill();
 }
@@ -838,7 +1236,8 @@ function sceneLobby(x, w) {
   R(px, pt, pw, 34, "#cf914b");
   R(px, pt + 34, pw, 2, "#b07636");
   label("M E E T I N G   R O O M", px + pw / 2, pt + 24, 14, "#f4efe6");
-  for (let k = 1; k < 4; k++) R(px + k * 80, pt + 36, 2, FLOOR - pt - 36, "#b07636");
+  for (let k = 1; k < 4; k++)
+    R(px + k * 80, pt + 36, 2, FLOOR - pt - 36, "#b07636");
   R(px + 90, pt + 46, 140, FLOOR - pt - 46, "#c98a45");
   R(px + 159, pt + 46, 2, FLOOR - pt - 46, "#a8702f");
   R(px + 150, FLOOR - 90, 3, 26, "#d8d8d8");
@@ -864,7 +1263,17 @@ function sceneLobby(x, w) {
   ctx.ellipse(gx, FLOOR - 66, 160, 20, 0, Math.PI, Math.PI * 2);
   ctx.stroke();
   R(gx - 70, FLOOR - 16, 140, 10, "#222");
-  poly("#b9bec4", gx - 30, FLOOR - 14, gx - 16, gy + r - 8, gx + 16, gy + r - 8, gx + 30, FLOOR - 14);
+  poly(
+    "#b9bec4",
+    gx - 30,
+    FLOOR - 14,
+    gx - 16,
+    gy + r - 8,
+    gx + 16,
+    gy + r - 8,
+    gx + 30,
+    FLOOR - 14,
+  );
 
   const sea = ctx.createRadialGradient(gx - 30, gy - 30, 10, gx, gy, r);
   sea.addColorStop(0, "#8cc8ef");
@@ -878,10 +1287,39 @@ function sceneLobby(x, w) {
   ctx.arc(gx, gy, r, 0, Math.PI * 2);
   ctx.clip();
   const land = "#d9d4b2";
-  const shape = (pts) => poly(land, ...pts.flatMap(([a, b]) =>[gx + a, gy + b]));
-  shape([[-58, -52], [-30, -74], [0, -80], [22, -66], [14, -50], [30, -40], [8, -22], [-6, -8], [-18, -2], [-28, -20], [-48, -30]]);
-  shape([[12, -84], [36, -80], [30, -64], [16, -68]]);
-  shape([[-6, -4], [6, 0], [30, 8], [46, 24], [34, 48], [16, 66], [6, 86], [2, 60], [-4, 30], [-10, 10]]);
+  const shape = (pts) =>
+    poly(land, ...pts.flatMap(([a, b]) => [gx + a, gy + b]));
+  shape([
+    [-58, -52],
+    [-30, -74],
+    [0, -80],
+    [22, -66],
+    [14, -50],
+    [30, -40],
+    [8, -22],
+    [-6, -8],
+    [-18, -2],
+    [-28, -20],
+    [-48, -30],
+  ]);
+  shape([
+    [12, -84],
+    [36, -80],
+    [30, -64],
+    [16, -68],
+  ]);
+  shape([
+    [-6, -4],
+    [6, 0],
+    [30, 8],
+    [46, 24],
+    [34, 48],
+    [16, 66],
+    [6, 86],
+    [2, 60],
+    [-4, 30],
+    [-10, 10],
+  ]);
   oval(gx - 28, gy - 36, 26, 18, "rgba(255,255,255,0.12)");
   ctx.restore();
 
@@ -920,11 +1358,13 @@ function sceneComputers(x, w) {
   R(x, CEIL, 230, FLOOR - CEIL, "#b8653d");
   for (let row = 0, y = CEIL; y < FLOOR; row++, y += 9) {
     R(x, y, 230, 1, "#9c5332");
-    for (let bx = x + (row % 2) * 11; bx < x + 230; bx += 22) R(bx, y, 1, 9, "#9c5332");
+    for (let bx = x + (row % 2) * 11; bx < x + 230; bx += 22)
+      R(bx, y, 1, 9, "#9c5332");
   }
   // big windows by the entrance
   R(x + 780, CEIL + 14, 210, FLOOR - CEIL - 24, "#eef4f7");
-  for (let mx = x + 780; mx <= x + 990; mx += 42) R(mx, CEIL + 14, 3, FLOOR - CEIL - 24, "#c4ccd2");
+  for (let mx = x + 780; mx <= x + 990; mx += 42)
+    R(mx, CEIL + 14, 3, FLOOR - CEIL - 24, "#c4ccd2");
   R(x + 780, CEIL + 90, 210, 3, "#c4ccd2");
 
   carpet(x, w, "#4a4e57", "#5d626c");
@@ -955,7 +1395,8 @@ function sceneComputers(x, w) {
     R(dx, FLOOR - 52, 140, 6, "#e6e8ea");
     R(dx + 10, FLOOR - 46, 120, 30, "#c5c9ce");
     for (let py = FLOOR - 42; py < FLOOR - 20; py += 6)
-      for (let pxx = dx + 14; pxx < dx + 128; pxx += 6) R(pxx, py, 2, 2, "#aab0b6");
+      for (let pxx = dx + 14; pxx < dx + 128; pxx += 6)
+        R(pxx, py, 2, 2, "#aab0b6");
     R(dx + 14, FLOOR - 46, 5, 46, "#b8bdc3");
     R(dx + 121, FLOOR - 46, 5, 46, "#b8bdc3");
     R(dx + 50, FLOOR - 84, 38, 28, "#1b1b1e");
@@ -978,7 +1419,8 @@ function sceneComputers(x, w) {
 function sceneDesk(x, w) {
   R(x, 0, w, CEIL, "#d8d4cc");
   poly("#cbc6bd", x, 0, x + w, 0, x + w, CEIL - 28, x, CEIL - 8);
-  for (let i = 0; 50 + i * 90 < w; i++) oval(x + 50 + i * 90, 16 + (i % 2) * 16, 7, 2.5, "#fffbe8");
+  for (let i = 0; 50 + i * 90 < w; i++)
+    oval(x + 50 + i * 90, 16 + (i % 2) * 16, 7, 2.5, "#fffbe8");
   R(x, CEIL, w, FLOOR - CEIL, "#344050");
 
   // view down the hallway into the stacks
@@ -1003,7 +1445,15 @@ function sceneDesk(x, w) {
     oval(wx + 26, CEIL + 84, 12, 10, COLORFUL[(k * 3) % COLORFUL.length]);
     for (let t = 0; t < 3; t++) {
       const c = ["#c0392b", "#ffffff", "#2c4a8a"][t];
-      poly(c, wx + 4 + t * 16, CEIL + 46, wx + 18 + t * 16, CEIL + 46, wx + 11 + t * 16, CEIL + 58);
+      poly(
+        c,
+        wx + 4 + t * 16,
+        CEIL + 46,
+        wx + 18 + t * 16,
+        CEIL + 46,
+        wx + 11 + t * 16,
+        CEIL + 58,
+      );
     }
   }
 
@@ -1013,10 +1463,12 @@ function sceneDesk(x, w) {
   R(x + 70, FLOOR - 76, 860, 76, MAPLE);
   R(x + 70, FLOOR - 80, 860, 6, "#2b2d31");
   R(x + 70, FLOOR - 58, 860, 2, "#c08f48");
-  for (let px = x + 118; px < x + 930; px += 48) R(px, FLOOR - 56, 2, 56, "#b9873f");
+  for (let px = x + 118; px < x + 930; px += 48)
+    R(px, FLOOR - 56, 2, 56, "#b9873f");
   R(x + 700, FLOOR - 98, 230, 98, "#dcae68");
   R(x + 696, FLOOR - 102, 238, 5, "#c8964f");
-  for (let px = x + 740; px < x + 930; px += 48) R(px, FLOOR - 90, 2, 90, "#c08f48");
+  for (let px = x + 740; px < x + 930; px += 48)
+    R(px, FLOOR - 90, 2, 90, "#c08f48");
 
   // self-checkout kiosks
   for (const kx of [x + 180, x + 290]) {
@@ -1038,10 +1490,18 @@ function sceneBookDrop(x, w) {
   R(x, CEIL, w, FLOOR - CEIL, "#bcc6d1");
 
   R(x + 260, CEIL + 6, 620, FLOOR - CEIL - 6, "#4d6b98");
-  for (let k = 0; k < 6; k++) R(x + 272 + k * 100, CEIL + 16, 88, 96, "#edf2f6");
+  for (let k = 0; k < 6; k++)
+    R(x + 272 + k * 100, CEIL + 16, 88, 96, "#edf2f6");
   const letters = "LIBRARY";
   for (let i = 0; i < letters.length; i++) {
-    label(letters[i], x + 300 + i * 82, CEIL + 50 + (i % 3) * 22, 20, COLORFUL[i % COLORFUL.length], "Georgia, serif");
+    label(
+      letters[i],
+      x + 300 + i * 82,
+      CEIL + 50 + (i % 3) * 22,
+      20,
+      COLORFUL[i % COLORFUL.length],
+      "Georgia, serif",
+    );
   }
 
   tiles(x, w, "#4a3a3b", "#352a2a");
@@ -1060,9 +1520,14 @@ function sceneBookDrop(x, w) {
   R(cx - 6, top - 8, 812, 10, "#e3b06a");
   R(cx, top + 2, 800, 34, "#cf9a55");
   R(cx, top + 36, 800, 2, "#b98340");
-  for (let px = cx + 133; px < cx + 800; px += 133) R(px, top + 38, 2, 72, "#b98340");
+  for (let px = cx + 133; px < cx + 800; px += 133)
+    R(px, top + 38, 2, 72, "#b98340");
   R(cx, FLOOR - 8, 800, 8, "#2a2c30");
-  for (const [sx, text] of [[cx + 140, "A/V DROP"], [cx + 410, "BOOK DROP"], [cx + 680, "BOOK DROP"]]) {
+  for (const [sx, text] of [
+    [cx + 140, "A/V DROP"],
+    [cx + 410, "BOOK DROP"],
+    [cx + 680, "BOOK DROP"],
+  ]) {
     label(text, sx, top + 26, 15, "#eceef0");
     R(sx - 40, top + 44, 80, 16, "#6f7378");
     R(sx - 36, top + 48, 72, 8, "#1c1c1c");
@@ -1138,19 +1603,31 @@ function draw() {
   drawBackground();
   if (tall()) drawTallFloor();
 
+  for (const o of obstacles) if (o.type === "puddle") drawPuddle(o); // on the floor, under everything
   for (const o of obstacles) {
     if (o.type === "flyer") drawFlyingBook(o);
+    else if (o.type === "sign") drawWetSign(o);
+    else if (o.type === "platform") drawPlatform(o);
     else for (const b of o.books) drawLyingBook(b);
   }
 
   for (const b of pickups) {
     const bob = Math.sin(runTime * 0.005 + b.phase) * 3;
-    if (b.kind === "page") drawPage(b.x, b.y + bob, b.w, b.h, Math.sin(runTime * 0.004 + b.phase) * 0.18);
-    else if (b.kind === "repair") drawTape(b.x + b.w / 2, b.y + b.h / 2 + bob, true);
+    if (b.kind === "page")
+      drawPage(
+        b.x,
+        b.y + bob,
+        b.w,
+        b.h,
+        Math.sin(runTime * 0.004 + b.phase) * 0.18,
+      );
+    else if (b.kind === "repair")
+      drawTape(b.x + b.w / 2, b.y + b.h / 2 + bob, true);
     else drawBookmark(b.x, b.y + bob, b.w, b.h, b.color);
   }
 
-  if (state !== "over") drawPlayer();
+  if (smash) drawSmash();
+  else if (state !== "over") drawPlayer();
   else drawTumble();
 
   for (const l of lostPages) {
@@ -1228,7 +1705,11 @@ function draw() {
   ctx.fillText("BEST " + best, SCORE.x + 108, sy + 22);
   ctx.textAlign = "right";
   ctx.fillStyle = PAPER;
-  ctx.fillText("DISTANCE " + Math.floor(runDist * METERS_PER_PX) + " m", SCORE.x + 346, sy + 22);
+  ctx.fillText(
+    "DISTANCE " + Math.floor(runDist * METERS_PER_PX) + " m",
+    SCORE.x + 346,
+    sy + 22,
+  );
 
   // Overlays
   if (state === "paused") drawPause();
@@ -1268,7 +1749,11 @@ function drawButton(b, on, scale = 1) {
 function drawButtons() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
-    drawButton(b, on, on && state === "ready" ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1);
+    drawButton(
+      b,
+      on,
+      on && state === "ready" ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1,
+    );
   });
 }
 
@@ -1280,7 +1765,12 @@ function hint(text, y) {
 }
 
 // The pause button shown during a run (so touch screens can pause too), right of the hearts.
-const PAUSE_BTN = { x: MUTE_BTN.x + MUTE_BTN.w + 8 + LIVES * 24 + 10 + 8, y: 12, w: 32, h: 32 };
+const PAUSE_BTN = {
+  x: MUTE_BTN.x + MUTE_BTN.w + 8 + LIVES * 24 + 10 + 8,
+  y: 12,
+  w: 32,
+  h: 32,
+};
 function drawPauseButton() {
   const b = PAUSE_BTN;
   ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
@@ -1307,7 +1797,12 @@ function drawPause() {
   ctx.font = "bold 15px Georgia, serif";
   ctx.fillText("Press P or Esc to keep reading", W / 2, py + 138);
   drawButtons();
-  hint(tall() ? "Quit goes back to the start screen" : "← → to choose · Enter or Space to select · Quit goes back to the start screen", py + ph - 14);
+  hint(
+    tall()
+      ? "Quit goes back to the start screen"
+      : "← → to choose · Enter or Space to select · Quit goes back to the start screen",
+    py + ph - 14,
+  );
 }
 
 // How to play: its own screen, opened from the start screen or the pause screen.
@@ -1326,7 +1821,9 @@ function drawHowTo() {
 
   // The goal: a gold "Goal:" followed by the rest, centered together (two lines when tall)
   const goalLead = "Goal: ",
-    goalText = tall() ? "dash through the library and" : "dash through the library and collect as many pages as you can!";
+    goalText = tall()
+      ? "dash through the library and"
+      : "dash through the library and collect as many pages as you can!";
   if (tall()) {
     ctx.textAlign = "center";
     ctx.fillStyle = PAPER;
@@ -1346,12 +1843,36 @@ function drawHowTo() {
   ctx.fillText(goalText, goalX + leadW, py + 56);
 
   const rows = [
-    { title: "Jump the book stacks", how: "Space, ↑ or tap (hold to jump higher)", icon: iconStack },
-    { title: "Duck the flying books", how: "↓ or swipe down & hold. Orange ones swoop!", icon: iconFlyer },
-    { title: "Collect loose pages", how: "Each one you grab adds to your total", icon: iconPage },
-    { title: "Watch for bookmarks", how: `They're rare, and worth ${BOOKMARK_PAGES} pages each!`, icon: iconBookmark },
-    { title: `You have ${LIVES} hearts`, how: `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages!`, icon: iconHeart },
-    { title: "Grab book tape", how: "It shows up when you're hurt: +1 heart!", icon: iconTape },
+    {
+      title: "Jump stacks & wet floor signs",
+      how: "Puddles soak a page and make you slip!",
+      icon: iconStack,
+    },
+    {
+      title: "Duck the flying books",
+      how: "↓ or swipe down & hold. Orange ones swoop!",
+      icon: iconFlyer,
+    },
+    {
+      title: "Collect loose pages",
+      how: `Rare bookmarks are worth ${BOOKMARK_PAGES} pages!`,
+      icon: iconPage,
+    },
+    {
+      title: "Hop onto carts & chairs",
+      how: "Run into the side and it's game over!",
+      icon: iconCart,
+    },
+    {
+      title: `You have ${LIVES} hearts`,
+      how: `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages!`,
+      icon: iconHeart,
+    },
+    {
+      title: "Grab book tape",
+      how: "It shows up when you're hurt: +1 heart!",
+      icon: iconTape,
+    },
   ];
   rows.forEach((r, i) => {
     // wide: two columns of three · tall: one column of six
@@ -1359,19 +1880,33 @@ function drawHowTo() {
       ry = tall() ? py + 96 + i * 58 : py + 70 + Math.floor(i / 2) * 46;
     r.icon(cx + 14, ry + 16);
     ctx.textAlign = "left";
+    const room = tall() ? pw - 24 - 46 - 14 : 284 - 46 - 12; // leaves a little space before the next column / panel edge
+    // titles at 15px and descriptions at 13px, each a touch smaller if too long for the column
     ctx.fillStyle = PAPER;
     ctx.font = "bold 15px Georgia, serif";
+    const titleRoom = tall() ? room : room - 14; // clear of the next column's icon (the flying book's wings reach left)
+    const titleFit = Math.max(
+      12,
+      Math.min(15, (15 * titleRoom) / ctx.measureText(r.title).width),
+    );
+    ctx.font = `bold ${titleFit}px Georgia, serif`;
     ctx.fillText(r.title, cx + 46, ry + 13);
     ctx.fillStyle = "#c9bc9f";
-    // 13px, or a touch smaller if a line is too long for its column
     ctx.font = "13px Georgia, serif";
-    const room = tall() ? pw - 24 - 46 - 14 : 284 - 46 - 12; // leaves a little space before the panel edge
-    const fit = Math.max(11, Math.min(13, (13 * room) / ctx.measureText(r.how).width));
+    const fit = Math.max(
+      11,
+      Math.min(13, (13 * room) / ctx.measureText(r.how).width),
+    );
     ctx.font = `${fit}px Georgia, serif`;
     ctx.fillText(r.how, cx + 46, ry + 31);
   });
   drawButtons();
-  hint(tall() ? "Tap Back when you're ready" : "P pauses · M turns the sound on or off · Enter, Space or Esc to go back", py + ph - 12);
+  hint(
+    tall()
+      ? "Tap Back when you're ready"
+      : "P pauses · M turns the sound on or off · Enter, Space or Esc to go back",
+    py + ph - 12,
+  );
 }
 
 function drawGameOver() {
@@ -1396,13 +1931,26 @@ function drawGameOver() {
   ctx.font = "bold 34px Georgia, serif";
   ctx.fillText("Overdue!", W / 2, py + 86);
   ctx.font = "16px Georgia, serif";
-  ctx.fillText(`${pages} page${pages === 1 ? "" : "s"} collected · ${Math.floor(runDist * METERS_PER_PX)} m run`, W / 2, py + 112);
+  ctx.fillText(
+    `${pages} page${pages === 1 ? "" : "s"} collected · ${Math.floor(runDist * METERS_PER_PX)} m run`,
+    W / 2,
+    py + 112,
+  );
   ctx.fillStyle = GOLD;
   ctx.font = "bold 15px Georgia, serif";
-  ctx.fillText(newBest && best > 0 ? "★ New best! ★" : `Best: ${best} pages`, W / 2, py + 136);
+  ctx.fillText(
+    newBest && best > 0 ? "★ New best! ★" : `Best: ${best} pages`,
+    W / 2,
+    py + 136,
+  );
 
   drawButtons();
-  hint(tall() ? "Main menu goes back to the start screen" : "← → to choose · Enter or Space to select · Esc for the menu", py + ph - 14);
+  hint(
+    tall()
+      ? "Main menu goes back to the start screen"
+      : "← → to choose · Enter or Space to select · Esc for the menu",
+    py + ph - 14,
+  );
   ctx.restore();
 }
 
@@ -1410,8 +1958,22 @@ function drawGameOver() {
 function heartPath(cx, cy, s) {
   ctx.beginPath();
   ctx.moveTo(cx, cy + 0.8 * s);
-  ctx.bezierCurveTo(cx - 1.25 * s, cy, cx - 0.95 * s, cy - 0.95 * s, cx, cy - 0.35 * s);
-  ctx.bezierCurveTo(cx + 0.95 * s, cy - 0.95 * s, cx + 1.25 * s, cy, cx, cy + 0.8 * s);
+  ctx.bezierCurveTo(
+    cx - 1.25 * s,
+    cy,
+    cx - 0.95 * s,
+    cy - 0.95 * s,
+    cx,
+    cy - 0.35 * s,
+  );
+  ctx.bezierCurveTo(
+    cx + 0.95 * s,
+    cy - 0.95 * s,
+    cx + 1.25 * s,
+    cy,
+    cx,
+    cy + 0.8 * s,
+  );
   ctx.closePath();
 }
 
@@ -1489,13 +2051,15 @@ function drawHearts(x, y, panel = true) {
     ctx.fill();
     ctx.globalAlpha = 1;
   }
-  // the heart that was just lost swells and fades away
+  // the heart(s) just lost swell and fade away (a smash into furniture takes them all at once)
   if (heartPop) {
     const t = 1 - heartPop.life / 500;
     ctx.globalAlpha = 1 - t;
-    heartPath(x + 17 + heartPop.index * gap, y + 17, 8 * (1 + t * 0.9));
     ctx.fillStyle = RIBBON_RED;
-    ctx.fill();
+    for (let i = 0; i < (heartPop.count || 1); i++) {
+      heartPath(x + 17 + (heartPop.index + i) * gap, y + 17, 8 * (1 + t * 0.9));
+      ctx.fill();
+    }
     ctx.globalAlpha = 1;
   }
 }
@@ -1503,7 +2067,21 @@ function drawHearts(x, y, panel = true) {
 // Speaker icon with sound waves, or a cross when muted. (x, y) is the left-middle.
 function drawSpeaker(x, y, off) {
   const c = off ? "#9a8f7c" : PAPER;
-  poly(c, x, y - 4, x + 5, y - 4, x + 11, y - 9, x + 11, y + 9, x + 5, y + 4, x, y + 4);
+  poly(
+    c,
+    x,
+    y - 4,
+    x + 5,
+    y - 4,
+    x + 11,
+    y - 9,
+    x + 11,
+    y + 9,
+    x + 5,
+    y + 4,
+    x,
+    y + 4,
+  );
   ctx.strokeStyle = c;
   ctx.lineWidth = 2;
   ctx.lineCap = "round";
@@ -1515,11 +2093,241 @@ function drawSpeaker(x, y, off) {
     ctx.lineTo(x + 15, y + 4);
   } else {
     ctx.arc(x + 12, y, 5, -Math.PI / 3, Math.PI / 3);
-    ctx.moveTo(x + 12 + 9 * Math.cos(-Math.PI / 3), y + 9 * Math.sin(-Math.PI / 3));
+    ctx.moveTo(
+      x + 12 + 9 * Math.cos(-Math.PI / 3),
+      y + 9 * Math.sin(-Math.PI / 3),
+    );
     ctx.arc(x + 12, y, 9, -Math.PI / 3, Math.PI / 3);
   }
   ctx.stroke();
   ctx.lineCap = "butt";
+}
+
+// The hard stop: squashed against the furniture, tipping over backwards onto its back (legs in
+// the air, seeing stars), then popping back up. After a final smash it just stays down.
+function drawSmash() {
+  const sm = smash,
+    t = sm.t,
+    c = CHARACTERS[charIndex];
+  const pw = 40,
+    ph = 44,
+    gy = sm.groundY;
+  const restX = sm.faceX - pw + 2; // pressed against the furniture
+  const HIT = 140,
+    FALL = 560,
+    LIE = 880;
+  let x = restX,
+    lift = 0,
+    ang = 0,
+    sx = 1,
+    sy = 1,
+    step = 0;
+  if (t < HIT) {
+    const k = Math.sin((t / HIT) * Math.PI); // squash flat against it, then spring back
+    sx = 1 - 0.3 * k;
+    sy = 1 + 0.15 * k;
+  } else if (t < FALL || sm.final) {
+    const k = Math.min(1, (t - HIT) / (FALL - HIT)),
+      e = 1 - (1 - k) * (1 - k); // eases out
+    ang = (-Math.PI / 2) * e; // over onto its back
+    x = restX - 22 * e; // bounced back a little
+    lift = Math.sin(k * Math.PI) * 10; // a small hop as it goes over
+    if (k >= 1) step = Math.sin(t * 0.03) * 4; // legs wiggling in the air
+  } else if (t < LIE) {
+    ang = -Math.PI / 2;
+    x = restX - 22;
+    step = Math.sin(t * 0.03) * 4;
+  } else {
+    const k = Math.min(1, (t - LIE) / (SMASH_MS - LIE)),
+      e = k * k * (3 - 2 * k);
+    ang = (-Math.PI / 2) * (1 - e); // back up onto its feet
+    x = restX - 22 + (player.x - (restX - 22)) * e; // and back to its spot
+  }
+  ctx.save();
+  ctx.translate(x, gy - lift);
+  ctx.rotate(ang);
+  ctx.translate(pw, 0);
+  ctx.scale(sx, sy); // squash against the furniture (its right edge stays put)
+  ctx.translate(-pw, 0);
+  drawCharacter(c, 0, -(ph + 6), pw, ph, { step, wear: LIVES - lives });
+  ctx.restore();
+  // stars circling while it's down
+  const down = t > FALL - 120 && (sm.final || t < LIE + 120);
+  if (down) {
+    const hx = x - 26,
+      hy = gy - 26;
+    for (let i = 0; i < 3; i++) {
+      const a = t * 0.008 + (i * Math.PI * 2) / 3;
+      sparkle(hx + Math.cos(a) * 14, hy + Math.sin(a) * 5, 4, i === 1 ? "#fff6c8" : "#ffe27a");
+    }
+  }
+}
+
+// ---------- Furniture ----------
+function drawPlatform(o) {
+  const { x, y, w, h } = o;
+  oval(x + w / 2, FLOOR - 1, w * 0.48, 4, "rgba(0, 0, 0, 0.25)"); // shadow
+  if (o.kind === "cart") drawCart(o);
+  else if (o.kind === "bench") drawBench(o);
+  else if (o.kind === "chair") drawReadingChair(o);
+  else drawReadingTable(o);
+}
+
+// A steel book cart (so it stands out from the wooden shelves behind): a flat top shelf to land on,
+// books on the lower shelf, wheels.
+function drawCart(o) {
+  const { x, y, w, h } = o;
+  const shelf = FLOOR - 24; // top of the lower shelf
+  R(x + 6, y + 9, w - 12, shelf - y - 9, "#353c46"); // a solid steel back, so the shelves behind don't show through
+  R(x + 6, y + 9, w - 12, 3, "rgba(0, 0, 0, 0.3)"); // shadow under the top shelf
+  R(x + 6, y, 8, FLOOR - 14 - y, "#4f5966"); // uprights
+  R(x + w - 14, y, 8, FLOOR - 14 - y, "#4f5966");
+  R(x + 8, y, 2, FLOOR - 14 - y, "rgba(255, 255, 255, 0.25)");
+  R(x + w - 12, y, 2, FLOOR - 14 - y, "rgba(255, 255, 255, 0.25)");
+  // books standing on the lower shelf
+  for (let bx = x + 16, i = 0; bx < x + w - 22; i++) {
+    const bw = 7 + (hash(i, o.seed) * 6) | 0,
+      bh = 20 + hash(i + 3, o.seed) * 14;
+    R(bx, shelf - bh, bw, bh, SPINES[(hash(i + 7, o.seed) * SPINES.length) | 0]);
+    R(bx + 1, shelf - bh + 3, bw - 2, 1.5, "rgba(255, 255, 255, 0.35)");
+    bx += bw + 1;
+  }
+  R(x + 4, shelf, w - 8, 7, "#7d8794"); // lower shelf
+  R(x + 4, shelf + 7, w - 8, 2, "#3f4752");
+  for (const wx of [x + 20, x + w - 20]) {
+    oval(wx, FLOOR - 7, 7, 7, "#2b2b30"); // wheels
+    oval(wx, FLOOR - 7, 2.5, 2.5, "#9aa0aa");
+  }
+  R(x, y, w, 9, "#9aa4b1"); // the top shelf (where you land)
+  R(x, y + 9, w, 2, "#3f4752");
+  R(x, y, w, 2, "rgba(255, 255, 255, 0.45)");
+  R(x + w / 2 - 18, y + 2, 36, 6, "#f2c230"); // a little "RETURNS" label
+  ctx.fillStyle = "#3a2a10";
+  ctx.font = "bold 5px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("RETURNS", x + w / 2, y + 7);
+}
+
+// A long padded reading bench with button tufting, on wooden legs.
+function drawBench(o) {
+  const { x, y, w } = o;
+  for (const lx of [x + 10, x + w / 2 - 3, x + w - 16]) R(lx, y + 18, 6, FLOOR - y - 18, "#6e4520"); // legs
+  R(x + 4, y + 12, w - 8, 8, "#8a5a2b"); // frame
+  ctx.fillStyle = "#3d4c8c"; // cushion
+  roundRect(x, y, w, 14, 6);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+  roundRect(x + 4, y + 1, w - 8, 3, 2);
+  for (let bx = x + 18; bx < x + w - 10; bx += 26) oval(bx, y + 8, 1.6, 1.6, "#2b3768"); // buttons
+}
+
+// A big comfy reading chair, seen from the front: a tall back behind, a deep seat to run along,
+// and rolled arms at each end.
+function drawReadingChair(o) {
+  const { x, y, w, h } = o;
+  ctx.fillStyle = "#8e2a31"; // the back (behind you)
+  roundRect(x + 8, y - 40, w - 16, 48, 14);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+  roundRect(x + 16, y - 34, w - 32, 6, 3);
+  ctx.fillStyle = "#c95b8b"; // a cushion leaning on the back
+  roundRect(x + w - 58, y - 22, 30, 22, 8);
+  ctx.fillStyle = "#a8323a"; // the base
+  roundRect(x + 2, y + 12, w - 4, FLOOR - 8 - y - 12, 6);
+  ctx.fillStyle = "#b8434b"; // the seat cushion (where you run)
+  roundRect(x + 10, y, w - 20, 16, 7);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+  roundRect(x + 16, y + 2, w - 32, 3, 2);
+  for (const ax of [x - 4, x + w - 20]) {
+    ctx.fillStyle = "#9a2d35"; // rolled arms
+    roundRect(ax, y - 10, 24, FLOOR - 8 - (y - 10), 10);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+    roundRect(ax + 4, y - 8, 16, 4, 2);
+  }
+  for (const fx of [x + 14, x + w - 22]) R(fx, FLOOR - 8, 8, 8, "#4a2c17"); // little feet
+}
+
+// A reading table with two chairs tucked in behind it, and an open book lying on top.
+function drawReadingTable(o) {
+  const { x, y, w, h } = o;
+  for (const cx of [x + 22, x + w - 56]) {
+    // chair backs peeking up behind the table
+    R(cx, y - 34, 5, 34, "#3d2614");
+    R(cx + 29, y - 34, 5, 34, "#3d2614");
+    R(cx, y - 34, 34, 6, "#5a381c");
+    R(cx + 3, y - 22, 28, 4, "#5a381c");
+  }
+  R(x + 10, y + 14, 8, FLOOR - y - 14, "#3d2614"); // legs
+  R(x + w - 18, y + 14, 8, FLOOR - y - 14, "#3d2614");
+  R(x + 6, y + 8, w - 12, 6, "#4a2e18"); // the apron under the top
+  R(x, y, w, 9, "#6b4423"); // the tabletop (where you run): dark walnut
+  R(x, y, w, 2, "rgba(255, 255, 255, 0.3)");
+  R(x, y + 9, w, 1.5, "#24160b"); // a crisp edge
+  // an open book lying flat on the table
+  const bx = x + w / 2 - 6;
+  poly(PAPER, bx - 14, y, bx, y - 3, bx, y + 1, bx - 14, y + 2);
+  poly("#f8f2e3", bx + 14, y, bx, y - 3, bx, y + 1, bx + 14, y + 2);
+  R(bx - 15, y + 1, 30, 1.5, SPINES[3]);
+}
+
+// A yellow fold-out wet floor sign: a caution triangle with "!", and a wavy water line.
+function drawWetSign(o) {
+  const { x, y, w, h } = o;
+  oval(x + w / 2, FLOOR - 1, w * 0.6, 3, "rgba(0, 0, 0, 0.25)"); // shadow
+  poly("#b8901c", x + 6, y + 2, x + w - 2, FLOOR, x + w - 8, FLOOR); // back leg
+  poly("#f2c230", x + w / 2, y, x + w - 4, FLOOR, x + 4, FLOOR); // front panel
+  ctx.strokeStyle = "#1a1a1a";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x + w / 2, y);
+  ctx.lineTo(x + w - 4, FLOOR);
+  ctx.lineTo(x + 4, FLOOR);
+  ctx.closePath();
+  ctx.stroke();
+  R(x + w / 2 - 4, y - 3, 8, 4, "#1a1a1a"); // handle
+  // caution triangle with "!"
+  const cx = x + w / 2,
+    ty = y + 14;
+  poly("#1a1a1a", cx, ty, cx + 8, ty + 13, cx - 8, ty + 13);
+  poly("#f2c230", cx, ty + 3, cx + 5, ty + 11, cx - 5, ty + 11);
+  R(cx - 0.75, ty + 5, 1.5, 3.5, "#1a1a1a");
+  R(cx - 0.75, ty + 9.3, 1.5, 1.2, "#1a1a1a");
+  // a wavy water line near the bottom
+  ctx.strokeStyle = "#3d7fb8";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= 12; i++) {
+    const wx = cx - 9 + i * 1.5,
+      wy = y + h - 9 + Math.sin(i * 1.2) * 1.5;
+    if (i === 0) ctx.moveTo(wx, wy);
+    else ctx.lineTo(wx, wy);
+  }
+  ctx.stroke();
+}
+
+// A puddle on the floor: a bright blue pool with a white rim and a shimmer (it ripples once splashed).
+function drawPuddle(o) {
+  const cx = o.x + o.w / 2,
+    cy = FLOOR + 6, // on the walking surface
+    rx = o.w / 2,
+    ry = 7;
+  oval(cx, cy + 1, rx + 2, ry + 1.5, "rgba(20, 40, 70, 0.35)"); // a wet, darker edge
+  oval(cx, cy, rx, ry, "#4f93cf");
+  oval(cx - 3, cy - 1, rx - 7, ry - 2.5, "#9fd0f2");
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, Math.PI * 1.05, Math.PI * 1.7); // rim catching the light
+  ctx.stroke();
+  const shimmer = Math.sin(runTime * 0.006 + o.phase) * 5;
+  R(cx - 12 + shimmer, cy - 3, 11, 2, "rgba(255, 255, 255, 0.85)");
+  R(cx + 6 - shimmer, cy + 1, 6, 1.5, "rgba(255, 255, 255, 0.7)");
+  if (o.soaked) {
+    // ripples after a splash
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx - 6, ry - 2.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 // A loose page: cream paper with a few lines of text and a folded corner. `tilt` in radians.
@@ -1535,7 +2343,8 @@ function drawPage(x, y, w, h, tilt = 0) {
   poly("#fbf6ea", l, t, l + w - f, t, l + w, t + f, l + w, t + h, l, t + h);
   poly("#d9cdb3", l + w - f, t, l + w - f, t + f, l + w, t + f); // the fold
   ctx.fillStyle = "rgba(60, 45, 30, 0.35)"; // lines of text
-  for (let ly = t + h * 0.3; ly < t + h - 3; ly += h * 0.16) ctx.fillRect(l + 3, ly, w - 6 - (ly > t + h * 0.7 ? w * 0.3 : 0), 1);
+  for (let ly = t + h * 0.3; ly < t + h - 3; ly += h * 0.16)
+    ctx.fillRect(l + 3, ly, w - 6 - (ly > t + h * 0.7 ? w * 0.3 : 0), 1);
   ctx.strokeStyle = "rgba(90, 70, 45, 0.5)";
   ctx.lineWidth = 0.75;
   ctx.beginPath();
@@ -1572,7 +2381,8 @@ function drawLyingBook(b) {
   ctx.fillStyle = PAPER;
   ctx.fillRect(b.x + 3, b.y + 2, b.w - 3, b.h - 4);
   ctx.fillStyle = "rgba(0,0,0,0.12)";
-  for (let y = b.y + 4; y < b.y + b.h - 3; y += 2) ctx.fillRect(b.x + 3, y, b.w - 3, 1);
+  for (let y = b.y + 4; y < b.y + b.h - 3; y += 2)
+    ctx.fillRect(b.x + 3, y, b.w - 3, 1);
   ctx.fillStyle = b.color;
   ctx.fillRect(b.x, b.y, 6, b.h);
   ctx.fillStyle = GOLD;
@@ -1587,7 +2397,13 @@ function drawFlyingBook(o, shadow = true) {
   if (shadow) {
     // the shadow grows and darkens as the book gets closer to the floor
     const near = Math.min(1, Math.max(0, 1 - (FLOOR - bottom) / 90));
-    oval(cx, FLOOR - 1, 10 + near * 10, 2 + near * 2, `rgba(0, 0, 0, ${0.12 + near * 0.2})`);
+    oval(
+      cx,
+      FLOOR - 1,
+      10 + near * 10,
+      2 + near * 2,
+      `rgba(0, 0, 0, ${0.12 + near * 0.2})`,
+    );
   }
   if (o.swoop) {
     // little speed marks above and below, so it reads as a book on the move
@@ -1635,23 +2451,142 @@ function drawFlyingBook(o, shadow = true) {
   R(sx + 2, sy - 9, 3, 3, "#1a1a1a");
 }
 
+// The run cycle, shared by everything that shows a character running. Two hops per stride:
+// each hop hangs in the air for a moment with BOTH feet off the floor (that's what makes it a
+// run, not a walk), then drops quickly onto the next foot.
+// step: how far the legs swing · bob: how high the body is · lift: how far each foot is off the
+// floor · land: 0…1 as a foot plants (squash) · air: 0…1 at the top of a hop (stretch) · flutter: page edges.
+const RUN_CADENCE = 0.012; // how fast the legs cycle: a stride takes 2π / RUN_CADENCE ms (about 0.4 s)
+const RUN_BOUNCE = 4; // px
+const RUN_LEAN = 0.12; // radians (about 7°)
+function runPose(t) {
+  const th = t * RUN_CADENCE,
+    s = Math.sin(th),
+    c = Math.cos(th);
+  const air = Math.pow(Math.abs(c), 0.6); // rounded at the top (hang time), sharp at the bottom (landing)
+  const bob = air * RUN_BOUNCE;
+  const tuck = bob * 0.75; // mid-hop, even the back foot leaves the floor
+  // the legs swing either side of the middle (for a 40px-wide book): crossed mid-hop,
+  // spread wide (one forward, one back) as a foot lands
+  const mid = 15.5;
+  return {
+    step: s * 7,
+    legs: [mid + s * 9, mid - s * 9],
+    bob,
+    lift: [Math.max(0, c) * 5 + tuck, Math.max(0, -c) * 5 + tuck],
+    land: Math.max(0, Math.abs(s) - 0.75) / 0.25,
+    air,
+    flutter: Math.sin(th * 2) * 1.2,
+  };
+}
+// Lean into the run, squash on landing, stretch a touch in the air. (fx, fy) is where the feet are.
+function runTransform(pose, fx, fy) {
+  ctx.translate(fx, fy);
+  ctx.rotate(RUN_LEAN);
+  ctx.scale(
+    1 + 0.06 * pose.land - 0.02 * pose.air,
+    1 - 0.1 * pose.land + 0.04 * pose.air,
+  );
+  ctx.translate(-fx, -fy);
+}
+// A couple of faint speed lines trailing behind a running book.
+function speedLines(px, py, ph, t) {
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  for (const [k, yy] of [
+    [0, 0.3],
+    [1, 0.62],
+  ]) {
+    const len = 10 + Math.sin(t * 0.02 + k * 2) * 4;
+    ctx.moveTo(px - 6, py + ph * yy);
+    ctx.lineTo(px - 6 - len, py + ph * yy);
+  }
+  ctx.stroke();
+  ctx.lineCap = "butt";
+}
+
 function drawPlayer() {
   const duck = player.ducking;
-  const { x, y, w, h } = duck ? { x: player.x, y: FLOOR - DUCK_H, w: DUCK_W, h: DUCK_H } : player;
+  const { x, y, w, h } = duck
+    ? { x: player.x, y: player.y + player.h - DUCK_H, w: DUCK_W, h: DUCK_H }
+    : player;
   // squash & stretch based on vertical velocity
-  const stretch = player.onGround ? 1 : 1 + Math.min(Math.abs(player.vy) * 0.15, 0.12);
+  const stretch = player.onGround
+    ? 1
+    : 1 + Math.min(Math.abs(player.vy) * 0.15, 0.12);
   const pw = w / stretch,
     ph = h * stretch;
   const px = x + (w - pw) / 2,
-    py = duck ? FLOOR - ph - 2 : y + h - ph - 6; // standing: lift the body so the legs reach the floor
+    py = duck ? player.y + player.h - ph - 2 : y + h - ph - 6; // standing: lift the body so the legs reach the ground
   const wear = LIVES - lives; // 0 = like new, 1 = dog-eared, 2+ = patched up
-  // legs: a quick shuffle while ducking, a run cycle on the ground
+  // legs: a quick shuffle while ducking, a run cycle (with a bounce) on the ground
   const moving = state === "running" || onStartScreen(); // runs on the spot behind the start screen
-  const step = duck ? Math.sin(runTime * 0.04) * 3 : player.onGround && moving ? Math.sin(runTime * 0.03) * 5 : 0;
+  const running = !duck && player.onGround && moving;
+  const pose = running ? runPose(runTime) : null;
+  const step = duck ? Math.sin(runTime * 0.04) * 3 : pose ? pose.step : 0;
+  const by = pose ? py - pose.bob : py; // the body bounces up mid-stride
+  const look = pose
+    ? {
+        duck,
+        step,
+        wear,
+        bob: pose.bob,
+        lift: pose.lift,
+        flutter: pose.flutter,
+        legs: pose.legs,
+      }
+    : { duck, step, wear };
+  look.accessory = accLift; // hats float up and glasses slide onto the head while jumping
 
   // just bumped: blink (fade in and out) until it's safe again
   if (hurtTime > 0) ctx.globalAlpha = Math.floor(hurtTime / 100) % 2 ? 0.3 : 1;
-  drawCharacter(CHARACTERS[charIndex], px, py, pw, ph, { duck, step, wear });
+  const fx = px + pw / 2,
+    fy = py + ph + 6; // the feet: running leans and squashes around this point
+  ctx.save();
+  if (pose) {
+    if (state === "running") speedLines(px, by, ph, runTime);
+    runTransform(pose, fx, fy); // lean, squash on landing, stretch in the air
+  }
+  if (slipTime > 0) {
+    // slipping after a puddle: wobble on its feet (settling down as it dries), with drips falling
+    const k = slipTime / SLIP_MS; // 1 → 0 over the slip
+    ctx.save();
+    ctx.translate(px + pw / 2, py + ph + 4);
+    ctx.rotate(Math.sin(runTime * 0.05) * (0.06 + 0.12 * k));
+    ctx.translate(-(px + pw / 2), -(py + ph + 4));
+    drawCharacter(CHARACTERS[charIndex], px, by, pw, ph, look);
+    ctx.restore();
+    ctx.restore(); // (the run lean / squash)
+    const drip = (runTime % 600) / 600; // drips keep falling for the whole slip
+    oval(
+      px + 6,
+      py + ph * 0.5 + drip * 14,
+      1.8,
+      2.6,
+      `rgba(127, 184, 224, ${0.9 * (1 - drip)})`,
+    );
+    oval(
+      px + pw - 6,
+      py + ph * 0.3 + ((drip + 0.5) % 1) * 14,
+      1.6,
+      2.3,
+      `rgba(127, 184, 224, ${0.9 * (1 - ((drip + 0.5) % 1))})`,
+    );
+    // a little water bar on the floor under the book shows how long the slip has left
+    // (under the feet, so the "Slippery!" / "Ouch!" popups above the book never cover it)
+    const bw = 34,
+      bx = px + pw / 2 - 2 - bw / 2,
+      barY = player.y + player.h + 10;
+    ctx.fillStyle = "rgba(20, 14, 10, 0.6)";
+    roundRect(bx - 2, barY - 2, bw + 4, 8, 4);
+    ctx.fillStyle = "#7fb8e0";
+    roundRect(bx, barY, Math.max(3, bw * k), 4, 2);
+  } else {
+    drawCharacter(CHARACTERS[charIndex], px, by, pw, ph, look);
+    ctx.restore(); // (the run lean / squash)
+  }
   ctx.globalAlpha = 1;
 
   // just taped up: a strip of tape smooths across the cover, then fades, with a few sparkles
@@ -1669,7 +2604,12 @@ function drawPlayer() {
     ctx.restore();
     for (let i = 0; i < 3; i++) {
       const a = t * 5 + i * 2.1;
-      sparkle(px + pw / 2 + Math.cos(a) * (pw * 0.7), py + ph / 2 + Math.sin(a) * (ph * 0.6), 3.5 * (1 - t) + 1, "#fff6c8");
+      sparkle(
+        px + pw / 2 + Math.cos(a) * (pw * 0.7),
+        py + ph / 2 + Math.sin(a) * (ph * 0.6),
+        3.5 * (1 - t) + 1,
+        "#fff6c8",
+      );
     }
     ctx.globalAlpha = 1;
   }
@@ -1715,15 +2655,33 @@ function drawTape(cx, cy, glow = false) {
 
 // One of the book characters, body at (px, py) sized pw × ph.
 // duck: crouched (legs tucked) · step: leg swing · wear: 0 like new, 1 dog-eared, 2+ patched up
-function drawCharacter(c, px, py, pw, ph, { duck = false, step = 0, wear = 0 } = {}) {
-  // legs
+function drawCharacter(
+  c,
+  px,
+  py,
+  pw,
+  ph,
+  {
+    duck = false,
+    step = 0,
+    wear = 0,
+    bob = 0,
+    lift = [0, 0],
+    flutter = 0,
+    legs = null, // running: where each leg is, across from the left edge (they scissor past each other)
+    accessory = 0, // hats and glasses lifted by a jump (see updateAccessories)
+  } = {},
+) {
+  // legs. While running, the body bounces up by `bob`, so a planted leg stretches to keep its
+  // foot on the floor, and a leg is lifted off it by `lift`.
   ctx.fillStyle = "#1e2b2c";
   if (duck) {
     ctx.fillRect(px + 8 + step, py + ph, 6, 2);
     ctx.fillRect(px + pw - 16 - step, py + ph, 6, 2);
   } else {
-    ctx.fillRect(px + 8 + step, py + ph - 2, 5, 8);
-    ctx.fillRect(px + pw - 14 - step, py + ph - 2, 5, 8);
+    const [l1, l2] = legs || [8 + step, pw - 14 - step];
+    ctx.fillRect(px + l1, py + ph - 2, 5, 8 + bob - lift[0]);
+    ctx.fillRect(px + l2, py + ph - 2, 5, 8 + bob - lift[1]);
   }
 
   // well worn: a loose page works its way out of the top
@@ -1739,11 +2697,17 @@ function drawCharacter(c, px, py, pw, ph, { duck = false, step = 0, wear = 0 } =
     ctx.restore();
   }
 
-  // page edges peeking out on the right
+  // page edges peeking out on the right (they flutter a little with each step)
   ctx.fillStyle = PAPER;
-  roundRect(px + 4, py + 3, pw - 2, ph - 6, 3);
+  roundRect(px + 4 + flutter, py + 3, pw - 2, ph - 6, 3);
   ctx.fillStyle = "rgba(0,0,0,0.15)";
-  for (let ly = py + 6; ly < py + ph - 6; ly += 3) ctx.fillRect(px + pw - 2, ly, 2, 1);
+  for (let ly = py + 6; ly < py + ph - 6; ly += 3)
+    ctx.fillRect(
+      px + pw - 2 + flutter * (((ly - py) / 3) % 2 ? 1 : 0.4),
+      ly,
+      2,
+      1,
+    );
 
   // cover, spine and the cover's decoration
   ctx.fillStyle = c.cover;
@@ -1780,10 +2744,34 @@ function drawCharacter(c, px, py, pw, ph, { duck = false, step = 0, wear = 0 } =
     ctx.restore();
   }
 
-  // face: (ex, ey) is the left eye, the right eye is 10px over
-  c.face(px + pw - 22, py + 15, wear);
-  // hats sit on top, a little smaller while ducking so they stay under the flying books
-  if (c.hat) c.hat(px, py, pw, duck ? 0.7 : 1);
+  // face: (ex, ey) is the left eye, the right eye is 10px over. Glasses can be lifted off the
+  // eyes by `accessory` (0 on the face … 1 pushed up on top of the head), never below the eyes.
+  c.face(px + pw - 22, py + 15, wear, Math.max(0, accessory));
+  // hats sit on top, a little smaller while ducking so they stay under the flying books.
+  // When jumping they float up off the head and tip back a little (`accessory`, as above).
+  if (c.hat) {
+    const s = duck ? 0.7 : 1,
+      a = Math.max(-0.2, accessory), // a touch below 0 = the hat plops down as it lands
+      hx = px + pw / 2 - 2;
+    ctx.save();
+    ctx.translate(hx, py - HAT_LIFT * a);
+    ctx.rotate(-0.18 * Math.max(0, a));
+    ctx.translate(-hx, -py);
+    c.hat(px, py, pw, s);
+    ctx.restore();
+  }
+}
+
+// Hats and glasses have a little weight: they float up when the book jumps and settle back
+// on landing. `accLift` goes 0 → about 1 in the air and back to 0, on a soft spring.
+const HAT_LIFT = 7; // px a hat or crown rises off the head
+const GLASSES_LIFT = 19; // px the glasses slide up, from the eyes to the top of the head
+const ACC_SPRING = 0.0002, // how strongly it's pulled toward where it should be (softer = floatier)…
+  ACC_DAMP = 0.0126; // …and how quickly the wobble dies down (lower = a bit more bounce as it lands)
+function updateAccessories(dt) {
+  const target = player.onGround ? 0 : 1;
+  accVel += (ACC_SPRING * (target - accLift) - ACC_DAMP * accVel) * dt;
+  accLift += accVel * dt;
 }
 
 // ---------- Characters ----------
@@ -1811,7 +2799,25 @@ function titleBand(color) {
 }
 // A little four-pointed sparkle.
 function sparkle(x, y, r, color) {
-  poly(color, x, y - r, x + r * 0.3, y - r * 0.3, x + r, y, x + r * 0.3, y + r * 0.3, x, y + r, x - r * 0.3, y + r * 0.3, x - r, y, x - r * 0.3, y - r * 0.3);
+  poly(
+    color,
+    x,
+    y - r,
+    x + r * 0.3,
+    y - r * 0.3,
+    x + r,
+    y,
+    x + r * 0.3,
+    y + r * 0.3,
+    x,
+    y + r,
+    x - r * 0.3,
+    y + r * 0.3,
+    x - r,
+    y,
+    x - r * 0.3,
+    y - r * 0.3,
+  );
 }
 
 const CHARACTERS = [
@@ -1823,17 +2829,18 @@ const CHARACTERS = [
     spine: "#234548",
     fold: "#1d3d40",
     deco: titleBand(GOLD),
-    face(ex, ey, wear) {
-      // round reading glasses
+    face(ex, ey, wear, lift = 0) {
+      // round reading glasses (pushed up onto the head while jumping)
       eyeDots(ex, ey);
+      const gy = ey - GLASSES_LIFT * lift;
       ctx.strokeStyle = GOLD;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(ex, ey, 5, 0, Math.PI * 2);
-      ctx.moveTo(ex + 15, ey);
-      ctx.arc(ex + 10, ey, 5, 0, Math.PI * 2);
+      ctx.arc(ex, gy, 5, 0, Math.PI * 2);
+      ctx.moveTo(ex + 15, gy);
+      ctx.arc(ex + 10, gy, 5, 0, Math.PI * 2);
       ctx.stroke();
-      if (wear >= 2) crackedLens(ex, ey);
+      if (wear >= 2) crackedLens(ex, gy);
     },
   },
   {
@@ -1847,7 +2854,23 @@ const CHARACTERS = [
       // a lightning bolt
       const bx = px + 13,
         by = py + ph * 0.42;
-      poly("#c92a2f", bx + 6, by, bx + 1, by + 9, bx + 5, by + 9, bx + 2, by + 17, bx + 11, by + 6, bx + 7, by + 6, bx + 10, by);
+      poly(
+        "#c92a2f",
+        bx + 6,
+        by,
+        bx + 1,
+        by + 9,
+        bx + 5,
+        by + 9,
+        bx + 2,
+        by + 17,
+        bx + 11,
+        by + 6,
+        bx + 7,
+        by + 6,
+        bx + 10,
+        by,
+      );
     },
     face(ex, ey, wear) {
       // big cartoon eyes
@@ -1879,17 +2902,33 @@ const CHARACTERS = [
       ctx.textAlign = "left";
       ctx.fillText("?", px + 11, py + ph - 16);
     },
-    face(ex, ey, wear) {
-      // one eye behind a monocle
+    face(ex, ey, wear, lift = 0) {
+      // one eye behind a monocle on a chain. When jumping (`lift` 0 → 1) the monocle pops off
+      // the eye and swings on its chain below where the chain is pinned, then swings back on landing.
       eyeDots(ex, ey);
+      const ax = ex + 15,
+        ay = ey + 12; // where the chain is pinned to the cover
+      const a = Math.min(1, lift);
+      const rest = Math.atan2(-12, -5) + Math.PI * 2; // the monocle's spot on the eye, seen from the pin (up and to the left)
+      const swing = Math.PI / 2 + Math.sin(runTime * 0.0105) * 0.6; // hanging down, swinging side to side
+      const angle = rest + (swing - rest) * a; // swings round the left side, never through the page edges
+      const len = 13 + 3 * a; // the chain goes slack as it falls away
+      const mx = ax + Math.cos(angle) * len,
+        my = ay + Math.sin(angle) * len;
       ctx.strokeStyle = GOLD;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(ex + 10, ey, 5, 0, Math.PI * 2);
-      ctx.moveTo(ex + 14, ey + 3);
-      ctx.lineTo(ex + 15, ey + 12); // the chain
+      ctx.arc(mx, my, 5, 0, Math.PI * 2);
       ctx.stroke();
-      if (wear >= 2) crackedLens(ex + 10, ey);
+      // the chain: from the pin to the monocle's rim, sagging a little when slack
+      const rimX = mx - Math.cos(angle) * 5,
+        rimY = my - Math.sin(angle) * 5;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo((ax + rimX) / 2 + 2 * a, (ay + rimY) / 2 + 3 * a, rimX, rimY);
+      ctx.stroke();
+      if (wear >= 2) crackedLens(mx, my);
     },
     hat(px, py, pw, s) {
       // a detective's hat
@@ -1922,7 +2961,8 @@ const CHARACTERS = [
       ctx.strokeStyle = "#1a1a1a";
       ctx.lineWidth = 1.2;
       ctx.beginPath();
-      if (wear >= 2) ctx.arc(ex + 5, ey + 9, 2.5, Math.PI * 1.15, Math.PI * 1.85); // worn out: a little frown
+      if (wear >= 2)
+        ctx.arc(ex + 5, ey + 9, 2.5, Math.PI * 1.15, Math.PI * 1.85); // worn out: a little frown
       else ctx.arc(ex + 5, ey + 5, 2.5, Math.PI * 0.15, Math.PI * 0.85);
       ctx.stroke();
     },
@@ -1933,13 +2973,36 @@ const CHARACTERS = [
         h = 9 * s,
         l = cx - w / 2,
         b = py + 1;
-      poly(GOLD, l, b, l, b - h * 0.6, l + w * 0.2, b - h * 0.35, l + w * 0.35, b - h, l + w * 0.5, b - h * 0.4, l + w * 0.65, b - h, l + w * 0.8, b - h * 0.35, l + w, b - h * 0.6, l + w, b);
+      poly(
+        GOLD,
+        l,
+        b,
+        l,
+        b - h * 0.6,
+        l + w * 0.2,
+        b - h * 0.35,
+        l + w * 0.35,
+        b - h,
+        l + w * 0.5,
+        b - h * 0.4,
+        l + w * 0.65,
+        b - h,
+        l + w * 0.8,
+        b - h * 0.35,
+        l + w,
+        b - h * 0.6,
+        l + w,
+        b,
+      );
       oval(cx - w * 0.15, b - h * 0.25, 1.5 * s, 1.5 * s, "#c92a2f");
       oval(cx + w * 0.15, b - h * 0.25, 1.5 * s, 1.5 * s, "#3d4c8c");
     },
   },
 ];
-let charIndex = Math.max(0, CHARACTERS.findIndex((c) => c.id === safeGet("runner-character"))); // Dash unless they picked another
+let charIndex = Math.max(
+  0,
+  CHARACTERS.findIndex((c) => c.id === safeGet("runner-character")),
+); // Dash unless they picked another
 
 function pickCharacter(i) {
   charIndex = (i + CHARACTERS.length) % CHARACTERS.length;
@@ -1956,10 +3019,20 @@ function cardRect(i) {
     const c = CARD_TALL,
       col = i % 2,
       row = Math.floor(i / 2);
-    return { x: W / 2 - (2 * c.w + c.gap) / 2 + col * (c.w + c.gap), y: c.y + row * (c.h + c.gap), w: c.w, h: c.h };
+    return {
+      x: W / 2 - (2 * c.w + c.gap) / 2 + col * (c.w + c.gap),
+      y: c.y + row * (c.h + c.gap),
+      w: c.w,
+      h: c.h,
+    };
   }
   const total = CHARACTERS.length * CARD.w + (CHARACTERS.length - 1) * CARD.gap;
-  return { x: W / 2 - total / 2 + i * (CARD.w + CARD.gap), y: CARD.y, w: CARD.w, h: CARD.h };
+  return {
+    x: W / 2 - total / 2 + i * (CARD.w + CARD.gap),
+    y: CARD.y,
+    w: CARD.w,
+    h: CARD.h,
+  };
 }
 
 function drawCharacters() {
@@ -1978,7 +3051,9 @@ function drawCharacters() {
     const on = i === charIndex;
     const r = cardRect(i),
       lift = on ? -4 : 0;
-    ctx.fillStyle = on ? "rgba(215, 163, 94, 0.22)" : "rgba(255, 255, 255, 0.05)";
+    ctx.fillStyle = on
+      ? "rgba(215, 163, 94, 0.22)"
+      : "rgba(255, 255, 255, 0.05)";
     roundRect(r.x, r.y + lift, r.w, r.h, 10);
     ctx.strokeStyle = on ? MAPLE : "rgba(212, 166, 74, 0.45)";
     ctx.lineWidth = on ? 2.5 : 1;
@@ -1987,11 +3062,23 @@ function drawCharacters() {
     const floor = r.y + lift + (tall() ? 112 : 100),
       zoom = 1.35; // drawn a bit bigger than in the game
     R(r.x + 20, floor, r.w - 40, 4, "#8a5a2b");
-    const step = on ? Math.sin(runTime * 0.03) * 5 : 0;
     ctx.save();
     ctx.translate(r.x + r.w / 2 - 20 * zoom, floor - 50 * zoom);
     ctx.scale(zoom, zoom);
-    drawCharacter(c, 0, 0, 40, 44, { step });
+    if (on) {
+      // the chosen one runs (with the same bounce, lean and squash as in the game)
+      const pose = runPose(runTime);
+      runTransform(pose, 20, 50);
+      drawCharacter(c, 0, -pose.bob, 40, 44, {
+        step: pose.step,
+        bob: pose.bob,
+        lift: pose.lift,
+        flutter: pose.flutter,
+        legs: pose.legs,
+      });
+    } else {
+      drawCharacter(c, 0, 0, 40, 44);
+    }
     ctx.restore();
     ctx.textAlign = "center";
     ctx.fillStyle = on ? GOLD : PAPER;
@@ -2004,7 +3091,12 @@ function drawCharacters() {
     ctx.fillText(c.blurb[1], r.x + r.w / 2, ty + 31);
   });
   drawButtons();
-  hint(tall() ? "Tap a book to pick it" : "← → or tap to pick · Enter, Space or Esc when you're done", py + ph - 10);
+  hint(
+    tall()
+      ? "Tap a book to pick it"
+      : "← → or tap to pick · Enter, Space or Esc when you're done",
+    py + ph - 10,
+  );
 }
 
 // The start screen: the title with Start and How to play buttons.
@@ -2043,11 +3135,21 @@ function drawStartScreen() {
   ctx.textAlign = "center";
   ctx.fillStyle = PAPER;
   ctx.font = "13px Georgia, serif";
-  ctx.fillText(tall() ? "Tap a button to choose" : "← → to choose · Enter or Space to select", tx, tall() ? 538 : 244);
+  ctx.fillText(
+    tall()
+      ? "Tap a button to choose"
+      : "← → to choose · Enter or Space to select",
+    tx,
+    tall() ? 538 : 244,
+  );
   ctx.fillStyle = GOLD;
   ctx.font = "bold 15px Georgia, serif";
   const who = "Playing as " + CHARACTERS[charIndex].name;
-  ctx.fillText(best > 0 ? `${who} · Your best: ${best} pages` : who, tx, tall() ? 566 : 268);
+  ctx.fillText(
+    best > 0 ? `${who} · Your best: ${best} pages` : who,
+    tx,
+    tall() ? 566 : 268,
+  );
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
 }
@@ -2066,10 +3168,26 @@ function iconStack(x, y) {
   poly(GOLD, x + 13, y - 18, x + 16, y - 10, x + 9, y - 13);
 }
 function iconFlyer(x, y) {
-  drawFlyingBook({ x: x - 22, y: y - 14, w: 44, h: 22, color: SPINES[3], phase: 0 }, false);
+  drawFlyingBook(
+    { x: x - 22, y: y - 14, w: 44, h: 22, color: SPINES[3], phase: 0 },
+    false,
+  );
 }
 function iconPage(x, y) {
   drawPage(x - 9, y - 11, 18, 23, -0.12);
+}
+function iconCart(x, y) {
+  R(x - 12, y - 6, 24, 10, "#353c46"); // steel back
+  R(x - 14, y - 10, 28, 4, "#9aa4b1"); // top shelf
+  R(x - 13, y - 10, 3, 16, "#4f5966");
+  R(x + 10, y - 10, 3, 16, "#4f5966");
+  R(x - 9, y - 4, 4, 8, SPINES[0]);
+  R(x - 4, y - 6, 4, 10, SPINES[1]);
+  R(x + 1, y - 3, 4, 7, SPINES[2]);
+  R(x + 6, y - 5, 3, 9, SPINES[4]);
+  R(x - 14, y + 4, 28, 3, "#7d8794"); // lower shelf
+  oval(x - 9, y + 10, 3, 3, "#2b2b30");
+  oval(x + 9, y + 10, 3, 3, "#2b2b30");
 }
 function iconBookmark(x, y) {
   drawBookmark(x - 7, y - 13, 14, 26, RIBBON_YELLOW);
@@ -2092,8 +3210,20 @@ document.addEventListener("keydown", (e) => {
   // Menu screens: ← → pick a button, Enter / Space choose it, Esc goes back
   if (isMenu()) {
     const buttons = BUTTONS[state];
-    const moveKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyA", "KeyD", "KeyW", "KeyS", "Tab"];
-    const back = ["ArrowLeft", "ArrowUp", "KeyA", "KeyW"].includes(e.code) || (e.code === "Tab" && e.shiftKey);
+    const moveKeys = [
+      "ArrowLeft",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowDown",
+      "KeyA",
+      "KeyD",
+      "KeyW",
+      "KeyS",
+      "Tab",
+    ];
+    const back =
+      ["ArrowLeft", "ArrowUp", "KeyA", "KeyW"].includes(e.code) ||
+      (e.code === "Tab" && e.shiftKey);
     // on the Characters screen the arrows flip through the characters
     if (state === "chars" && moveKeys.includes(e.code)) {
       e.preventDefault();
@@ -2103,11 +3233,15 @@ document.addEventListener("keydown", (e) => {
     if (moveKeys.includes(e.code)) {
       e.preventDefault();
       const step = back ? -1 : 1;
-      selected[state] = (selected[state] + step + buttons.length) % buttons.length;
+      selected[state] =
+        (selected[state] + step + buttons.length) % buttons.length;
     } else if ((e.code === "Enter" || e.code === "Space") && !e.repeat) {
       e.preventDefault();
       choose(buttons[selected[state]].id);
-    } else if (e.code === "Escape" || (e.code === "KeyP" && state === "paused")) {
+    } else if (
+      e.code === "Escape" ||
+      (e.code === "KeyP" && state === "paused")
+    ) {
       goBack();
     } else if (e.code === "KeyM") {
       toggleMute();
@@ -2128,15 +3262,20 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("keyup", (e) => {
-  if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") releaseJump();
+  if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW")
+    releaseJump();
   if (e.code === "ArrowDown" || e.code === "KeyS") duckHeld = false;
 });
 // Convert a pointer event to canvas coordinates (the canvas is scaled by CSS).
 function toCanvas(e) {
   const rect = canvas.getBoundingClientRect();
-  return [((e.clientX - rect.left) / rect.width) * W, ((e.clientY - rect.top) / rect.height) * H];
+  return [
+    ((e.clientX - rect.left) / rect.width) * W,
+    ((e.clientY - rect.top) / rect.height) * H,
+  ];
 }
-const inside = (x, y, b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+const inside = (x, y, b) =>
+  x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 
 // Touch / mouse. On menus only the buttons respond, so a stray tap doesn't do anything.
 // During a run, on a touch screen: tap to jump (hold for higher), swipe down and hold to duck.
@@ -2196,7 +3335,14 @@ canvas.addEventListener("pointerdown", (e) => {
   if (inside(cx, cy, PAUSE_BTN)) return pause();
   if (e.pointerType === "mouse") return jump();
   if (gesture) return; // already a finger down; ignore a second one
-  gesture = { id: e.pointerId, y0: e.clientY, t0: performance.now(), decided: null, lag: 0, jumpId: 0 };
+  gesture = {
+    id: e.pointerId,
+    y0: e.clientY,
+    t0: performance.now(),
+    decided: null,
+    lag: 0,
+    jumpId: 0,
+  };
   gesture.timer = setTimeout(() => decide("jump"), DECIDE_MS);
   try {
     canvas.setPointerCapture(e.pointerId); // keep following the finger even if it slides off the game
