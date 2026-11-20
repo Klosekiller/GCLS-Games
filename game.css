@@ -19,6 +19,9 @@ body {
 canvas {
   width: 100%;
   max-width: var(--w);
+  /* A game that sets --ratio (width ÷ height) is also kept short enough to fit the screen. */
+  max-width: min(var(--w), calc((100vh - 32px) * var(--ratio, 1000)));
+  max-width: min(var(--w), calc((100dvh - 32px) * var(--ratio, 1000)));
   border-radius: 10px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   touch-action: none;
@@ -86,3 +89,10 @@ button {
 [data-game="bookmobile"] .controls .left { grid-column: 1; grid-row: 2; }
 [data-game="bookmobile"] .controls .down { grid-column: 2; grid-row: 2; }
 [data-game="bookmobile"] .controls .right { grid-column: 3; grid-row: 2; }
+
+/* Stacks Dash on a phone turned on its side: hide the instructions (they're in the game's
+   How to play) so the game can use the whole screen. */
+@media (orientation: landscape) and (max-height: 500px) {
+  [data-game="runner"] { padding: 8px; }
+  [data-game="runner"] .hint { display: none; }
+}
