@@ -44,12 +44,6 @@ const ITEMS = [
   { icon: "ball", topic: "Sports", color: "#3a7fc0" },
 ];
 
-// ---------- Palette ----------
-const PAPER = "#f3ead7";
-const GOLD = "#d4a64a";
-const MAPLE = "#d7a35e";
-const NAVY = "#34404f";
-
 // ---------- State ----------
 let levelIndex = 0;
 let cards = []; // { item, face: "icon"|"label", state: "down"|"up"|"matched", flip, shake, x, y }
@@ -246,29 +240,7 @@ function updateParticles(dt) {
 }
 
 // ---------- Sound (Web Audio API, no files needed) ----------
-let audio = null;
-let muted = safeGet("match-muted") === "1";
-
-function tone(freqStart, freqEnd, duration, type = "square", volume = 0.12, delay = 0) {
-  if (muted) return;
-  try {
-    audio ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audio.state === "suspended") audio.resume();
-    const t = audio.currentTime + delay;
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freqStart, t);
-    osc.frequency.exponentialRampToValueAtTime(freqEnd, t + duration);
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.connect(gain).connect(audio.destination);
-    osc.start(t);
-    osc.stop(t + duration);
-  } catch {
-    // no audio support: play silently
-  }
-}
+setupSound("match");
 
 const sfx = {
   flip: () => tone(600, 900, 0.06, "triangle", 0.1),
@@ -287,46 +259,7 @@ const sfx = {
   },
 };
 
-const muteBtn = document.getElementById("mute");
-function updateMuteLabel() {
-  if (muteBtn) muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
-}
-function toggleMute() {
-  muted = !muted;
-  safeSet("match-muted", muted ? "1" : "0");
-  updateMuteLabel();
-  if (!muted) tone(660, 660, 0.08, "sine", 0.12);
-}
-updateMuteLabel();
-if (muteBtn) muteBtn.addEventListener("click", toggleMute);
-
-// ---------- Library logo ----------
-// Drawn on a white badge so the brand colors stay true on any background.
-const LOGO = new Image();
-LOGO.src = "logo-icon.svg";
-const LOGO_RATIO = 122 / 182; // width / height of the icon
-function drawLogo(cx, top, h) {
-  const w = h * LOGO_RATIO,
-    pad = h * 0.18;
-  ctx.fillStyle = "#ffffff";
-  roundRect(cx - w / 2 - pad, top, w + pad * 2, h + pad * 2, Math.min(8, pad * 1.5));
-  if (LOGO.complete && LOGO.naturalWidth) ctx.drawImage(LOGO, cx - w / 2, top + pad, w, h);
-}
-
 // ---------- Drawing helpers ----------
-function R(x, y, w, h, c) {
-  ctx.fillStyle = c;
-  ctx.fillRect(x, y, w, h);
-}
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.fill();
-}
 function circle(x, y, r, c) {
   ctx.fillStyle = c;
   ctx.beginPath();
@@ -339,12 +272,6 @@ function poly(c, ...pts) {
   ctx.moveTo(pts[0], pts[1]);
   for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
   ctx.fill();
-}
-function text(str, x, y, font, color, align = "center") {
-  ctx.font = font;
-  ctx.fillStyle = color;
-  ctx.textAlign = align;
-  ctx.fillText(str, x, y);
 }
 function star(cx, cy, r, fill) {
   ctx.fillStyle = fill;
@@ -786,11 +713,3 @@ canvas.addEventListener("pointerdown", (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "playing") state = "paused";
 });
-
-// ---------- Storage (guarded: can throw in private mode) ----------
-function safeGet(k) {
-  try { return localStorage.getItem(k); } catch { return null; }
-}
-function safeSet(k, v) {
-  try { localStorage.setItem(k, v); } catch {}
-}

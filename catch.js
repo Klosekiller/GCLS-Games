@@ -3,7 +3,9 @@
 
 // ---------- Setup ----------
 const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+const screenCtx = canvas.getContext("2d");
+// `ctx` is the context being drawn to: the screen, or an offscreen layer while building scenery.
+let ctx = screenCtx;
 const W = canvas.width,
   H = canvas.height;
 
@@ -35,9 +37,6 @@ const badChance = () => Math.min(0.35, 0.12 + elapsed * 0.000004);
 const CARD_CHANCE = 0.05;
 
 // ---------- Palette (from the library) ----------
-const PAPER = "#f3ead7";
-const GOLD = "#d4a64a";
-const MAPLE = "#d7a35e";
 const RIBBON_RED = "#c92a2f",
   RIBBON_BLUE = "#3d4c8c",
   RIBBON_YELLOW = "#e8b52a";
@@ -251,29 +250,7 @@ function updateParticles(dt) {
 }
 
 // ---------- Sound (Web Audio API, no files needed) ----------
-let audio = null;
-let muted = safeGet("catch-muted") === "1";
-
-function tone(freqStart, freqEnd, duration, type = "square", volume = 0.12, delay = 0) {
-  if (muted) return;
-  try {
-    audio ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audio.state === "suspended") audio.resume();
-    const t = audio.currentTime + delay;
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freqStart, t);
-    osc.frequency.exponentialRampToValueAtTime(freqEnd, t + duration);
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.connect(gain).connect(audio.destination);
-    osc.start(t);
-    osc.stop(t + duration);
-  } catch {
-    // no audio support: play silently
-  }
-}
+setupSound("catch");
 
 const sfx = {
   // each catch in a streak is a little higher
@@ -303,22 +280,7 @@ const sfx = {
   },
 };
 
-const muteBtn = document.getElementById("mute");
-function updateMuteLabel() {
-  if (muteBtn) muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
-}
-function toggleMute() {
-  muted = !muted;
-  safeSet("catch-muted", muted ? "1" : "0");
-  updateMuteLabel();
-  if (!muted) tone(660, 660, 0.08, "sine", 0.12);
-}
-updateMuteLabel();
-if (muteBtn) muteBtn.addEventListener("click", toggleMute);
-
 // ---------- Drawing helpers ----------
-// `g` is the context being drawn to: the screen, or an offscreen layer while building scenery.
-let g = ctx;
 
 // Deterministic pseudo-random in [0,1) so scenery looks the same every time.
 function hash(a, b) {
@@ -326,50 +288,18 @@ function hash(a, b) {
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
-function R(x, y, w, h, c) {
-  g.fillStyle = c;
-  g.fillRect(x, y, w, h);
-}
 function poly(c, ...pts) {
-  g.fillStyle = c;
-  g.beginPath();
-  g.moveTo(pts[0], pts[1]);
-  for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
-  g.fill();
+  ctx.fillStyle = c;
+  ctx.beginPath();
+  ctx.moveTo(pts[0], pts[1]);
+  for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+  ctx.fill();
 }
 function oval(x, y, rx, ry, c) {
-  g.fillStyle = c;
-  g.beginPath();
-  g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-  g.fill();
-}
-function roundRect(x, y, w, h, r) {
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.fill();
-}
-function text(str, x, y, font, color, align = "center") {
-  g.font = font;
-  g.fillStyle = color;
-  g.textAlign = align;
-  g.fillText(str, x, y);
-}
-
-// ---------- Library logo ----------
-// Drawn on a white badge so the brand colors stay true on any background.
-const LOGO = new Image();
-LOGO.src = "logo-icon.svg";
-const LOGO_RATIO = 122 / 182; // width / height of the icon
-function drawLogo(cx, top, h) {
-  const w = h * LOGO_RATIO,
-    pad = h * 0.18;
-  g.fillStyle = "#ffffff";
-  roundRect(cx - w / 2 - pad, top, w + pad * 2, h + pad * 2, Math.min(8, pad * 1.5));
-  if (LOGO.complete && LOGO.naturalWidth) g.drawImage(LOGO, cx - w / 2, top + pad, w, h);
+  ctx.fillStyle = c;
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // ---------- Scenery (built once into offscreen layers) ----------
@@ -395,17 +325,17 @@ function shelfUnit(x, y, w, h, rows, seed) {
 
 // The children's-area banners, waving across the ceiling.
 function ribbon(baseY, amp, thickness, phase, color) {
-  g.fillStyle = color;
-  g.beginPath();
+  ctx.fillStyle = color;
+  ctx.beginPath();
   for (let x = 0; x <= W; x += 10) {
     const y = baseY + Math.sin(x * 0.013 + phase) * amp;
-    if (x === 0) g.moveTo(x, y);
-    else g.lineTo(x, y);
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
   for (let x = W; x >= 0; x -= 10) {
-    g.lineTo(x, baseY + Math.sin(x * 0.013 + phase) * amp + thickness + Math.sin(x * 0.02 + phase) * 3);
+    ctx.lineTo(x, baseY + Math.sin(x * 0.013 + phase) * amp + thickness + Math.sin(x * 0.02 + phase) * 3);
   }
-  g.fill();
+  ctx.fill();
 }
 
 function makeLayer() {
@@ -419,7 +349,7 @@ const bgLayer = makeLayer(); // ceiling, wall, shelves, carpet
 const bannerLayer = makeLayer(); // banners, drawn in front of the falling items
 
 function buildScenery() {
-  g = bgLayer.getContext("2d");
+  ctx = bgLayer.getContext("2d");
   // ceiling
   R(0, 0, W, CEIL, "#2b2b30");
   R(0, 0, W, 10, "#e9e6df");
@@ -477,37 +407,37 @@ function buildScenery() {
   R(0, 0, W, FLOOR, "rgba(20, 14, 10, 0.18)");
 
   // banners on their own layer so items can drift out from behind them
-  g = bannerLayer.getContext("2d");
+  ctx = bannerLayer.getContext("2d");
   ribbon(40, 10, 9, 4.0, "#f1f0ec");
   ribbon(34, 14, 12, 1.4, RIBBON_YELLOW);
   ribbon(14, 8, 28, 2.6, RIBBON_BLUE);
   ribbon(18, 6, 34, 0.0, RIBBON_RED);
-  g = ctx;
+  ctx = screenCtx;
 }
 buildScenery();
 
 // ---------- Item art ----------
 function drawBookmark(x, y, w, h, color) {
-  g.fillStyle = color;
-  g.beginPath();
-  g.moveTo(x, y);
-  g.lineTo(x + w, y);
-  g.lineTo(x + w, y + h);
-  g.lineTo(x + w / 2, y + h - w * 0.45);
-  g.lineTo(x, y + h);
-  g.closePath();
-  g.fill();
-  g.lineWidth = 1.5;
-  g.strokeStyle = "#fff";
-  g.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + h);
+  ctx.lineTo(x + w / 2, y + h - w * 0.45);
+  ctx.lineTo(x, y + h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
   oval(x + w / 2, y + w * 0.4, w * 0.15, w * 0.15, "#fff");
 }
 
 function drawPage(w, h) {
   R(-w / 2, -h / 2, w, h, PAPER);
-  g.strokeStyle = "rgba(0, 0, 0, 0.25)";
-  g.lineWidth = 1;
-  g.strokeRect(-w / 2 + 0.5, -h / 2 + 0.5, w - 1, h - 1);
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.25)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-w / 2 + 0.5, -h / 2 + 0.5, w - 1, h - 1);
   for (let ly = -h / 2 + 6; ly < h / 2 - 3; ly += 4) R(-w / 2 + 4, ly, w - 8, 1, "#9a8f7c");
   poly("#d8cdb6", w / 2 - 6, -h / 2, w / 2, -h / 2 + 6, w / 2 - 6, -h / 2 + 6); // folded corner
 }
@@ -515,7 +445,7 @@ function drawPage(w, h) {
 function drawCard(w, h) {
   // soft glow so the rare card stands out
   oval(0, 0, w * 0.9, h * 1.1, "rgba(255, 246, 200, 0.35)");
-  g.fillStyle = CARD_BLUE;
+  ctx.fillStyle = CARD_BLUE;
   roundRect(-w / 2, -h / 2, w, h, 3);
   R(-w / 2, -h / 2 + 4, w, 4, "#42c4dc");
   R(-w / 2 + 4, -h / 2 + 11, 9, 7, "#fff");
@@ -525,17 +455,17 @@ function drawCard(w, h) {
 function drawCoffee(w, h) {
   poly("#f2efe9", -w / 2 + 2, -h / 2 + 6, w / 2 - 2, -h / 2 + 6, w / 2 - 4, h / 2, -w / 2 + 4, h / 2);
   R(-w / 2 + 3, -h / 2 + 12, w - 6, 7, "#8a5a36"); // sleeve
-  g.fillStyle = "#3b2a20";
+  ctx.fillStyle = "#3b2a20";
   roundRect(-w / 2, -h / 2 + 2, w, 5, 2); // lid
   // steam
-  g.strokeStyle = "rgba(255, 255, 255, 0.6)";
-  g.lineWidth = 1.5;
-  g.beginPath();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
   for (const sx of [-3, 3]) {
-    g.moveTo(sx, -h / 2);
-    g.quadraticCurveTo(sx + 4, -h / 2 - 5, sx, -h / 2 - 10);
+    ctx.moveTo(sx, -h / 2);
+    ctx.quadraticCurveTo(sx + 4, -h / 2 - 5, sx, -h / 2 - 10);
   }
-  g.stroke();
+  ctx.stroke();
 }
 
 function drawJuice(w, h) {
@@ -547,16 +477,16 @@ function drawJuice(w, h) {
 }
 
 function drawItem(it) {
-  g.save();
-  g.translate(it.x, it.y);
+  ctx.save();
+  ctx.translate(it.x, it.y);
   const wobble = it.type === "page" ? Math.sin(it.age * 0.004 + it.phase) * 0.4 : Math.sin(it.age * 0.005 + it.phase) * 0.12;
-  g.rotate(wobble);
+  ctx.rotate(wobble);
   if (it.type === "bookmark") drawBookmark(-it.w / 2, -it.h / 2, it.w, it.h, it.color);
   else if (it.type === "page") drawPage(it.w, it.h);
   else if (it.type === "card") drawCard(it.w, it.h);
   else if (it.type === "coffee") drawCoffee(it.w, it.h);
   else drawJuice(it.w, it.h);
-  g.restore();
+  ctx.restore();
 }
 
 // ---------- The book cart ----------
@@ -566,18 +496,18 @@ function drawCart() {
 
   // caught items peeking out of the bin
   for (const c of cartLoad) {
-    g.save();
-    g.translate(cart.x + c.dx, CART_Y + 2);
-    g.rotate(c.tilt);
+    ctx.save();
+    ctx.translate(cart.x + c.dx, CART_Y + 2);
+    ctx.rotate(c.tilt);
     if (c.type === "bookmark") drawBookmark(-7, -16, 14, 26, c.color);
     else if (c.type === "page") {
-      g.translate(0, -4);
+      ctx.translate(0, -4);
       drawPage(20, 26);
     } else {
-      g.translate(0, -4);
+      ctx.translate(0, -4);
       drawCard(32, 22);
     }
-    g.restore();
+    ctx.restore();
   }
 
   // metal posts
@@ -604,39 +534,39 @@ function drawCart() {
   for (const wx of [left + 14, left + CART_W - 14]) {
     oval(wx, CART_Y + CART_H + 3, 7, 7, "#2a2a2a");
     const a = cart.wheel / 7;
-    g.strokeStyle = "#888";
-    g.lineWidth = 1.5;
-    g.beginPath();
-    g.moveTo(wx - Math.cos(a) * 5, CART_Y + CART_H + 3 - Math.sin(a) * 5);
-    g.lineTo(wx + Math.cos(a) * 5, CART_Y + CART_H + 3 + Math.sin(a) * 5);
-    g.stroke();
+    ctx.strokeStyle = "#888";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(wx - Math.cos(a) * 5, CART_Y + CART_H + 3 - Math.sin(a) * 5);
+    ctx.lineTo(wx + Math.cos(a) * 5, CART_Y + CART_H + 3 + Math.sin(a) * 5);
+    ctx.stroke();
   }
 }
 
 // ---------- HUD & overlays ----------
 function drawHeart(x, y, s, filled) {
-  g.beginPath();
-  g.moveTo(x, y + s * 0.3);
-  g.bezierCurveTo(x, y, x - s * 0.5, y, x - s * 0.5, y + s * 0.3);
-  g.bezierCurveTo(x - s * 0.5, y + s * 0.6, x, y + s * 0.8, x, y + s);
-  g.bezierCurveTo(x, y + s * 0.8, x + s * 0.5, y + s * 0.6, x + s * 0.5, y + s * 0.3);
-  g.bezierCurveTo(x + s * 0.5, y, x, y, x, y + s * 0.3);
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.3);
+  ctx.bezierCurveTo(x, y, x - s * 0.5, y, x - s * 0.5, y + s * 0.3);
+  ctx.bezierCurveTo(x - s * 0.5, y + s * 0.6, x, y + s * 0.8, x, y + s);
+  ctx.bezierCurveTo(x, y + s * 0.8, x + s * 0.5, y + s * 0.6, x + s * 0.5, y + s * 0.3);
+  ctx.bezierCurveTo(x + s * 0.5, y, x, y, x, y + s * 0.3);
   if (filled) {
-    g.fillStyle = "#e0475b";
-    g.fill();
+    ctx.fillStyle = "#e0475b";
+    ctx.fill();
   } else {
-    g.strokeStyle = "#9a8f7c";
-    g.lineWidth = 1.5;
-    g.stroke();
+    ctx.strokeStyle = "#9a8f7c";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
   }
 }
 
 function drawHUD() {
-  g.fillStyle = "rgba(20, 14, 10, 0.7)";
+  ctx.fillStyle = "rgba(20, 14, 10, 0.7)";
   roundRect(12, 12, 24 + MAX_HEARTS * 26, 32, 8);
   for (let i = 0; i < MAX_HEARTS; i++) drawHeart(32 + i * 26, 19, 18, i < hearts);
 
-  g.fillStyle = "rgba(20, 14, 10, 0.7)";
+  ctx.fillStyle = "rgba(20, 14, 10, 0.7)";
   roundRect(W - 312, 12, 300, 32, 8);
   const mult = multiplier();
   text("×" + mult, W - 296, 34, "bold 16px Georgia, serif", mult > 1 ? GOLD : "#9a8f7c", "left");
@@ -645,18 +575,18 @@ function drawHUD() {
 }
 
 function overlay(title, sub, extra) {
-  g.fillStyle = "rgba(26, 18, 12, 0.45)";
-  g.fillRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(26, 18, 12, 0.45)";
+  ctx.fillRect(0, 0, W, H);
   const widths = [["bold 34px Georgia, serif", title], ["18px Georgia, serif", sub], ["15px Georgia, serif", extra || ""]].map(
-    ([font, t]) => ((g.font = font), g.measureText(t).width)
+    ([font, t]) => ((ctx.font = font), ctx.measureText(t).width)
   );
   const pw = Math.max(...widths) + 56,
     ph = (extra ? 112 : 88) + 50; // + room for the logo
-  g.fillStyle = "rgba(26, 18, 12, 0.92)";
+  ctx.fillStyle = "rgba(26, 18, 12, 0.92)";
   roundRect(W / 2 - pw / 2, H / 2 - 104, pw, ph, 12);
-  g.strokeStyle = GOLD;
-  g.lineWidth = 1.5;
-  g.stroke();
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
   drawLogo(W / 2, H / 2 - 96, 30);
   text(title, W / 2, H / 2 - 14, "bold 34px Georgia, serif", PAPER);
   text(sub, W / 2, H / 2 + 18, "18px Georgia, serif", GOLD);
@@ -664,27 +594,27 @@ function overlay(title, sub, extra) {
 }
 
 function draw() {
-  g = ctx;
-  g.save();
-  if (shake > 0) g.translate((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
-  g.drawImage(bgLayer, 0, 0);
+  ctx = screenCtx;
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+  ctx.drawImage(bgLayer, 0, 0);
   for (const it of items) drawItem(it);
-  g.drawImage(bannerLayer, 0, 0);
+  ctx.drawImage(bannerLayer, 0, 0);
   drawCart();
   for (const p of particles) {
-    g.globalAlpha = Math.max(0, p.life / 700);
+    ctx.globalAlpha = Math.max(0, p.life / 700);
     R(p.x, p.y, p.size, p.size * 0.75, p.color);
   }
   for (const p of popups) {
-    g.globalAlpha = Math.max(0, Math.min(1, p.life / 400));
-    g.font = "bold 16px Georgia, serif";
-    const tw = g.measureText(p.text).width;
-    g.fillStyle = "rgba(20, 14, 10, 0.8)";
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 400));
+    ctx.font = "bold 16px Georgia, serif";
+    const tw = ctx.measureText(p.text).width;
+    ctx.fillStyle = "rgba(20, 14, 10, 0.8)";
     roundRect(p.x - tw / 2 - 8, p.y - 17, tw + 16, 24, 7);
     text(p.text, p.x, p.y, "bold 16px Georgia, serif", p.color);
   }
-  g.globalAlpha = 1;
-  g.restore();
+  ctx.globalAlpha = 1;
+  ctx.restore();
 
   drawHUD();
   if (state === "ready") overlay("Bookmark Catch", "Press Enter or tap to start", "Catch bookmarks, dodge the drinks!");
@@ -747,11 +677,3 @@ canvas.addEventListener("pointermove", (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "playing") state = "paused";
 });
-
-// ---------- Storage (guarded: can throw in private mode) ----------
-function safeGet(k) {
-  try { return localStorage.getItem(k); } catch { return null; }
-}
-function safeSet(k, v) {
-  try { localStorage.setItem(k, v); } catch {}
-}

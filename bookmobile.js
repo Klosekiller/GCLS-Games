@@ -23,10 +23,6 @@ const FINISH_BONUS = 50;
 const LEVELS = [[6, 4], [7, 4], [7, 5], [8, 5], [9, 5], [9, 6], [10, 6]];
 
 // ---------- Palette ----------
-const PAPER = "#f3ead7";
-const GOLD = "#d4a64a";
-const MAPLE = "#d7a35e";
-const NAVY = "#34404f";
 const RED = "#c92a2f",
   BLUE = "#3d4c8c",
   YELLOW = "#e8b52a";
@@ -477,29 +473,7 @@ function confetti(c, r) {
 }
 
 // ---------- Sound (Web Audio API, no files needed) ----------
-let audio = null;
-let muted = safeGet("bookmobile-muted") === "1";
-
-function tone(freqStart, freqEnd, duration, type = "square", volume = 0.12, delay = 0) {
-  if (muted) return;
-  try {
-    audio ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audio.state === "suspended") audio.resume();
-    const t = audio.currentTime + delay;
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freqStart, t);
-    osc.frequency.exponentialRampToValueAtTime(freqEnd, t + duration);
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.connect(gain).connect(audio.destination);
-    osc.start(t);
-    osc.stop(t + duration);
-  } catch {
-    // no audio support: play silently
-  }
-}
+setupSound("bookmobile");
 
 const sfx = {
   horn: () => {
@@ -520,19 +494,6 @@ const sfx = {
     tone(784, 784, 0.12, "triangle", 0.12, 0.08);
   },
 };
-
-const muteBtn = document.getElementById("mute");
-function updateMuteLabel() {
-  if (muteBtn) muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
-}
-function toggleMute() {
-  muted = !muted;
-  safeSet("bookmobile-muted", muted ? "1" : "0");
-  updateMuteLabel();
-  if (!muted) tone(660, 660, 0.08, "sine", 0.12);
-}
-updateMuteLabel();
-if (muteBtn) muteBtn.addEventListener("click", toggleMute);
 
 // ---------- Layout (wide screens vs. phones) ----------
 let portrait = false;
@@ -564,32 +525,7 @@ function fitMap() {
   oy = MAP.y + Math.floor((MAP.h - cell * rows) / 2);
 }
 
-// ---------- Library logo ----------
-const LOGO = new Image();
-LOGO.src = "logo-icon.svg";
-const LOGO_RATIO = 122 / 182;
-function drawLogo(cx, top, h) {
-  const w = h * LOGO_RATIO,
-    pad = h * 0.18;
-  ctx.fillStyle = "#ffffff";
-  roundRect(cx - w / 2 - pad, top, w + pad * 2, h + pad * 2, Math.min(8, pad * 1.5));
-  if (LOGO.complete && LOGO.naturalWidth) ctx.drawImage(LOGO, cx - w / 2, top + pad, w, h);
-}
-
 // ---------- Drawing helpers ----------
-function R(x, y, w, h, c) {
-  ctx.fillStyle = c;
-  ctx.fillRect(x, y, w, h);
-}
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.fill();
-}
 function circle(x, y, r, c) {
   ctx.fillStyle = c;
   ctx.beginPath();
@@ -609,12 +545,6 @@ function poly(c, ...pts) {
   for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
   ctx.closePath();
   ctx.fill();
-}
-function text(str, x, y, font, color, align = "center") {
-  ctx.font = font;
-  ctx.fillStyle = color;
-  ctx.textAlign = align;
-  ctx.fillText(str, x, y);
 }
 function fitFont(str, maxW, size, weight = "bold", family = "Georgia, serif") {
   let s = size;
@@ -1197,14 +1127,6 @@ window.addEventListener("resize", () => {
     if ((window.innerWidth < 700) !== portrait) layout();
   }, 150);
 });
-
-// ---------- Storage (guarded: can throw in private mode) ----------
-function safeGet(k) {
-  try { return localStorage.getItem(k); } catch { return null; }
-}
-function safeSet(k, v) {
-  try { localStorage.setItem(k, v); } catch {}
-}
 
 // ---------- Go ----------
 layout();

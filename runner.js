@@ -23,9 +23,6 @@ const FLYER_MIN_SPEED = 0.45; // flying books start appearing once the run has s
 const FLYER_CHANCE = 0.3;
 
 // ---------- Palette ----------
-const PAPER = "#f3ead7";
-const GOLD = "#d4a64a";
-const MAPLE = "#d7a35e";
 const SPINES = ["#8c2f39", "#2f5d62", "#b5893b", "#3b4a7a", "#6b3e75", "#a0522d", "#4f7942", "#c2b280"];
 const BRIGHT = ["#d94b4b", "#4b79d9", "#f2c14e", "#5cb85c", "#9b59b6", "#f39c4a", "#e8e8e8", "#3aa6a6"];
 const COLORFUL = BRIGHT.filter((c) => c !== "#e8e8e8"); // for decorations on pale backgrounds
@@ -46,32 +43,9 @@ let duckHeld = false; // is the duck key / touch held?
 let best = Number(safeGet("runner-best")) || 0;
 
 // ---------- Sound (generated with the Web Audio API, no files needed) ----------
-let audio = null; // created on first use, which is always after a key press or tap
-let muted = safeGet("runner-muted") === "1";
+setupSound("runner");
 let lastMarkTime = -1e9,
   markCombo = 0;
-
-// Play a short tone that slides from one pitch to another and fades out.
-function tone(freqStart, freqEnd, duration, type = "square", volume = 0.12, delay = 0) {
-  if (muted) return;
-  try {
-    audio ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audio.state === "suspended") audio.resume();
-    const t = audio.currentTime + delay;
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freqStart, t);
-    osc.frequency.exponentialRampToValueAtTime(freqEnd, t + duration);
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.connect(gain).connect(audio.destination);
-    osc.start(t);
-    osc.stop(t + duration);
-  } catch {
-    // no audio support: play silently
-  }
-}
 
 const sfx = {
   jump: () => tone(300, 620, 0.14),
@@ -95,11 +69,6 @@ const sfx = {
   },
 };
 
-function toggleMute() {
-  muted = !muted;
-  safeSet("runner-muted", muted ? "1" : "0");
-  if (!muted) tone(660, 660, 0.08, "sine", 0.12); // a little blip so you know it's on
-}
 const MUTE_BTN = { x: 12, y: 12, w: 120, h: 32 };
 
 function reset() {
@@ -359,29 +328,12 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-// ---------- Library logo ----------
-// Drawn on a white badge so the brand colors stay true on any background.
-const LOGO = new Image();
-LOGO.src = "logo-icon.svg";
-const LOGO_RATIO = 122 / 182; // width / height of the icon
-function drawLogo(cx, top, h) {
-  const w = h * LOGO_RATIO,
-    pad = h * 0.18;
-  ctx.fillStyle = "#ffffff";
-  roundRect(cx - w / 2 - pad, top, w + pad * 2, h + pad * 2, Math.min(8, pad * 1.5));
-  if (LOGO.complete && LOGO.naturalWidth) ctx.drawImage(LOGO, cx - w / 2, top + pad, w, h);
-}
-
 // ---------- Drawing helpers ----------
 // Deterministic pseudo-random in [0,1) so scenery looks the same each time it scrolls past.
 function hash(a, b) {
   let h = (Math.imul(a, 374761393) + Math.imul(b, 668265263)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-function R(x, y, w, h, c) {
-  ctx.fillStyle = c;
-  ctx.fillRect(x, y, w, h);
 }
 function poly(c, ...pts) {
   ctx.fillStyle = c;
@@ -401,15 +353,6 @@ function label(text, x, y, size, color, family = "system-ui, sans-serif") {
   ctx.fillStyle = color;
   ctx.textAlign = "center";
   ctx.fillText(text, x, y);
-}
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.fill();
 }
 
 // Floors. Patterns move at full ground speed so they read as the surface you run on.
@@ -1136,11 +1079,3 @@ canvas.addEventListener("pointerleave", pointerRelease);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "running") state = "paused";
 });
-
-// ---------- Storage (guarded: can throw in private mode) ----------
-function safeGet(k) {
-  try { return localStorage.getItem(k); } catch { return null; }
-}
-function safeSet(k, v) {
-  try { localStorage.setItem(k, v); } catch {}
-}

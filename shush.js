@@ -32,10 +32,6 @@ const TYPES = {
 };
 
 // ---------- Palette (from the library) ----------
-const PAPER = "#f3ead7";
-const GOLD = "#d4a64a";
-const MAPLE = "#d7a35e";
-const NAVY = "#34404f";
 const RIBBON_RED = "#c92a2f",
   RIBBON_BLUE = "#3d4c8c",
   RIBBON_YELLOW = "#e8b52a";
@@ -278,40 +274,13 @@ function updateFx(dt) {
 }
 
 // ---------- Sound (Web Audio API, no files needed) ----------
-let audio = null;
-let muted = safeGet("shush-muted") === "1";
-
-function ac() {
-  audio ??= new (window.AudioContext || window.webkitAudioContext)();
-  if (audio.state === "suspended") audio.resume();
-  return audio;
-}
-
-function tone(freqStart, freqEnd, duration, type = "sine", volume = 0.08, delay = 0) {
-  if (muted) return;
-  try {
-    const a = ac();
-    const t = a.currentTime + delay;
-    const osc = a.createOscillator();
-    const gain = a.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freqStart, t);
-    osc.frequency.exponentialRampToValueAtTime(freqEnd, t + duration);
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.connect(gain).connect(a.destination);
-    osc.start(t);
-    osc.stop(t + duration);
-  } catch {
-    // no audio support: play silently
-  }
-}
+setupSound("shush", { type: "sine", volume: 0.08, blip: 0.1 });
 
 // Filtered white noise: a soft "shhh", or a crinkle.
 function hiss(duration, volume, freq, q = 0.8, delay = 0) {
   if (muted) return;
   try {
-    const a = ac();
+    const a = getAudio();
     const t = a.currentTime + delay;
     const len = Math.ceil(a.sampleRate * duration);
     const buf = a.createBuffer(1, len, a.sampleRate);
@@ -363,41 +332,11 @@ const sfx = {
   },
 };
 
-const muteBtn = document.getElementById("mute");
-function updateMuteLabel() {
-  if (muteBtn) muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
-}
-function toggleMute() {
-  muted = !muted;
-  safeSet("shush-muted", muted ? "1" : "0");
-  updateMuteLabel();
-  if (!muted) tone(660, 660, 0.08, "sine", 0.1);
-}
-updateMuteLabel();
-if (muteBtn) muteBtn.addEventListener("click", toggleMute);
-
-// ---------- Library logo ----------
-// Drawn on a white badge so the brand colors stay true on any background.
-const LOGO = new Image();
-LOGO.src = "logo-icon.svg";
-const LOGO_RATIO = 122 / 182; // width / height of the icon
-function drawLogo(cx, top, h) {
-  const w = h * LOGO_RATIO,
-    pad = h * 0.18;
-  ctx.fillStyle = "#ffffff";
-  roundRect(cx - w / 2 - pad, top, w + pad * 2, h + pad * 2, Math.min(8, pad * 1.5));
-  if (LOGO.complete && LOGO.naturalWidth) ctx.drawImage(LOGO, cx - w / 2, top + pad, w, h);
-}
-
 // ---------- Drawing helpers ----------
 function hash(a, b) {
   let h = (Math.imul(a, 374761393) + Math.imul(b, 668265263)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-function R(x, y, w, h, c) {
-  ctx.fillStyle = c;
-  ctx.fillRect(x, y, w, h);
 }
 function oval(x, y, rx, ry, c) {
   ctx.fillStyle = c;
@@ -412,21 +351,6 @@ function poly(c, ...pts) {
   for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
   ctx.closePath();
   ctx.fill();
-}
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.fill();
-}
-function text(str, x, y, font, color, align = "center") {
-  ctx.font = font;
-  ctx.fillStyle = color;
-  ctx.textAlign = align;
-  ctx.fillText(str, x, y);
 }
 function line(x1, y1, x2, y2, color, width) {
   ctx.strokeStyle = color;
@@ -919,11 +843,3 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "playing") state = "paused";
 });
-
-// ---------- Storage (guarded: can throw in private mode) ----------
-function safeGet(k) {
-  try { return localStorage.getItem(k); } catch { return null; }
-}
-function safeSet(k, v) {
-  try { localStorage.setItem(k, v); } catch {}
-}
