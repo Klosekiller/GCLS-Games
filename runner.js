@@ -3351,20 +3351,55 @@ function drawPlayer() {
   const fx = px + pw / 2,
     fy = py + ph + 6; // the feet: running leans and squashes around this point
   ctx.save();
-  if (pose) {
+  const slipping = slipTime > 0;
+  if (pose && !slipping) {
     if (state === "running") speedLines(px, by, ph, runTime);
     runTransform(pose, fx, fy); // lean, squash on landing, stretch in the air
   }
-  if (slipTime > 0) {
-    // slipping after a puddle: wobble on its feet (settling down as it dries), with drips falling
-    const k = slipTime / SLIP_MS; // 1 → 0 over the slip
+  if (slipping) {
+    // slipping after a puddle: tipped back with its feet kicking out in front, wobbling as it
+    // fights to keep its balance (calming down as it dries off), sliding along with drips falling
+    const k = slipTime / SLIP_MS, // 1 → 0 over the slip
+      t = runTime;
+    const tilt = -(0.2 + 0.25 * k) + Math.sin(t * 0.022) * (0.05 + 0.08 * k);
     ctx.save();
-    ctx.translate(px + pw / 2, py + ph + 4);
-    ctx.rotate(Math.sin(runTime * 0.05) * (0.06 + 0.12 * k));
-    ctx.translate(-(px + pw / 2), -(py + ph + 4));
-    drawCharacter(CHARACTERS[charIndex], px, by, pw, ph, look);
+    ctx.translate(fx, fy);
+    ctx.rotate(tilt);
+    ctx.translate(-fx, -fy);
+    const kick = 0.45 + 0.55 * k; // how wildly the legs go
+    const flailLook = duck
+      ? look
+      : {
+          ...look,
+          legs: null,
+          flail: [
+            -0.9 + Math.sin(t * 0.047) * 1.0 * kick,
+            -0.7 + Math.sin(t * 0.061 + 2.3) * 1.0 * kick,
+          ],
+        };
+    drawCharacter(CHARACTERS[charIndex], px, py - 3, pw, ph, flailLook);
     ctx.restore();
-    ctx.restore(); // (the run lean / squash)
+    ctx.restore(); // (the outer save)
+    // spray streaking out behind the sliding feet
+    const floorY = player.y + player.h + 4;
+    ctx.strokeStyle = `rgba(127, 184, 224, ${0.5 + 0.4 * k})`;
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const len = 10 + 8 * k + Math.sin(t * 0.03 + i * 2) * 4;
+      ctx.moveTo(px + 2 - i * 5, floorY - i * 3);
+      ctx.lineTo(px + 2 - i * 5 - len, floorY - i * 3 - 1);
+    }
+    ctx.stroke();
+    ctx.lineCap = "butt";
+    // a few droplets kicked up by the feet
+    for (let i = 0; i < 3; i++) {
+      const p = ((t / 380 + i / 3) % 1),
+        dx = px + pw * 0.6 + p * 14 - i * 6,
+        dy = floorY - 4 - Math.sin(p * Math.PI) * 12;
+      oval(dx, dy, 1.6, 1.6, `rgba(127, 184, 224, ${0.9 * (1 - p)})`);
+    }
     const drip = (runTime % 600) / 600; // drips keep falling for the whole slip
     oval(
       px + 6,
@@ -3476,6 +3511,7 @@ function drawCharacter(
     flutter = 0,
     legs = null, // running: where each leg is, across from the left edge (they scissor past each other)
     accessory = 0, // hats and glasses lifted by a jump (see updateAccessories)
+    flail = null, // slipping: each leg's angle from straight down (negative kicks it forward)
   } = {},
 ) {
   // legs. While running, the body bounces up by `bob`, so a planted leg stretches to keep its
@@ -3484,6 +3520,16 @@ function drawCharacter(
   if (duck) {
     ctx.fillRect(px + 8 + step, py + ph, 6, 2);
     ctx.fillRect(px + pw - 16 - step, py + ph, 6, 2);
+  } else if (flail) {
+    // kicking wildly from the hips
+    flail.forEach((a, i) => {
+      ctx.save();
+      ctx.translate(px + (i ? pw - 11.5 : 10.5), py + ph - 2);
+      ctx.rotate(a);
+      ctx.fillRect(-2.5, 0, 5, 11);
+      ctx.fillRect(-2.5, 9, 7, 3); // a foot, so the kicking reads
+      ctx.restore();
+    });
   } else {
     const [l1, l2] = legs || [8 + step, pw - 14 - step];
     ctx.fillRect(px + l1, py + ph - 2, 5, 8 + bob - lift[0]);
