@@ -168,6 +168,7 @@ const sfx = {
     tone(90, 30, 0.3, "square", 0.12, 0.05);
     tone(520, 110, 0.6, "triangle", 0.07, 0.2); // a falling "wheee" as the book tumbles away
   },
+  count: () => tone(440, 440, 0.1, "triangle", 0.12), // each number of the 3, 2, 1
   start: () => {
     tone(523, 523, 0.08, "triangle", 0.12);
     tone(784, 784, 0.12, "triangle", 0.12, 0.08);
@@ -389,7 +390,7 @@ function reset() {
   accVel = 0;
 }
 reset();
-state = "ready"; // ready | running | paused | over
+state = "ready"; // ready | countdown | running | paused | over (+ howto, chars)
 
 // ---------- Player ----------
 let jumpCount = 0; // goes up by one with every jump that actually happens
@@ -1019,6 +1020,9 @@ const OVER_FADE_MS = 300; // …then fade the game-over panel in over this long
 const OVER_GRACE_MS = DEATH_MS + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
 const selected = { ready: 0, paused: 0, howto: 0, over: 0, chars: 0 }; // highlighted button on each screen
+// Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen's
+// highlight stays on Start except while another button is hovered.
+let keyNav = false;
 
 // Keep the most pages collected in one run. Returns true if this run beat it.
 function saveBest() {
@@ -1059,9 +1063,8 @@ function buttonCol(y, ...items) {
 const MENU = {
   ready: [
     ["start", "Start"],
-    ["chars", "Characters"],
     ["howto", "How to play"],
-  ],
+  ], // (+ the character card under them, added in makeButtons)
   chars: [["done", "Done"]],
   paused: [
     ["resume", "Resume"],
@@ -1088,6 +1091,12 @@ function makeButtons() {
       ...items,
     );
   }
+  // The start screen's Characters option is a card with the chosen character's portrait,
+  // set apart under the main buttons. It's still a button, so the arrow keys reach it.
+  const card = tall()
+    ? { w: 240, h: 52, y: 470 }
+    : { w: 260, h: 46, y: 232 };
+  BUTTONS.ready.push({ id: "chars", label: "Characters", card: true, x: W / 2 - card.w / 2, ...card });
 }
 const isMenu = () => state in BUTTONS;
 // Is the start screen (or a screen opened from it) showing? Then there's no score bar.
@@ -1096,10 +1105,81 @@ const onStartScreen = () =>
   state === "chars" ||
   (state === "howto" && howtoFrom === "ready");
 
+// Starting a run (Start, or Play again): the screen fades to black, the fresh run fades in
+// with the book standing ready, a 3, 2, 1 countdown, then "Go!" and off it runs.
+const FADE_OUT_MS = 450, // fading to black
+  FADE_IN_MS = 400, // the run fading in (the countdown's first moments)
+  COUNT_START_MS = 300, // when the "3" appears
+  COUNT_STEP_MS = 750, // how long each number stays
+  GO_MS = 600; // how long "Go!" shows once running
+let fadeOut = null, // ms into the fade to black, or null when not fading
+  countTime = 0, // ms into the countdown
+  countShown = 0; // the number last shown (so each one ticks once)
 function startRun() {
+  if (fadeOut !== null) return; // already on its way
+  fadeOut = 0;
+}
+// Called when the screen is fully black: set up the run and begin the countdown.
+function beginCountdown() {
+  fadeOut = null;
   reset(); // a fresh run (the start screen's animation clock kept ticking)
-  state = "running";
-  sfx.start();
+  state = "countdown";
+  countTime = 0;
+  countShown = 0;
+}
+function updateCountdown(dt) {
+  countTime += dt;
+  const n = 3 - Math.floor((countTime - COUNT_START_MS) / COUNT_STEP_MS);
+  if (countTime >= COUNT_START_MS && n >= 1 && n !== countShown) {
+    countShown = n;
+    sfx.count();
+  }
+  if (countTime >= COUNT_START_MS + 3 * COUNT_STEP_MS) {
+    state = "running";
+    sfx.start();
+  }
+}
+// Drawn over everything: the fade to black, the fade back in, the numbers and "Go!".
+function drawTransition() {
+  if (fadeOut !== null) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, fadeOut / FADE_OUT_MS)})`;
+    ctx.fillRect(0, 0, W, H);
+    return;
+  }
+  const cy = WORLD_Y + 140; // the middle of the room
+  if (state === "countdown") {
+    const fadeIn = 1 - countTime / FADE_IN_MS;
+    if (fadeIn > 0) {
+      ctx.fillStyle = `rgba(0, 0, 0, ${fadeIn})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (countTime < COUNT_START_MS) return;
+    const into = (countTime - COUNT_START_MS) % COUNT_STEP_MS,
+      p = into / COUNT_STEP_MS; // 0 → 1 through this number
+    // each number pops in big, settles, then fades as the next one comes
+    const scale = 1 + Math.max(0, 0.5 - p * 2.5),
+      alpha = p < 0.75 ? 1 : 1 - (p - 0.75) / 0.25;
+    countNumber(String(3 - Math.floor((countTime - COUNT_START_MS) / COUNT_STEP_MS)), cy, scale, alpha);
+  } else if (state === "running" && runTime < GO_MS) {
+    const p = runTime / GO_MS;
+    countNumber("Go!", cy, 1 + p * 0.4, 1 - p);
+  }
+}
+function countNumber(text, cy, scale, alpha) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, alpha);
+  ctx.translate(W / 2, cy);
+  ctx.scale(scale, scale);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "bold 72px Georgia, serif";
+  ctx.lineWidth = 8;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(20, 14, 10, 0.85)";
+  ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = text === "Go!" ? GOLD : PAPER;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
 }
 
 function pause() {
@@ -1110,6 +1190,7 @@ function pause() {
 
 function choose(id) {
   if (state === "over" && overTime < OVER_GRACE_MS) return; // let the crash and the fade finish
+  if (fadeOut !== null) return; // a run is starting: the buttons are done
   if (id === "start" || id === "again") startRun();
   else if (id === "menu") {
     reset();
@@ -1126,6 +1207,7 @@ function choose(id) {
   } else if (id === "back") state = howtoFrom;
   else if (id === "chars") state = "chars";
   else if (id === "done") state = "ready";
+  if (state === "ready" && !keyNav) selected.ready = 0; // back on the start screen: Start is highlighted
 }
 
 // What Esc does on each menu screen.
@@ -1167,7 +1249,7 @@ function applyLayout(name) {
   makeButtons();
 }
 function checkLayout() {
-  if (state === "running") return; // locked during a run
+  if (state === "running" || state === "countdown" || fadeOut !== null) return; // locked during a run
   const want = wantedLayout();
   if (want !== layout) applyLayout(want);
 }
@@ -1178,7 +1260,12 @@ function frame(now) {
   updateMusic();
   const dt = Math.min(now - last, 50); // clamp so tab-switching doesn't teleport things
   last = now;
+  if (fadeOut !== null) {
+    fadeOut += dt; // (the screen underneath keeps animating as it fades)
+    if (fadeOut >= FADE_OUT_MS) beginCountdown();
+  }
   if (state === "running") update(dt);
+  else if (state === "countdown") updateCountdown(dt);
   else if (state === "over") {
     updateTumble(dt);
     if (smash) smash.t += dt; // a final smash keeps animating (the book lies there, seeing stars)
@@ -1190,6 +1277,7 @@ function frame(now) {
     distance += START_DRIFT * dt;
   }
   draw();
+  drawTransition();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -1871,6 +1959,7 @@ function draw() {
   drawProfile();
 
   if (onStartScreen()) {
+    drawBestBadge();
     if (state === "howto") drawHowTo();
     if (state === "chars") drawCharacters();
     return; // the start screen has no score bar
@@ -1950,12 +2039,38 @@ function drawButton(b, on, scale = 1) {
 function drawButtons() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
+    if (b.card) return drawCharacterCard(b, on);
     drawButton(
       b,
       on,
       on && state === "ready" ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1,
     );
   });
+}
+
+// The start screen's character card: portrait, "Playing as" and the name, and "Change ›".
+// Quieter than the main buttons (a dark panel, not a filled button) until it's selected.
+function drawCharacterCard(b, on) {
+  ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : "rgba(20, 14, 10, 0.7)";
+  roundRect(b.x, b.y, b.w, b.h, b.h / 2);
+  ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
+  ctx.lineWidth = on ? 2 : 1.5;
+  ctx.stroke();
+  const r = b.h / 2 - 6,
+    cy = b.y + b.h / 2;
+  drawAvatar(b.x + 6 + r, cy, r);
+  const tx = b.x + 12 + r * 2 + 10;
+  ctx.textAlign = "left";
+  ctx.fillStyle = GOLD;
+  ctx.font = "11px Georgia, serif";
+  ctx.fillText("Playing as", tx, cy - 5);
+  ctx.fillStyle = PAPER;
+  ctx.font = "bold 16px Georgia, serif";
+  ctx.fillText(CHARACTERS[charIndex].name, tx, cy + 13);
+  ctx.textAlign = "right";
+  ctx.fillStyle = on ? "#fff" : "#c9bc9f";
+  ctx.font = `${on ? "bold " : ""}13px Georgia, serif`;
+  ctx.fillText("Change ›", b.x + b.w - 18, cy + 5);
 }
 
 function hint(text, y) {
@@ -2189,6 +2304,25 @@ function drawProfile() {
   ctx.font = "bold 15px Georgia, serif";
   ctx.fillText(CHARACTERS[charIndex].name, b.x + 12, b.y + 21);
   drawAvatar(b.x + b.w - 19, b.y + 16, 13);
+}
+
+// On the start screen: the best score, in a badge just left of the profile (once there is one).
+function drawBestBadge() {
+  if (best <= 0) return;
+  const lead = "Best: ",
+    rest = `${best} pages`;
+  ctx.font = "bold 14px Georgia, serif";
+  const leadW = ctx.measureText(lead).width,
+    w = leadW + ctx.measureText(rest).width + 24,
+    x = PROFILE.x - 8 - w,
+    y = PROFILE.y;
+  ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
+  roundRect(x, y, w, PROFILE.h, 8);
+  ctx.textAlign = "left";
+  ctx.fillStyle = GOLD;
+  ctx.fillText(lead, x + 12, y + 21);
+  ctx.fillStyle = PAPER;
+  ctx.fillText(rest, x + 12 + leadW, y + 21);
 }
 
 function drawAvatar(cx, cy, r) {
@@ -3334,22 +3468,13 @@ function drawStartScreen() {
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
   ctx.shadowBlur = 6;
   ctx.textAlign = "center";
+  // (who you're playing as is on the character card, and the best score is up by the profile)
   ctx.fillStyle = PAPER;
   ctx.font = "13px Georgia, serif";
   ctx.fillText(
-    tall()
-      ? "Tap a button to choose"
-      : "← → to choose · Enter or Space to select",
+    tall() ? "Tap a button to choose" : "← → to choose · Enter or Space to select",
     tx,
-    tall() ? 538 : 244,
-  );
-  ctx.fillStyle = GOLD;
-  ctx.font = "bold 15px Georgia, serif";
-  const who = "Playing as " + CHARACTERS[charIndex].name;
-  ctx.fillText(
-    best > 0 ? `${who} · Your best: ${best} pages` : who,
-    tx,
-    tall() ? 566 : 268,
+    tall() ? 560 : 302,
   );
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
@@ -3433,6 +3558,7 @@ document.addEventListener("keydown", (e) => {
     }
     if (moveKeys.includes(e.code)) {
       e.preventDefault();
+      keyNav = true;
       const step = back ? -1 : 1;
       selected[state] =
         (selected[state] + step + buttons.length) % buttons.length;
@@ -3447,6 +3573,12 @@ document.addEventListener("keydown", (e) => {
     } else if (e.code === "KeyM") {
       toggleMute();
     }
+    return;
+  }
+  // Counting down: wait for "Go!" (M still mutes)
+  if (state === "countdown") {
+    if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault(); // (don't scroll the page)
+    if (e.code === "KeyM") toggleMute();
     return;
   }
   // Running
@@ -3520,6 +3652,7 @@ canvas.addEventListener("pointerdown", (e) => {
   const [cx, cy] = toCanvas(e);
   if (inside(cx, cy, MUTE_BTN)) return toggleMute();
   if (isMenu()) {
+    keyNav = false;
     if (state === "ready" && inside(cx, cy, PROFILE)) return choose("chars"); // tap your profile to change it
     if (state === "chars") {
       const c = CHARACTERS.findIndex((_, i) => inside(cx, cy, cardRect(i)));
@@ -3560,9 +3693,15 @@ canvas.addEventListener("pointermove", (e) => {
     return;
   }
   if (!isMenu()) return;
+  keyNav = false;
   const [cx, cy] = toCanvas(e);
   const i = BUTTONS[state].findIndex((b) => inside(cx, cy, b));
   if (i >= 0) selected[state] = i;
+  else if (state === "ready") selected.ready = 0; // off the buttons: back to Start
+});
+// The mouse leaving the game also hands the start screen's highlight back to Start.
+canvas.addEventListener("pointerleave", () => {
+  if (state === "ready" && !keyNav) selected.ready = 0;
 });
 function startDuck() {
   if (!duckHeld && state === "running") sfx.duck();
