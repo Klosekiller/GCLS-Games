@@ -1482,11 +1482,11 @@ function buttonRow(y, ...items) {
     h: 42,
   }));
 }
-// A column of buttons, centered (the tall layout, on phones held upright).
+// A column of buttons, centered (the tall layout, on phones held upright): big, easy to tap,
+// with room between them.
+const COL_BTN = { w: 270, h: 54, gap: 18 };
 function buttonCol(y, ...items) {
-  const w = 240,
-    h = 46,
-    gap = 12;
+  const { w, h, gap } = COL_BTN;
   return items.map(([id, label], i) => ({
     id,
     label,
@@ -1533,7 +1533,7 @@ function makeButtons() {
   // The start screen's Characters option is a card with the chosen character's portrait,
   // set apart under the main buttons. It's still a button, so the arrow keys reach it.
   const card = tall()
-    ? { w: 240, h: 52, y: 470 }
+    ? { w: COL_BTN.w, h: 58, y: BUTTON_Y.tall.ready + 2 * (COL_BTN.h + COL_BTN.gap) + 6 } // (just under the two buttons)
     : { w: 260, h: 46, y: 232 };
   BUTTONS.ready.push({ id: "chars", label: "Characters", card: true, x: W / 2 - card.w / 2, ...card });
 }
@@ -1656,15 +1656,15 @@ function irisCenter() {
     y = tumble.y;
   }
   const cx = Math.min(W - 40, Math.max(40, x)),
-    cy = Math.min(H - 40, Math.max(40, WORLD_Y + y));
-  const full = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) + 10; // past the farthest corner
+    cy = Math.min(H + TOP - 40, Math.max(40 - TOP, WORLD_Y + y));
+  const full = Math.hypot(Math.max(cx, W - cx), Math.max(cy + TOP, H + TOP - cy)) + 10; // past the farthest corner
   return [cx, cy, full];
 }
 // Black everywhere except a circle of radius r around (cx, cy).
 function drawIris(cx, cy, r) {
   ctx.fillStyle = "#000";
   ctx.beginPath();
-  ctx.rect(0, 0, W, H);
+  ctx.rect(0, -TOP, W, H + 2 * TOP); // (the whole screen)
   if (r > 0) {
     ctx.moveTo(cx + r, cy);
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -1732,32 +1732,62 @@ function goBack() {
 const LAYOUTS = { wide: { w: 800, h: 320, worldY: 0 }, tall: { w: 450, h: 640, worldY: 140 } };
 let layout = "wide";
 let WORLD_Y = 0;
+// Full screen (a phone held upright, with the game on its own page): the game takes over the
+// whole screen like an app, and the page never scrolls. Everything is still laid out in the
+// layout's W × H area, which sits in the middle; the canvas is TOP taller above and below it to
+// match the screen's shape (the ceiling and floor carry on into it), and the top bar (sound,
+// hearts, score, profile) is pinned to the very top of the screen.
+let TOP = 0;
 const tall = () => layout === "tall";
 function wantedLayout() {
   return window.innerHeight > window.innerWidth && window.innerWidth <= 600
     ? "tall"
     : "wide";
 }
+const embedded = () => document.documentElement.classList.contains("embed"); // (in the Library Games player)
+function fullTop(name) {
+  if (name !== "tall" || embedded()) return 0;
+  const { w, h } = LAYOUTS.tall;
+  return Math.max(0, Math.round(((w * window.innerHeight) / window.innerWidth - h) / 2));
+}
 function applyLayout(name) {
   layout = name;
-  canvas.width = LAYOUTS[name].w;
-  canvas.height = LAYOUTS[name].h;
-  W = canvas.width;
-  H = canvas.height;
+  W = LAYOUTS[name].w;
+  H = LAYOUTS[name].h;
+  TOP = fullTop(name);
+  document.documentElement.classList.toggle("fullscreen", name === "tall" && !embedded());
+  canvas.width = W;
+  canvas.height = H + 2 * TOP;
   WORLD_Y = LAYOUTS[name].worldY;
-  canvas.style.setProperty("--ratio", W / H); // lets the page shrink the game to fit the screen's height
-  PROFILE = { x: W - 12 - 112, y: 12, w: 112, h: 32 }; // top-right corner either way
+  canvas.style.setProperty("--ratio", W / canvas.height); // lets the page shrink the game to fit the screen's height
+  // the top bar: pinned to the top of the screen. On a phone, the profile badge is bigger.
+  MUTE_BTN.y = 12 - TOP;
+  PROFILE = tall()
+    ? { x: W - 12 - 136, y: 12 - TOP - 4, w: 136, h: 40 }
+    : { x: W - 12 - 112, y: 12, w: 112, h: 32 };
   // wide: the score bar sits beside the profile; tall: there isn't room, so it goes on the
   // ceiling, under the row of buttons
   SCORE = tall()
-    ? { x: W / 2 - 179, y: 54 }
+    ? { x: W / 2 - 179, y: 54 - TOP }
     : { x: PROFILE.x - 8 - 358, y: 12 };
   makeButtons();
+  fitCanvas();
 }
+// Full screen: size the canvas to fill the screen exactly. Otherwise the page's CSS sizes it.
+function fitCanvas() {
+  if (!document.documentElement.classList.contains("fullscreen")) {
+    canvas.style.width = canvas.style.height = "";
+    return;
+  }
+  const s = Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height);
+  canvas.style.width = canvas.width * s + "px";
+  canvas.style.height = canvas.height * s + "px";
+}
+window.addEventListener("resize", fitCanvas);
 function checkLayout() {
   if (state === "running" || state === "countdown" || fadeOut !== null) return; // locked during a run
   const want = wantedLayout();
-  if (want !== layout) applyLayout(want);
+  if (want !== layout || fullTop(want) !== TOP) applyLayout(want); // (also when a phone's screen changes shape)
 }
 
 let last = performance.now();
@@ -1782,8 +1812,11 @@ function frame(now) {
     if (intro) updateIntro(dt);
     if (!intro || introTime >= INTRO_TITLE_AT) updateTitle(dt);
   }
+  ctx.save();
+  ctx.translate(0, TOP); // (full screen: the layout sits in the middle)
   draw();
   drawTransition();
+  ctx.restore();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -1816,18 +1849,21 @@ function label(text, x, y, size, color, family = "system-ui, sans-serif") {
 }
 
 // Floors. Patterns move at full ground speed so they read as the surface you run on.
+// (The floor runs on down past the bottom of the layout: in full screen there's more below.)
 function tiles(x, w, base, line) {
-  R(x, FLOOR, w, H - FLOOR, base);
+  const fh = H + 2 * TOP - FLOOR;
+  R(x, FLOOR, w, fh, base);
   R(x, FLOOR + 13, w, 1, line);
   for (let tx = -((distance * 0.9) % 56); tx < W; tx += 56)
     R(tx, FLOOR, 1, 13, line);
   for (let tx = -((distance * 1.1 + 30) % 72); tx < W; tx += 72)
-    R(tx, FLOOR + 14, 1, H - FLOOR, line);
+    R(tx, FLOOR + 14, 1, fh, line);
 }
 function carpet(x, w, base, fleck) {
-  R(x, FLOOR, w, H - FLOOR, base);
+  const fh = H + 2 * TOP - FLOOR;
+  R(x, FLOOR, w, fh, base);
   for (let k = Math.floor(distance / 9); k * 9 - distance < W; k++) {
-    R(k * 9 - distance, FLOOR + 3 + hash(k, 5) * (H - FLOOR - 6), 2, 1, fleck);
+    R(k * 9 - distance, FLOOR + 3 + hash(k, 5) * (fh - 6), 2, 1, fleck);
   }
 }
 function recessedLights(x, w, y, spacing) {
@@ -2327,7 +2363,7 @@ function drawBackground() {
     if (sx + z.w > 0) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(sx, 0, z.w, H);
+      ctx.rect(sx, 0, z.w, H + 2 * TOP);
       ctx.clip();
       z.draw(sx, z.w);
       ctx.restore();
@@ -2349,11 +2385,11 @@ function drawBackground() {
 // In the tall layout the library strip sits in the middle of the screen. Above it: a dark
 // ceiling (the buttons and score bar sit on it). Below it: the floor carries on.
 function drawTallCeiling() {
-  const g = ctx.createLinearGradient(0, 0, 0, WORLD_Y);
+  const g = ctx.createLinearGradient(0, -TOP, 0, WORLD_Y);
   g.addColorStop(0, "#1a1512");
   g.addColorStop(1, "#2e2724");
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, WORLD_Y);
+  ctx.fillRect(0, -TOP, W, WORLD_Y + TOP); // (full screen: all the way up to the top)
   // a row of soft ceiling lights just above the room
   for (let lx = 45; lx < W; lx += 90) {
     oval(lx, WORLD_Y - 12, 16, 3, "rgba(255, 236, 190, 0.18)");
@@ -2364,7 +2400,7 @@ function drawTallCeiling() {
 // Shade the floor below the room so it reads as floor, and for the first few seconds of a
 // run, show the touch controls there.
 function drawTallFloor() {
-  const bottom = H - WORLD_Y; // the bottom of the screen, in room coordinates
+  const bottom = H + TOP - WORLD_Y; // the bottom of the screen, in room coordinates
   const g = ctx.createLinearGradient(0, FLOOR + 30, 0, bottom);
   g.addColorStop(0, "rgba(20, 14, 10, 0)");
   g.addColorStop(1, "rgba(20, 14, 10, 0.55)");
@@ -2453,7 +2489,7 @@ function draw() {
   ctx.restore(); // end of the shaking part
 
   if (state === "ready") drawStartScreen();
-  else if (!onStartScreen()) drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, 12);
+  else if (!onStartScreen()) drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, MUTE_BTN.y);
   if (state === "running") drawPauseButton();
 
   // (the corner badges fade up with the rest of the start screen in the opening sequence)
@@ -2530,10 +2566,14 @@ const INK = "#3a2a1e", // text on the cards
   INK_SOFT = "#7a6a55", // quieter text
   CARD_RED = "#a8382f"; // the rules, ribbon and stamp
 
+// Fill the whole screen (in full screen, that reaches past the layout, above and below).
+function fillScreen() {
+  ctx.fillRect(0, -TOP, W, H + 2 * TOP);
+}
 // A darker veil over the game, so the card stands out.
 function dimBehindCard() {
   ctx.fillStyle = "rgba(10, 6, 4, 0.6)";
-  ctx.fillRect(0, 0, W, H);
+  fillScreen();
 }
 // The card. `title` (optional) is written at the top, with the rules under it.
 function drawCard(x, y, w, h, title) {
@@ -2595,8 +2635,8 @@ function drawButton(b, on, scale = 1) {
   ctx.stroke();
   ctx.textAlign = "center";
   ctx.fillStyle = on ? "#fff" : PAPER;
-  ctx.font = "bold 18px Georgia, serif";
-  ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 6);
+  ctx.font = `bold ${tall() ? 20 : 18}px Georgia, serif`; // (a touch bigger on a phone)
+  ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + (tall() ? 7 : 6));
 }
 
 // The current screen's buttons. On the start screen the selected one gently pulses.
@@ -2648,7 +2688,9 @@ function hint(text, y) {
 // The pause button shown during a run (so touch screens can pause too), right of the hearts.
 const PAUSE_BTN = {
   x: MUTE_BTN.x + MUTE_BTN.w + 8 + LIVES * 24 + 10 + 8,
-  y: 12,
+  get y() {
+    return MUTE_BTN.y; // (in the top bar, wherever that is)
+  },
   w: 32,
   h: 32,
 };
@@ -2877,7 +2919,7 @@ function drawGameOver() {
   const pw = 380,
     px = W / 2 - pw / 2,
     py = tall() ? 120 : 34,
-    ph = tall() ? 360 : 252;
+    ph = tall() ? 384 : 252;
   drawCard(px, py, pw, ph);
 
   // the run's numbers, like the lines of a due-date card
@@ -2968,11 +3010,13 @@ function drawProfile() {
   const b = PROFILE;
   ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
   roundRect(b.x, b.y, b.w, b.h, 8);
+  // (sized to the badge: bigger on a phone)
+  const r = b.h / 2 - 3;
   ctx.textAlign = "left";
   ctx.fillStyle = PAPER;
-  ctx.font = "bold 15px Georgia, serif";
-  ctx.fillText(CHARACTERS[charIndex].name, b.x + 12, b.y + 21);
-  drawAvatar(b.x + b.w - 19, b.y + 16, 13);
+  ctx.font = `bold ${b.h > 32 ? 17 : 15}px Georgia, serif`;
+  ctx.fillText(CHARACTERS[charIndex].name, b.x + 12, b.y + b.h / 2 + 5);
+  drawAvatar(b.x + b.w - r - 6, b.y + b.h / 2, r);
 }
 
 // On the start screen: the best score, in a badge just left of the profile (once there is one).
@@ -2989,9 +3033,9 @@ function drawBestBadge() {
   roundRect(x, y, w, PROFILE.h, 8);
   ctx.textAlign = "left";
   ctx.fillStyle = GOLD;
-  ctx.fillText(lead, x + 12, y + 21);
+  ctx.fillText(lead, x + 12, y + PROFILE.h / 2 + 5);
   ctx.fillStyle = PAPER;
-  ctx.fillText(rest, x + 12 + leadW, y + 21);
+  ctx.fillText(rest, x + 12 + leadW, y + PROFILE.h / 2 + 5);
 }
 
 function drawAvatar(cx, cy, r) {
@@ -3693,7 +3737,7 @@ function drawPowerHUD() {
     w = 150,
     h = 26,
     x = tall() ? W / 2 - w / 2 : MUTE_BTN.x + MUTE_BTN.w + 8,
-    y = tall() ? 94 : 50;
+    y = tall() ? SCORE.y + 40 : 50;
   ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
   roundRect(x, y, w, h, 8);
   drawPowerIcon(power.type, x + 14, y + h / 2, 9);
@@ -4467,11 +4511,13 @@ function drawTitle(cx, shelfY) {
   ctx.font = "bold italic 56px Georgia, serif";
   const dashW = ctx.measureText("Dash").width;
   const total = booksW + space + dashW;
-  const s = Math.min(1, (W - 48) / total); // shrink to fit a narrow screen
+  // On a phone, centre everything you see, Dewey's spot on the shelf to the left included.
+  const deweyRoom = tall() ? 40 : 0;
+  const s = Math.min(1, (W - 48) / (total + deweyRoom)); // shrink to fit a narrow screen
   ctx.save();
   ctx.translate(cx, shelfY);
   ctx.scale(s, s);
-  const x0 = -total / 2,
+  const x0 = -(total + deweyRoom) / 2 + deweyRoom,
     by = -6; // "Dash"'s baseline, a little above the shelf
 
   // the shelf (with room on the left for Dewey to step out onto)
@@ -4556,7 +4602,7 @@ function drawTitle(cx, shelfY) {
 // The library keeps drifting by behind it, and the book jogs on the spot.
 function drawStartScreen() {
   ctx.fillStyle = "rgba(26, 18, 12, 0.5)";
-  ctx.fillRect(0, 0, W, H);
+  fillScreen();
   const tx = W / 2,
     ty = tall() ? 160 : 0; // the tall layout drops the title down to sit just above the buttons
   // a little darker in the middle so the small text stays readable over the shelves
@@ -4564,13 +4610,13 @@ function drawStartScreen() {
   shade.addColorStop(0, "rgba(26, 18, 12, 0.4)");
   shade.addColorStop(1, "rgba(26, 18, 12, 0)");
   ctx.fillStyle = shade;
-  ctx.fillRect(0, 0, W, H);
+  fillScreen();
 
   // the opening sequence: black over the library until it fades up
   const ui = introUI();
   if (ui < 1) {
     ctx.fillStyle = `rgba(0, 0, 0, ${1 - ui})`;
-    ctx.fillRect(0, 0, W, H);
+    fillScreen();
   }
 
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
@@ -4596,7 +4642,7 @@ function drawStartScreen() {
   ctx.fillText(
     tall() ? "Tap a button to choose" : "← → to choose · Enter or Space to select",
     tx,
-    tall() ? 560 : 302,
+    tall() ? 578 : 302,
   );
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
@@ -4827,7 +4873,7 @@ function toCanvas(e) {
   const rect = canvas.getBoundingClientRect();
   return [
     ((e.clientX - rect.left) / rect.width) * W,
-    ((e.clientY - rect.top) / rect.height) * H,
+    ((e.clientY - rect.top) / rect.height) * canvas.height - TOP, // (in the layout, which sits TOP down in full screen)
   ];
 }
 const inside = (x, y, b) =>

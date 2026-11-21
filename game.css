@@ -102,6 +102,29 @@ button {
 [data-game="bookmobile"] .controls .down { grid-column: 2; grid-row: 2; }
 [data-game="bookmobile"] .controls .right { grid-column: 3; grid-row: 2; }
 
+/* Dewey Dash on a phone held upright, on its own page: the game takes over the whole screen like
+   an app, and the page never scrolls. (deweydash.js adds .fullscreen and sizes the canvas to
+   fill the screen exactly.) */
+html.fullscreen,
+html.fullscreen body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html.fullscreen body {
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  background: #1a1512; /* the game's ceiling colour, in case of a sliver at the edges */
+}
+html.fullscreen canvas {
+  max-width: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+html.fullscreen .hint,
+html.fullscreen .controls { display: none; }
+
 /* Dewey Dash on a phone turned on its side: less padding, so the game can use the whole screen. */
 @media (orientation: landscape) and (max-height: 500px) {
   [data-game="deweydash"] { padding: 8px; }
