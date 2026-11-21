@@ -121,7 +121,7 @@ let accLift = 0, // hats / glasses lifted by a jump: 0 in place … about 1 floa
 let best = Number(safeGet("runner-best-pages")) || 0; // most pages collected in one run
 
 // ---------- Sound (generated with the Web Audio API, no files needed) ----------
-setupSound("runner");
+setupSound("runner", { startMuted: true }); // sound stays off until the player turns it on
 let lastMarkTime = -1e9,
   markCombo = 0;
 
@@ -309,7 +309,7 @@ function musicDuck() {
 
 // Called every frame: picks the mood from what's on screen, and schedules the next few notes.
 function updateMusic() {
-  if (!musicUnlocked) return;
+  if (!musicUnlocked || (muted && !music)) return; // no audio until sound is turned on
   const mode =
     state === "over" ? "over"
     : state === "paused" || (state === "howto" && howtoFrom === "paused") ? "paused"
@@ -344,7 +344,7 @@ for (const ev of ["keydown", "pointerdown"]) {
   document.addEventListener(ev, () => {
     if (musicUnlocked) return;
     musicUnlocked = true;
-    getAudio(); // create / wake the audio inside the tap, as browsers require
+    if (!muted) getAudio(); // create / wake the audio inside the tap, as browsers require
   });
 }
 

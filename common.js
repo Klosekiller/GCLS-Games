@@ -28,22 +28,47 @@ const soundSettings = {
   blip: 0.12, // volume of the blip played when sound is turned back on
   softStart: false, // fade each note in, so it doesn't click (gentler)
   onMute: null, // called with true/false whenever sound is muted or unmuted
+  startMuted: false, // true: sound is always off when the game loads, until the player turns it on
 };
 
 // Load this game's saved mute setting, set its defaults and hook up its "Sound: on" button.
 // Options are any of the soundSettings above, e.g. setupSound("garden", { type: "sine", volume: 0.1 }).
 function setupSound(key, options = {}) {
   Object.assign(soundSettings, options, { key });
-  muted = safeGet(key + "-muted") === "1";
+  muted = soundSettings.startMuted || safeGet(key + "-muted") === "1";
   updateMuteLabel();
   const btn = document.getElementById("mute");
   if (btn) btn.addEventListener("click", toggleMute);
 }
 
 function getAudio() {
-  audio ??= new (window.AudioContext || window.webkitAudioContext)();
-  if (audio.state === "suspended") audio.resume();
+  if (!audio) {
+    // iPhone/iPad: play through the speaker even when the ringer switch is on silent
+    // (the player turned sound on, so they want to hear it).
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = "playback";
+    } catch {}
+    audio = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // "suspended" before the first tap, "interrupted" on iOS after a call or switching apps
+  if (audio.state !== "running") audio.resume().catch(() => {});
   return audio;
+}
+
+// iOS only lets sound start from a finished tap (touchend / click), not from pointerdown,
+// so wake the audio on those too, and play a silent blip, which is what actually unlocks it.
+function unlockAudio() {
+  if (muted) return;
+  try {
+    const a = getAudio();
+    const src = a.createBufferSource();
+    src.buffer = a.createBuffer(1, 1, 22050);
+    src.connect(a.destination);
+    src.start(0);
+  } catch {}
+}
+for (const ev of ["touchend", "pointerup", "click", "keydown"]) {
+  window.addEventListener(ev, unlockAudio);
 }
 
 // Play a short tone that slides from one pitch to another and fades out.
