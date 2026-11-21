@@ -3306,7 +3306,7 @@ function drawStartScreen() {
   ctx.fillStyle = "rgba(26, 18, 12, 0.5)";
   ctx.fillRect(0, 0, W, H);
   const tx = W / 2,
-    ty = tall() ? 90 : 0; // the tall layout drops the title, clear of the top bar and closer to the buttons
+    ty = tall() ? 140 : 0; // the tall layout drops the title down to sit just above the buttons
   // a little darker in the middle so the small text stays readable over the shelves
   const shade = ctx.createRadialGradient(W / 2, 150 + ty, 40, W / 2, 150 + ty, 300);
   shade.addColorStop(0, "rgba(26, 18, 12, 0.4)");
