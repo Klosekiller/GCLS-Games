@@ -59,6 +59,30 @@ const SWOOP_HIGH = 140; // y of a swooper's underside at the top: clears a stand
 const SWOOP_LOW = FLOOR - 16; // …and at the bottom (too low to duck under)
 const SWOOP_PERIOD_MS = 1800; // one full rise and dive
 const SWOOP_COLOR = "#e07b39";
+// Darters: blue flying books that fly at you faster than the floor moves. They start farther
+// off screen by however much they'll catch up, so they still arrive with the usual room.
+const DART_START_MS = 15000;
+const DART_CHANCE = 0.3; // share of (non-swooping) flying books that dart
+const DART_EXTRA = 0.12; // px per ms faster than the floor
+const DART_COLOR = "#3a7bd5";
+// Chargers: red flying books that drift in like the others, then shake for a moment (with a
+// "!") and charge forward. They also start a little farther off, to make room for the charge.
+const CHARGE_START_MS = 30000;
+const CHARGE_CHANCE = 0.3; // share of (non-swooping) flying books that charge
+const CHARGE_DELAY_MS = [500, 1000]; // how long one is on screen before it winds up
+const CHARGE_WINDUP_MS = 450; // the shake-and-"!" warning
+const CHARGE_EXTRA = 0.35; // px per ms faster than the floor, once charging
+const CHARGE_LEAD = 240; // px farther off screen it starts
+const CHARGE_COLOR = "#c0392b";
+// A murder of books: a dark flock of flying books bursting in, a little faster than the floor
+// (with a head start to make up for it, like the darters). Three kinds:
+//   low   — skimming the floor: too low to duck under, so jump
+//   high  — head height and up: too high to jump over, so duck
+//   split — a high bunch, then a low bunch right behind it: duck, then jump
+const FLOCK_START_MS = 40000;
+const FLOCK_CHANCE = 0.12;
+const FLOCK_EXTRA = 0.07; // px per ms faster than the floor
+const FLOCK_COLORS = ["#2b2733", "#3a2f45", "#23303a", "#402a2a"];
 // Wet floor: a yellow sign to jump (a normal bump if you hit it), then 1–3 puddles. Splashing
 // through a puddle soaks a page and makes the book slip: it can't jump for a moment.
 const WET_START_MS = 18000; // wet floor stretches join the run after this long
@@ -71,14 +95,42 @@ const PLATFORMS = {
   cart: { w: 200, h: 72 }, // a book cart (the tallest)
   bench: { w: 220, h: 44 }, // a padded reading bench
   chair: { w: 190, h: 50 }, // a big comfy reading chair (you run along the seat)
-  table: { w: 180, h: 64 }, // a reading table with chairs tucked behind (you run along the top)
+  table: { w: 180, h: FLOOR - GROUND_Y }, // a low reading table: run along the top, or duck and slide underneath
 };
+const TABLE_SLAB = 14; // the tabletop's thickness: the only solid part of the table (it's open underneath)
+// Book tunnels: a long wall of books hanging from the ceiling with a low gap at the floor. Too
+// tall to jump: duck in and keep ducking until you're out the other side.
+const TUNNEL_START_MS = 20000;
+const TUNNEL_CHANCE = 0.12;
+const TUNNEL_W = [200, 360]; // length range
+const TUNNEL_GAP = FLOOR - GROUND_Y - TABLE_SLAB; // the opening's height: a ducking book fits, a standing one doesn't
+// On top of furniture, sometimes there's more to do:
+const SKIM_CHANCE = 0.3; // a flying book skimming along the top (jump it)…
+const TOP_STACK_CHANCE = 0.3; // …a stack of books sitting on it (jump it)…
+const PERCH_CHANCE = 0.25; // …or a bookmark floating high above it (jump for it)
+
+// Spacing. What's coming next is picked ahead of time, so the gap before it can suit the pair:
+// each way of getting past something (jump over, duck under, up on top) has the smallest gap
+// that still leaves time to do the next thing. Gaps are in jump lengths, from the end of one
+// thing to the start of the next.
+const MIN_GAP = {
+  jump: { jump: 1.05, duck: 1.05, high: 1.0 }, // landing from a jump, then… (about a tenth of a second to spare)
+  duck: { jump: 0.45, duck: 0.45, high: 0.45 }, // coming out from ducking, then…
+  high: { jump: 0.6, duck: 0.7, high: 0.6 }, // running off the end of furniture, then…
+  wet: { jump: 1.4, duck: 0.95, high: 1.4 }, // after puddles (room to dry off if you slipped)
+};
+// Each gap is quick (right on top of each other), normal, or a breather. Quick ones get more
+// common the longer you last.
+const QUICK_START = 0.15, // share of quick gaps at the start of a run…
+  QUICK_MAX = 0.45, // …rising to this…
+  QUICK_RAMP_MS = 120000; // …over this long
+const BREATHER = 0.1; // share of long, easy gaps
 const SMASH_MS = 1150; // a smash from start to finish: hit, fall back, lie there, get up
 const SLIP_MS = 1500; // no jumping for this long after a puddle (bumps still happen as normal)
 const SLIP_JUMP_BUFFER_MS = 250; // a jump pressed this close to the end of a slip happens as it ends
-const PUDDLE_W = 54;
-const PUDDLE_GAP = 340; // from one puddle to the next (a slip lasts longer, so one splash usually means more)
-const AFTER_WET_GAP = 380; // room after the last puddle before the next obstacle
+// Each puddle is its own size and shape, with a random stretch of dry floor before the next.
+const PUDDLE_W = [40, 86]; // width range (the widest is still well inside a jump)
+const PUDDLE_GAP = [220, 380]; // dry floor between one puddle and the next (a slip lasts longer, so one splash usually means more)
 
 // ---------- Palette ----------
 const SPINES = [
@@ -114,6 +166,7 @@ let pickups = []; // loose pages and the odd bookmark: { kind, x, y, w, h, color
 let particles = [];
 let popups = [];
 let speed, pages, runDist, nextSpawn, state, runTime; // pages collected, px run this run
+let upcoming = "stack"; // what turns up next (picked ahead of time: see Spacing)
 let distance = 0; // total scrolled distance, drives the background
 let duckHeld = false; // is the duck key / touch held?
 let lives = LIVES;
@@ -201,6 +254,13 @@ const sfx = {
   },
   knock: () => tone(240, 110, 0.1, "square", 0.08),
   whoosh: () => tone(260, 900, 0.22, "sine", 0.06), // "Dash" zooming into the title
+  // a murder of books on its way: a flurry of flapping
+  flock: () => {
+    for (let i = 0; i < 7; i++) {
+      const f = 260 + Math.random() * 260;
+      tone(f, f * 0.6, 0.05, "triangle", 0.05, i * 0.045);
+    }
+  },
   start: () => {
     tone(523, 523, 0.08, "triangle", 0.12);
     tone(784, 784, 0.12, "triangle", 0.12, 0.08);
@@ -406,6 +466,7 @@ function reset() {
   runDist = 0;
   runTime = 0;
   nextSpawn = 600;
+  upcoming = "stack";
   lives = LIVES;
   hurtTime = 0;
   shake = 0;
@@ -520,10 +581,11 @@ function swoopBottom(o) {
   const t = Math.sin((runTime / SWOOP_PERIOD_MS) * Math.PI * 2 + o.phase); // -1 … 1
   return SWOOP_HIGH + ((t + 1) / 2) * (SWOOP_LOW - SWOOP_HIGH);
 }
-function makeStack(x, stackW, targetH) {
+// A stack of books standing on `base` (the floor, or the top of a piece of furniture).
+function makeStack(x, stackW, targetH, base = FLOOR) {
   const books = [];
-  let y = FLOOR;
-  while (FLOOR - y < targetH) {
+  let y = base;
+  while (base - y < targetH) {
     const t = 8 + Math.random() * 6;
     const bw = stackW - Math.random() * 8;
     books.push({
@@ -535,7 +597,7 @@ function makeStack(x, stackW, targetH) {
     });
     y -= t;
   }
-  return { books, h: FLOOR - y };
+  return { books, h: base - y };
 }
 
 function spawnObstacle() {
@@ -580,8 +642,23 @@ function spawnFlyer() {
     phase: Math.random() * Math.PI * 2,
   };
   if (swoop) o.y = swoopBottom(o) - h;
+  else if (runTime > CHARGE_START_MS && Math.random() < CHARGE_CHANCE) {
+    const [a, b] = CHARGE_DELAY_MS;
+    o.charge = { t: 0, at: a + Math.random() * (b - a) }; // t: ms on screen
+    o.color = CHARGE_COLOR;
+    o.x += CHARGE_LEAD;
+  } else if (runTime > DART_START_MS && Math.random() < DART_CHANCE) {
+    o.dart = true;
+    o.color = DART_COLOR;
+    o.x += (DART_EXTRA * (W + 10 - player.x)) / speed; // the head start it'll make up
+  }
   obstacles.push(o);
   return o;
+}
+// How a charger is doing: ms into its wind-up (negative before), and whether it's charging.
+function chargeState(o) {
+  const into = o.charge.t - o.charge.at;
+  return { into, winding: into > 0 && into <= CHARGE_WINDUP_MS, charging: into > CHARGE_WINDUP_MS };
 }
 
 function updateObstacles(dt) {
@@ -589,43 +666,219 @@ function updateObstacles(dt) {
   for (const o of obstacles) {
     o.x -= dx;
     for (const b of o.books) b.x -= dx;
-    if (o.type === "flyer")
-      o.y = o.swoop
-        ? swoopBottom(o) - o.h
-        : FLYER_BOTTOM - o.h + Math.sin(runTime * 0.006 + o.phase) * 2;
+    if (o.type === "flyer") {
+      if (o.flock) o.x -= FLOCK_EXTRA * dt;
+      o.y =
+        o.skimY != null
+          ? o.skimY + Math.sin(runTime * 0.006 + o.phase) * 1.5 // skimming along the top of furniture
+          : o.flock
+            ? o.baseY + Math.sin(runTime * 0.008 + o.phase) * o.bob // a jostling flock
+          : o.swoop
+            ? swoopBottom(o) - o.h
+            : FLYER_BOTTOM - o.h + Math.sin(runTime * 0.006 + o.phase) * 2;
+      if (o.dart) o.x -= DART_EXTRA * dt;
+      if (o.charge && o.x < W) {
+        o.charge.t += dt;
+        const { into, winding, charging } = chargeState(o);
+        if (winding) o.x += 0.04 * dt; // pulls back a touch, winding up
+        else if (charging) o.x -= CHARGE_EXTRA * Math.min(1, (into - CHARGE_WINDUP_MS) / 200) * dt; // and off it goes
+      }
+    }
   }
   obstacles = obstacles.filter((o) => o.x + o.w > -20);
 
   // Spawn based on distance so gaps stay jumpable as speed rises.
   nextSpawn -= dx;
-  if (nextSpawn <= 0 && runTime > WET_START_MS && Math.random() < WET_CHANCE) {
-    spawnWetFloor();
-  } else if (nextSpawn <= 0 && runTime > PLATFORM_START_MS && Math.random() < PLATFORM_CHANCE) {
-    spawnPlatform();
-  } else if (nextSpawn <= 0) {
-    const flyer = runTime > FLYER_START_MS && Math.random() < FLYER_CHANCE;
-    const o = flyer ? spawnFlyer() : spawnObstacle();
+  if (nextSpawn <= 0) {
     const airTime = (2 * -JUMP_VELOCITY) / GRAVITY; // ms spent in a full jump
-    nextSpawn = speed * airTime * (1.1 + Math.random() * 1.4) + 60;
-    spawnPickups(o, airTime);
+    let o = null,
+      len, // how far it reaches past where it starts
+      moves; // the ways you might be getting past it (see MIN_GAP)
+    if (upcoming === "wet") {
+      len = spawnWetFloor();
+      moves = ["wet"];
+    } else if (upcoming === "platform") {
+      const p = spawnPlatform();
+      len = p.w;
+      moves = p.jumpy ? ["high", "jump"] : ["high"]; // (jumping something up there can carry you off the end)
+    } else if (upcoming === "tunnel") {
+      len = spawnTunnel();
+      moves = ["duck"];
+    } else if (upcoming.startsWith("flock")) {
+      const kind = upcoming.slice(6); // "low", "high" or "split"
+      len = spawnFlock(kind, speed * airTime);
+      moves = kind === "high" ? ["duck"] : ["jump"];
+    } else {
+      o = upcoming === "flyer" ? spawnFlyer() : spawnObstacle();
+      len = o.w;
+      moves = o.swoop ? ["jump", "duck"] : o.type === "flyer" ? ["duck"] : ["jump"];
+    }
+    upcoming = pickNext();
+    nextSpawn = len + gapBefore(moves, nextMoves(upcoming), speed * airTime);
+    if (o) spawnPickups(o, airTime); // (after the gap is set: a row of pages can go in it)
   }
 }
 
+// ---------- Spacing ----------
+function pickNext() {
+  if (runTime > WET_START_MS && Math.random() < WET_CHANCE) return "wet";
+  if (runTime > PLATFORM_START_MS && Math.random() < PLATFORM_CHANCE) return "platform";
+  if (runTime > TUNNEL_START_MS && Math.random() < TUNNEL_CHANCE) return "tunnel";
+  if (runTime > FLOCK_START_MS && Math.random() < FLOCK_CHANCE)
+    return "flock-" + ["low", "high", "split"][(Math.random() * 3) | 0];
+  if (runTime > FLYER_START_MS && Math.random() < FLYER_CHANCE) return "flyer";
+  return "stack";
+}
+// How you might need to get past what's coming. (A flying book might turn out to be a swooper,
+// which sometimes needs a jump.)
+function nextMoves(kind) {
+  if (kind === "flyer") return runTime > SWOOP_START_MS ? ["duck", "jump"] : ["duck"];
+  if (kind === "platform") return ["high"];
+  if (kind === "tunnel" || kind === "flock-high" || kind === "flock-split") return ["duck"];
+  return ["jump"];
+}
+
+// A murder of books (see FLOCK_*). Returns how far it reaches, as it'll arrive.
+function spawnFlock(kind, jumpLen) {
+  const x0 = W + 10 + (FLOCK_EXTRA * (W + 10 - player.x)) / speed; // the head start it'll make up
+  const pick = (a) => a[(Math.random() * a.length) | 0];
+  const add = (dx, bottom, bob = 2 + Math.random() * 3) =>
+    obstacles.push({
+      type: "flyer",
+      flock: true,
+      x: x0 + dx,
+      baseY: bottom - 22,
+      y: bottom - 22,
+      w: 44,
+      h: 22,
+      books: [],
+      color: pick(FLOCK_COLORS),
+      phase: Math.random() * Math.PI * 2,
+      bob,
+    });
+  // a low bunch skims the floor (a ducking book still can't get under it); a high bunch flies
+  // from head height up (clear of a ducking book, but in the way of any jump). Each returns where it ends.
+  const low = (start, n) => {
+    for (let i = 0; i < n; i++) add(start + i * 26 + Math.random() * 10, FLOOR - 6 - Math.random() * 8);
+    return start + (n - 1) * 26 + 54;
+  };
+  const high = (start, n) => {
+    // every other one right at head height (so you can't just run through), the rest above
+    for (let i = 0; i < n; i++)
+      if (i % 2 === 0) add(start + i * 30 + Math.random() * 10, FLYER_BOTTOM + 2 + Math.random() * 4, 1.5);
+      else add(start + i * 30 + Math.random() * 10, FLYER_BOTTOM - 10 - Math.random() * 28);
+    return start + (n - 1) * 30 + 54;
+  };
+  const n = () => 3 + ((Math.random() * 3) | 0); // 3–5
+  let end;
+  if (kind === "low") end = low(0, n());
+  else if (kind === "high") end = high(0, n());
+  else end = low(high(0, 2 + (Math.random() < 0.5)) + jumpLen * (MIN_GAP.duck.jump + 0.1), 2 + (Math.random() < 0.5));
+  sfx.flock();
+  return end;
+}
+// The gap from the end of one thing to the start of the next: never less than the pair needs,
+// and quick, normal or a breather.
+function gapBefore(prevMoves, upMoves, jumpLen) {
+  let min = 0;
+  for (const p of prevMoves) for (const n of upMoves) min = Math.max(min, MIN_GAP[p][n]);
+  const quick = Math.min(QUICK_MAX, QUICK_START + (runTime / QUICK_RAMP_MS) * (QUICK_MAX - QUICK_START));
+  const r = Math.random();
+  let k;
+  if (r < quick) k = min + Math.random() * 0.15; // right on top of each other
+  else if (r < quick + BREATHER) k = min + 1.6 + Math.random() * 0.8; // a breather
+  else k = min + 0.35 + Math.random() * 1.1;
+  return jumpLen * k;
+}
+
 // A piece of furniture to jump onto, with a row of pages along the top for anyone who lands on it.
-// Nothing else turns up until well after it.
+// Sometimes there's more up there: a flying book skimming along the top or a stack of books
+// sitting on it (jump them), or a bookmark floating high above to jump for. The low table can be
+// ducked under too (pages there as well). Returns { w, jumpy } (jumpy: something up there to jump).
 function spawnPlatform() {
   const kinds = Object.keys(PLATFORMS);
   const kind = kinds[(Math.random() * kinds.length) | 0];
   const { w, h } = PLATFORMS[kind];
   const o = { type: "platform", kind, x: W + 10, y: FLOOR - h, w, h, books: [], seed: Math.random() * 1000 };
   obstacles.push(o);
-  for (let cx = o.x + 30; cx < o.x + w - 20; cx += 45) addPickup(cx, o.y - 34);
-  const airTime = (2 * -JUMP_VELOCITY) / GRAVITY;
-  nextSpawn = w + speed * airTime * 1.3 + 80;
+  const r = Math.random();
+  const skim = r < SKIM_CHANCE,
+    topStack = !skim && r < SKIM_CHANCE + TOP_STACK_CHANCE,
+    perch = !skim && !topStack && r < SKIM_CHANCE + TOP_STACK_CHANCE + PERCH_CHANCE;
+  if (topStack) {
+    // a short stack of books sitting on top, past where you'd land
+    const sw = 28,
+      sx = o.x + w * (0.55 + Math.random() * 0.15),
+      s = makeStack(sx, sw, 16 + Math.random() * 14, o.y);
+    obstacles.push({ type: "stack", x: sx, y: o.y - s.h, w: sw, h: s.h, books: s.books });
+    addPickup(o.x + 30, o.y - 34);
+    const fx = sx + sw / 2;
+    addPickup(fx - 34, o.y - 100);
+    addPickup(fx, o.y - 124);
+    addPickup(fx + 34, o.y - 100);
+  } else if (skim) {
+    // a flying book skimming the top, past where you'd land
+    const fh = 22;
+    obstacles.push({
+      type: "flyer",
+      skimY: o.y - fh - 3,
+      x: o.x + w * (0.55 + Math.random() * 0.15),
+      y: o.y - fh - 3,
+      w: 44,
+      h: fh,
+      books: [],
+      color: SPINES[(Math.random() * SPINES.length) | 0],
+      phase: Math.random() * Math.PI * 2,
+    });
+    // pages before it, and a few over it for jumping it
+    addPickup(o.x + 30, o.y - 34);
+    const fx = o.x + w * 0.62 + 22;
+    addPickup(fx - 34, o.y - 110);
+    addPickup(fx, o.y - 130);
+    addPickup(fx + 34, o.y - 110);
+  } else if (perch) {
+    // a bookmark floating high above the top (you have to jump from up there to reach it),
+    // with pages leading up to it
+    const cx = o.x + w * 0.6;
+    pickups.push({
+      kind: "bookmark",
+      x: cx - 7,
+      y: o.y - 140,
+      w: 14,
+      h: 26,
+      color: MARK_COLORS[(Math.random() * MARK_COLORS.length) | 0],
+      phase: Math.random() * Math.PI * 2,
+    });
+    for (let cx2 = o.x + 30; cx2 < cx - 30; cx2 += 45) addPickup(cx2, o.y - 34);
+  } else {
+    for (let cx = o.x + 30; cx < o.x + w - 20; cx += 45) addPickup(cx, o.y - 34);
+  }
+  if (kind === "table")
+    for (let cx = o.x + 34; cx < o.x + w - 24; cx += 40) addPickup(cx, FLOOR - 34); // under the table too
+  return { w, jumpy: skim || topStack };
+}
+
+// A book tunnel, with a row of pages along the floor inside. Returns its length.
+function spawnTunnel() {
+  const [a, b] = TUNNEL_W;
+  const w = a + Math.random() * (b - a);
+  const top = CEIL - 12;
+  obstacles.push({
+    type: "tunnel",
+    x: W + 10,
+    y: top,
+    w,
+    h: FLOOR - TUNNEL_GAP - top,
+    books: [],
+    color: SPINES[2],
+    seed: Math.random() * 1000,
+  });
+  for (let cx = W + 10 + 34; cx < W + 10 + w - 24; cx += 40) addPickup(cx, FLOOR - 34);
+  return w;
 }
 
 // A wet floor sign, then 1–3 puddles, each with an arc of pages over it (jump them to keep
-// your pages dry). The next obstacle waits until well after the last puddle.
+// your pages dry). Returns how far the stretch reaches, to the end of the last puddle.
 function spawnWetFloor() {
   const airTime = (2 * -JUMP_VELOCITY) / GRAVITY;
   const sign = {
@@ -638,27 +891,65 @@ function spawnWetFloor() {
   };
   obstacles.push(sign);
   const count = 1 + Math.floor(Math.random() * 3);
+  const between = (r) => r[0] + Math.random() * (r[1] - r[0]);
   let px = sign.x + 260;
   for (let i = 0; i < count; i++) {
+    const w = between(PUDDLE_W);
     obstacles.push({
       type: "puddle",
       x: px,
       y: FLOOR - 3,
-      w: PUDDLE_W,
+      w,
       h: 8,
       books: [],
       soaked: false,
       phase: Math.random() * 6,
+      ...puddleShape(w),
     });
     // pages in a jump arc over the puddle
-    const cx = px + PUDDLE_W / 2,
+    const cx = px + w / 2,
       side = speed * airTime * 0.25;
     addPickup(cx - side, GROUND_Y - 100);
     addPickup(cx, GROUND_Y - 136);
     addPickup(cx + side, GROUND_Y - 100);
-    px += PUDDLE_GAP;
+    px += w; // past this puddle…
+    if (i < count - 1) px += between(PUDDLE_GAP); // …and some dry floor before the next
   }
-  nextSpawn = px - PUDDLE_GAP + PUDDLE_W - (W + 10) + AFTER_WET_GAP;
+  return px - (W + 10);
+}
+
+// A puddle's own look: a main pool with one or two smaller lobes running off it, sometimes a
+// little splash on its own, and a slightly different blue. Everything stays within its width w,
+// so what you see is exactly what soaks you. Lobes are { dx, dy, rx, ry } from the middle.
+const PUDDLE_BLUES = [
+  ["#4f93cf", "#9fd0f2"], // [water, its lighter middle]
+  ["#5a9bd1", "#a8d6f4"],
+  ["#4886bd", "#94c6ea"],
+  ["#5c9ec4", "#a3d2e8"], // a touch greener
+];
+function puddleShape(w) {
+  const half = w / 2,
+    rand = (a, b) => a + Math.random() * (b - a);
+  const main = { rx: half * rand(0.68, 0.85), ry: rand(5.5, 8), dy: 0 };
+  main.dx = (half - main.rx) * rand(-0.6, 0.6);
+  const lobes = [main];
+  const extra = Math.random() < 0.5 ? 1 : 2;
+  for (let k = 0; k < extra; k++) {
+    const rx = half * rand(0.28, 0.48),
+      side = k === 0 ? (Math.random() < 0.5 ? -1 : 1) : -Math.sign(lobes[1].dx); // a second one goes the other way
+    lobes.push({
+      rx,
+      ry: main.ry * rand(0.55, 0.8),
+      dx: side * (half - rx) * rand(0.75, 1),
+      dy: rand(-1.5, 1.5),
+    });
+  }
+  if (Math.random() < 0.4) {
+    // a little splash of its own, near one end
+    const rx = rand(3.5, 6);
+    lobes.push({ rx, ry: rand(1.8, 2.8), dx: (Math.random() < 0.5 ? -1 : 1) * (half - rx), dy: rand(1, 3) });
+  }
+  return { lobes, blue: PUDDLE_BLUES[(Math.random() * PUDDLE_BLUES.length) | 0] };
 }
 
 // Running (or ducking) through a puddle: splash, lose a soggy page, and slip for a moment.
@@ -710,10 +1001,12 @@ function hits(o) {
   // furniture only counts if you run into its side: standing on top is fine
   if (o.type === "platform" && p.y + p.h <= o.y + 6) return false;
   const pad = 6; // forgiving hitbox
+  // the low table is open underneath: only its top is solid
+  const bottom = o.type === "platform" && o.kind === "table" ? o.y + TABLE_SLAB : o.y + o.h;
   return (
     p.x + pad < o.x + o.w &&
     p.x + p.w - pad > o.x &&
-    p.y + pad < o.y + o.h &&
+    p.y + pad < bottom &&
     p.y + p.h > o.y + 2
   );
 }
@@ -746,7 +1039,7 @@ function addPickup(cx, y) {
 function spawnPickups(o, airTime) {
   const r = Math.random();
   if (o.type === "flyer") {
-    if (o.swoop) return; // nothing under a swooper, so nobody gets lured in as it dives
+    if (o.swoop || o.dart || o.charge) return; // nothing under the tricky ones, so nobody gets lured in
     // A pair tucked right under the flying book, a reward for ducking.
     if (r < 0.5)
       for (let k = 0; k < 2; k++) addPickup(o.x + 8 + k * 28, FLOOR - 28);
@@ -1011,7 +1304,7 @@ function update(dt) {
       if (using === "speed") {
         if (hit.type !== "platform") knockAway(hit); // (furniture: speed reading runs straight through)
       } else if (using === "shield") blockHit();
-      else if (hit.type === "platform") smashInto(hit);
+      else if (hit.type === "platform") smashInto(hit); // (the table's edge too: duck under it or hop up)
       else takeHit();
     }
   }
@@ -1158,7 +1451,8 @@ const DEATH_MS = 900; // let the crash play out (pages flying, the book tumbling
 const OVER_FADE_MS = 300; // …then fade the game-over panel in over this long
 const OVER_GRACE_MS = DEATH_MS + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
-let howtoPage = 0; // How to play: 0 the basics, 1 the power-ups
+let howtoPage = 0; // How to play: 0 the basics, 1 furniture & tunnels, 2 the flying books, 3 the power-ups
+const HOWTO_NEXT = ["Furniture ›", "Flying books ›", "Power-ups ›", "‹ The basics"]; // the page button, on each page
 const selected = { ready: 0, paused: 0, howto: 0, over: 0, chars: 0 }; // highlighted button on each screen
 // Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen's
 // highlight stays on Start except while another button is hovered.
@@ -1212,7 +1506,7 @@ const MENU = {
     ["quit", "Quit"],
   ],
   howto: [
-    ["page", "Power-ups ›"], // flips between the two pages (its label changes: see drawButtons)
+    ["page", "Furniture ›"], // steps through the pages (its label changes: see HOWTO_NEXT)
     ["back", "Back"],
   ],
   over: [
@@ -1413,7 +1707,7 @@ function choose(id) {
     selected.howto = 1; // Back, so Enter / Space still close it
     howtoPage = 0;
     state = "howto";
-  } else if (id === "page") howtoPage = 1 - howtoPage;
+  } else if (id === "page") howtoPage = (howtoPage + 1) % HOWTO_NEXT.length;
   else if (id === "back") state = howtoFrom;
   else if (id === "chars") state = "chars";
   else if (id === "done") state = "ready";
@@ -2104,7 +2398,8 @@ function draw() {
 
   for (const o of obstacles) if (o.type === "puddle") drawPuddle(o); // on the floor, under everything
   for (const o of obstacles) {
-    if (o.type === "flyer") drawFlyingBook(o);
+    if (o.type === "flyer") drawFlyingBook(o, o.skimY == null); // (no floor shadow when it's up on furniture)
+    else if (o.type === "tunnel") drawTunnel(o);
     else if (o.type === "sign") drawWetSign(o);
     else if (o.type === "platform") drawPlatform(o);
     else for (const b of o.books) drawLyingBook(b);
@@ -2307,7 +2602,7 @@ function drawButtons() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
     if (b.card) return drawCharacterCard(b, on);
-    if (b.id === "page") b = { ...b, label: howtoPage ? "‹ The basics" : "Power-ups ›" };
+    if (b.id === "page") b = { ...b, label: HOWTO_NEXT[howtoPage] };
     drawButton(
       b,
       on,
@@ -2399,26 +2694,46 @@ function drawHowTo() {
   ctx.fillText("How to play", W / 2, py + 30);
   cardRules(px, py + 38, pw);
 
-  // Two pages: the basics, then the power-ups (the first button flips between them).
-  const powersPage = howtoPage === 1;
-  // At the top: a red "Goal:" (or "Tip:") followed by the rest, centered together (two lines when tall)
-  const goalLead = powersPage ? "Tip: " : "Goal: ",
-    goalText = powersPage
-      ? tall()
-        ? "jump for the glowing badges!"
-        : "jump for the glowing badges! One at a time; its bar up top shows how long."
-      : tall()
-        ? "dash through the library and"
-        : "dash through the library and collect as many pages as you can!";
+  // Four pages: the basics, furniture & tunnels, the flying books, the power-ups (the first button
+  // steps through them). Each has a line at the top (a red lead, then the rest; two lines when
+  // tall) and a hint at the bottom.
+  const PAGE_TEXT = [
+    {
+      lead: "Goal: ",
+      wide: "dash through the library and collect as many pages as you can!",
+      tall: ["dash through the library and", "collect as many pages as you can!"],
+      hint: ["Hold jump to go higher · P pauses · M sound on/off · Esc to go back", "Hold your tap to jump higher"],
+    },
+    {
+      lead: "Tip: ",
+      wide: "jump onto furniture and run along the top. Never run into its side!",
+      tall: ["jump onto furniture and run along it.", "Never run into its side!"],
+      hint: ["Running into furniture ends your run · Esc to go back", "Running into furniture ends your run"],
+    },
+    {
+      lead: "Tip: ",
+      wide: "duck most of them (↓ or swipe down & hold). Each kind moves its own way!",
+      tall: ["duck most of them: ↓ or swipe down & hold.", "Each kind moves its own way!"],
+      hint: ["Duck early: they're quicker than they look · Esc to go back", "Duck early: they're quicker than they look"],
+    },
+    {
+      lead: "Tip: ",
+      wide: "jump for the glowing badges! One at a time; its bar up top shows how long.",
+      tall: ["jump for the glowing badges!", "One at a time: its bar up top shows how long."],
+      hint: ["They float at the very top of a jump · ← → to choose · Esc to go back", "They float at the very top of a jump"],
+    },
+  ];
+  const page = PAGE_TEXT[howtoPage],
+    furniturePage = howtoPage === 1,
+    flyersPage = howtoPage === 2,
+    powersPage = howtoPage === 3;
+  const goalLead = page.lead,
+    goalText = tall() ? page.tall[0] : page.wide;
   if (tall()) {
     ctx.textAlign = "center";
     ctx.fillStyle = INK;
     ctx.font = "14px Georgia, serif";
-    ctx.fillText(
-      powersPage ? "One at a time: its bar up top shows how long." : "collect as many pages as you can!",
-      W / 2,
-      py + 82,
-    );
+    ctx.fillText(page.tall[1], W / 2, py + 82);
   }
   ctx.font = "bold 14px Georgia, serif";
   const leadW = ctx.measureText(goalLead).width;
@@ -2432,6 +2747,20 @@ function drawHowTo() {
   ctx.font = "14px Georgia, serif";
   ctx.fillText(goalText, goalX + leadW, py + 62);
 
+  const furnitureRows = [
+    { title: "Carts, benches & chairs", how: "Jump on top. Their sides end your run!", icon: iconCart },
+    { title: "Reading tables", how: "Hop on top, or duck and slide under!", icon: iconTable },
+    { title: "Book tunnels", how: "Too tall to jump: duck and hold it!", icon: iconTunnel },
+    { title: "Things on top", how: "Stacks and flying books up there: jump!", icon: iconTopStack },
+    { title: "Bookmarks up high", how: "Jump from the furniture to grab them!", icon: iconPerch },
+  ];
+  const flyerRows = [
+    { title: "Flying books", how: "Duck under them, or jump clean over.", icon: iconFlyerOf("plain") },
+    { title: "Orange swoopers", how: "They rise and dive: run under, duck or jump.", icon: iconFlyerOf("swoop") },
+    { title: "Blue darters", how: "Faster than the floor. Duck early!", icon: iconFlyerOf("dart") },
+    { title: "Red chargers", how: "They shake and flash a “!”, then charge!", icon: iconFlyerOf("charge") },
+    { title: "A murder of books", how: "Skimming the floor? Jump! Up high? Duck!", icon: iconFlock },
+  ];
   const secs = (type) => POWERS[type].ms / 1000;
   const powerRows = [
     {
@@ -2458,7 +2787,7 @@ function drawHowTo() {
     },
     {
       title: "Duck the flying books",
-      how: "↓ or swipe down & hold. Orange ones swoop!",
+      how: "↓ or swipe down & hold. Some are sneaky!",
       icon: iconFlyer,
     },
     {
@@ -2482,11 +2811,17 @@ function drawHowTo() {
       icon: iconTape,
     },
   ];
-  (powersPage ? powerRows : basicRows).forEach((r, i) => {
+  const rows = powersPage ? powerRows : flyersPage ? flyerRows : furniturePage ? furnitureRows : basicRows;
+  rows.forEach((r, i) => {
     // the basics — wide: two columns of three · tall: one column of six
+    // furniture & the flying books — wide: two columns of three · tall: one column of five
     // the power-ups — one column of three, a little more spread out
     let cx, ry, room;
-    if (powersPage) {
+    if (flyersPage || furniturePage) {
+      cx = tall() ? px + 24 : px + 36 + (i % 2) * 284;
+      ry = tall() ? py + 106 + i * 68 : py + 74 + Math.floor(i / 2) * 46;
+      room = tall() ? pw - 24 - 46 - 14 : 284 - 46 - 12;
+    } else if (powersPage) {
       cx = tall() ? px + 24 : px + 90;
       ry = tall() ? py + 120 + i * 100 : py + 76 + i * 46;
       room = tall() ? pw - 24 - 46 - 14 : pw - 90 - 46 - 60;
@@ -2525,16 +2860,7 @@ function drawHowTo() {
     ctx.fillText(r.how, cx + 46, ry + 31);
   });
   drawButtons();
-  hint(
-    powersPage
-      ? tall()
-        ? "They float at the very top of a jump"
-        : "They float at the very top of a jump · ← → to choose · Esc to go back"
-      : tall()
-        ? "Hold your tap to jump higher"
-        : "Hold jump to go higher · P pauses · M sound on/off · Esc to go back",
-    py + ph - 12,
-  );
+  hint(page.hint[tall() ? 1 : 0], py + ph - 12);
 }
 
 function drawGameOver() {
@@ -2921,7 +3247,8 @@ function drawReadingChair(o) {
   for (const fx of [x + 14, x + w - 22]) R(fx, FLOOR - 8, 8, 8, "#4a2c17"); // little feet
 }
 
-// A reading table with two chairs tucked in behind it, and an open book lying on top.
+// A low reading table with two chairs tucked in behind it, and an open book lying on top.
+// It's open underneath (just legs at the ends, set back), so you can duck and slide under it.
 function drawReadingTable(o) {
   const { x, y, w, h } = o;
   for (const cx of [x + 22, x + w - 56]) {
@@ -2931,9 +3258,10 @@ function drawReadingTable(o) {
     R(cx, y - 34, 34, 6, "#5a381c");
     R(cx + 3, y - 22, 28, 4, "#5a381c");
   }
-  R(x + 10, y + 14, 8, FLOOR - y - 14, "#3d2614"); // legs
-  R(x + w - 18, y + 14, 8, FLOOR - y - 14, "#3d2614");
-  R(x + 6, y + 8, w - 12, 6, "#4a2e18"); // the apron under the top
+  R(x + 6, y + TABLE_SLAB, w - 12, FLOOR - y - TABLE_SLAB, "rgba(0, 0, 0, 0.16)"); // the shade underneath
+  R(x + 8, y + TABLE_SLAB, 7, FLOOR - y - TABLE_SLAB, "#2a1a0d"); // legs, set back at the ends
+  R(x + w - 15, y + TABLE_SLAB, 7, FLOOR - y - TABLE_SLAB, "#2a1a0d");
+  R(x + 6, y + 8, w - 12, TABLE_SLAB - 8, "#4a2e18"); // the apron under the top
   R(x, y, w, 9, "#6b4423"); // the tabletop (where you run): dark walnut
   R(x, y, w, 2, "rgba(255, 255, 255, 0.3)");
   R(x, y + 9, w, 1.5, "#24160b"); // a crisp edge
@@ -2942,6 +3270,47 @@ function drawReadingTable(o) {
   poly(PAPER, bx - 14, y, bx, y - 3, bx, y + 1, bx - 14, y + 2);
   poly("#f8f2e3", bx + 14, y, bx, y - 3, bx, y + 1, bx + 14, y + 2);
   R(bx - 15, y + 1, 30, 1.5, SPINES[3]);
+}
+
+// A book tunnel: a tall bookcase hanging from the ceiling, shelves packed with books, with a low
+// gap at the floor to duck through. Posts at the ends stand back, out of the way.
+function drawTunnel(o) {
+  const { x, y, w } = o,
+    bottom = o.y + o.h; // the underside you duck under
+  R(x, bottom, w, FLOOR - bottom, "rgba(0, 0, 0, 0.22)"); // the shade inside
+  R(x + 4, bottom, 7, FLOOR - bottom, "#2a1a0d"); // posts, set back
+  R(x + w - 11, bottom, 7, FLOOR - bottom, "#2a1a0d");
+  R(x, y, w, bottom - y, "#5a381c"); // the case
+  R(x, y, 8, bottom - y, "#4a2e18"); // its sides
+  R(x + w - 8, y, 8, bottom - y, "#4a2e18");
+  // shelves of books
+  const rowH = 36;
+  for (let row = 0, ry = y + 6; ry + rowH < bottom - 8; row++, ry += rowH) {
+    R(x + 8, ry, w - 16, rowH - 4, "#3a2412"); // the back of the shelf
+    for (let bx = x + 10, i = 0; bx < x + w - 14; i++) {
+      const bw = 6 + ((hash(i, row + o.seed) * 6) | 0),
+        bh = 20 + hash(i + 5, row + o.seed) * 10;
+      if (hash(i + 9, row + o.seed) < 0.08) {
+        bx += bw + 4; // a gap where a book's been borrowed
+        continue;
+      }
+      R(bx, ry + rowH - 4 - bh, bw, bh, SPINES[(hash(i + 2, row + o.seed) * SPINES.length) | 0]);
+      R(bx + 1, ry + rowH - 4 - bh + 3, bw - 2, 1.5, "rgba(255, 255, 255, 0.3)");
+      bx += bw + 1;
+    }
+    R(x + 8, ry + rowH - 4, w - 16, 4, "#6b4423"); // the shelf board
+  }
+  // the low beam along the bottom: what you duck under
+  R(x, bottom - 10, w, 10, "#6b4423");
+  R(x, bottom - 10, w, 2, "rgba(255, 255, 255, 0.3)");
+  R(x, bottom - 1.5, w, 1.5, "#24160b");
+  // a little brass plaque
+  const px = x + w / 2;
+  R(px - 30, bottom - 9, 60, 8, "#c9a24a");
+  ctx.fillStyle = "#3a2a10";
+  ctx.font = "bold 6px Georgia, serif";
+  ctx.textAlign = "center";
+  ctx.fillText("READING NOOK", px, bottom - 3);
 }
 
 // A yellow fold-out wet floor sign: a caution triangle with "!", and a wavy water line.
@@ -2981,27 +3350,34 @@ function drawWetSign(o) {
 
 // A puddle on the floor: a bright blue pool with a white rim and a shimmer (it ripples once splashed).
 function drawPuddle(o) {
-  const cx = o.x + o.w / 2,
-    cy = FLOOR + 6, // on the walking surface
-    rx = o.w / 2,
-    ry = 7;
-  oval(cx, cy + 1, rx + 2, ry + 1.5, "rgba(20, 40, 70, 0.35)"); // a wet, darker edge
-  oval(cx, cy, rx, ry, "#4f93cf");
-  oval(cx - 3, cy - 1, rx - 7, ry - 2.5, "#9fd0f2");
+  const mx = o.x + o.w / 2,
+    my = FLOOR + 6; // on the walking surface
+  const [water, light] = o.blue;
+  // a wet, darker edge around every lobe, then the water over the top (so the lobes merge)
+  for (const l of o.lobes) oval(mx + l.dx, my + l.dy + 1, l.rx + 2, l.ry + 1.5, "rgba(20, 40, 70, 0.35)");
+  for (const l of o.lobes) oval(mx + l.dx, my + l.dy, l.rx, l.ry, water);
+  // the main pool: a lighter middle, a rim catching the light, and a shimmer
+  const m = o.lobes[0],
+    cx = mx + m.dx,
+    cy = my + m.dy,
+    rx = m.rx,
+    ry = m.ry;
+  oval(cx - 3, cy - 1, rx * 0.72, ry * 0.6, light);
+  for (const l of o.lobes.slice(1)) oval(mx + l.dx - 1, my + l.dy - 0.5, l.rx * 0.6, l.ry * 0.5, light);
   ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
   ctx.lineWidth = 1.2;
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx, ry, 0, Math.PI * 1.05, Math.PI * 1.7); // rim catching the light
   ctx.stroke();
-  const shimmer = Math.sin(runTime * 0.006 + o.phase) * 5;
-  R(cx - 12 + shimmer, cy - 3, 11, 2, "rgba(255, 255, 255, 0.85)");
-  R(cx + 6 - shimmer, cy + 1, 6, 1.5, "rgba(255, 255, 255, 0.7)");
+  const shimmer = Math.sin(runTime * 0.006 + o.phase) * rx * 0.18;
+  R(cx - rx * 0.45 + shimmer, cy - 3, rx * 0.4, 2, "rgba(255, 255, 255, 0.85)");
+  R(cx + rx * 0.2 - shimmer, cy + 1, rx * 0.22, 1.5, "rgba(255, 255, 255, 0.7)");
   if (o.soaked) {
     // ripples after a splash
     ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.ellipse(cx, cy, rx - 6, ry - 2.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, rx * 0.78, ry * 0.65, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
 }
@@ -3067,7 +3443,8 @@ function drawLyingBook(b) {
 
 // The hero: a little teal hardcover with reading glasses.
 // A book flapping its covers like wings, with a shadow on the floor below.
-function drawFlyingBook(o, shadow = true) {
+// `trails`: the speed marks behind the moving kinds (left off in How to play's small pictures).
+function drawFlyingBook(o, shadow = true, trails = true) {
   const cx = o.x + o.w / 2,
     bottom = o.y + o.h;
   if (shadow) {
@@ -3081,7 +3458,12 @@ function drawFlyingBook(o, shadow = true) {
       `rgba(0, 0, 0, ${0.12 + near * 0.2})`,
     );
   }
-  if (o.swoop) {
+  const ch = o.charge ? chargeState(o) : null,
+    winding = ch && ch.winding,
+    charging = ch && ch.charging;
+  ctx.save();
+  if (winding && !o.still) ctx.translate(Math.sin(runTime * 0.09) * 2.2, Math.sin(runTime * 0.13) * 1); // shaking, about to go
+  if (trails && o.swoop) {
     // little speed marks above and below, so it reads as a book on the move
     ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
     ctx.lineWidth = 2;
@@ -3093,8 +3475,23 @@ function drawFlyingBook(o, shadow = true) {
     ctx.lineTo(cx + 40, bottom - 6);
     ctx.stroke();
     ctx.lineCap = "butt";
+  } else if (trails && (o.dart || o.flock || charging)) {
+    // longer streaks trailing behind: it's really flying at you
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    const reach = charging ? 34 : 22;
+    for (const [dy, k] of [[-22, 0], [-12, 1], [-3, 2]]) {
+      const len = reach + Math.sin(runTime * 0.03 + k * 2 + o.phase) * 6 - k * 3;
+      ctx.moveTo(cx + 24, bottom + dy);
+      ctx.lineTo(cx + 24 + len, bottom + dy);
+    }
+    ctx.stroke();
+    ctx.lineCap = "butt";
   }
-  const flap = Math.sin(runTime * (o.swoop ? 0.04 : 0.025) + o.phase) * 7;
+  const flapRate = winding ? 0.08 : charging ? 0.06 : o.flock ? 0.05 : o.dart ? 0.045 : o.swoop ? 0.04 : 0.025;
+  const flap = o.still ? 3 : Math.sin(runTime * flapRate + o.phase) * 7; // (`still`: How to play's pictures hold one pose)
   const sx = cx,
     sy = bottom - 3; // spine
   const lx = cx - 22,
@@ -3122,9 +3519,25 @@ function drawFlyingBook(o, shadow = true) {
   ctx.lineTo(rx, tipY);
   ctx.stroke();
   ctx.lineCap = "butt";
-  // angry little eyes on the spine so it reads as a creature
-  R(sx - 5, sy - 9, 3, 3, "#1a1a1a");
-  R(sx + 2, sy - 9, 3, 3, "#1a1a1a");
+  // angry little eyes on the spine so it reads as a creature (red when a charger is about to go)
+  const eye = winding || charging ? "#d62b1f" : "#1a1a1a";
+  R(sx - 5, sy - 9, 3, 3, eye);
+  R(sx + 2, sy - 9, 3, 3, eye);
+  if (winding) {
+    // a "!" over its head: here it comes
+    const by = tipY - 18;
+    oval(cx, by, 8, 8, "#fff");
+    ctx.strokeStyle = CHARGE_COLOR;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, by, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = CHARGE_COLOR;
+    ctx.font = "bold 13px Georgia, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("!", cx, by + 5);
+  }
+  ctx.restore();
 }
 
 // The run cycle, shared by everything that shows a character running. Two hops per stride:
@@ -3675,7 +4088,7 @@ function sparkle(x, y, r, color) {
 const CHARACTERS = [
   {
     id: "dash",
-    name: "Dash",
+    name: "Dewey", // as in the Dewey Decimal System
     blurb: ["Always reading,", "always running"],
     cover: "#2f5d62",
     spine: "#234548",
@@ -3854,7 +4267,7 @@ const CHARACTERS = [
 let charIndex = Math.max(
   0,
   CHARACTERS.findIndex((c) => c.id === safeGet("runner-character")),
-); // Dash unless they picked another
+); // Dewey unless they picked another
 
 function pickCharacter(i) {
   charIndex = (i + CHARACTERS.length) % CHARACTERS.length;
@@ -4201,10 +4614,70 @@ function iconStack(x, y) {
 }
 function iconFlyer(x, y) {
   drawFlyingBook(
-    { x: x - 22, y: y - 14, w: 44, h: 22, color: SPINES[3], phase: 0 },
+    { x: x - 22, y: y - 14, w: 44, h: 22, color: SPINES[3], phase: 0, still: true },
     false,
   );
 }
+// The low reading table: a walnut top on legs, open underneath.
+function iconTable(x, y) {
+  R(x - 15, y - 5, 30, 5, "#6b4423");
+  R(x - 15, y - 5, 30, 1.5, "rgba(255, 255, 255, 0.3)");
+  R(x - 13, y, 3, 11, "#c9a77a");
+  R(x + 10, y, 3, 11, "#c9a77a");
+  R(x - 9, y + 4, 12, 7, SPINES[1]); // a book sliding underneath
+  R(x - 9, y + 4, 3, 7, "#1e3d40");
+}
+// A book tunnel: the bookcase with its low beam, on posts.
+function iconTunnel(x, y) {
+  R(x - 13, y - 13, 26, 17, "#5a381c");
+  for (let row = 0; row < 2; row++)
+    for (let i = 0; i < 5; i++) R(x - 11 + i * 4.6, y - 11 + row * 7, 3.5, 6, SPINES[(i + row * 3) % SPINES.length]);
+  R(x - 13, y + 2, 26, 3, "#a87a48");
+  R(x - 13, y + 5, 2.5, 8, "#c9a77a");
+  R(x + 10.5, y + 5, 2.5, 8, "#c9a77a");
+}
+// A stack of books sitting on top of a cart.
+function iconTopStack(x, y) {
+  R(x - 14, y + 4, 28, 4, "#9aa4b1");
+  R(x - 12, y + 8, 2.5, 6, "#6f7986");
+  R(x + 9.5, y + 8, 2.5, 6, "#6f7986");
+  R(x - 6, y - 1, 13, 5, SPINES[0]);
+  R(x - 5, y - 6, 11, 5, SPINES[2]);
+  R(x - 6, y - 11, 12, 5, SPINES[4]);
+}
+// A bookmark floating over a piece of furniture.
+function iconPerch(x, y) {
+  R(x - 14, y + 8, 28, 4, "#9aa4b1");
+  drawBookmark(x - 5, y - 13, 10, 18, RIBBON_RED);
+}
+// A murder of books: three dark little ones bunched together.
+function iconFlock(x, y) {
+  for (const [dx, dy, i] of [[-8, -7, 0], [9, -3, 1], [-1, 7, 2]]) {
+    ctx.save();
+    ctx.translate(x + dx, y + dy);
+    ctx.scale(0.5, 0.5);
+    drawFlyingBook({ x: -22, y: -8, w: 44, h: 22, phase: 0, still: true, color: FLOCK_COLORS[i] }, false, false);
+    ctx.restore();
+  }
+}
+// Each kind of flying book, for How to play's flying books page (the charger mid-wind-up, "!" and all).
+const iconFlyerOf = (kind) => (x, y) =>
+  drawFlyingBook(
+    {
+      x: x - 22,
+      y: y - 14,
+      w: 44,
+      h: 22,
+      phase: 0,
+      still: true,
+      color: { swoop: SWOOP_COLOR, dart: DART_COLOR, charge: CHARGE_COLOR }[kind] || SPINES[3],
+      swoop: kind === "swoop",
+      dart: kind === "dart",
+      charge: kind === "charge" ? { t: 100, at: 0 } : undefined,
+    },
+    false,
+    false,
+  );
 function iconPage(x, y) {
   drawPage(x - 9, y - 11, 18, 23, -0.12);
 }
