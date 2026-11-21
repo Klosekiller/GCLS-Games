@@ -1453,8 +1453,7 @@ const DEATH_MS = 900; // let the crash play out (pages flying, the book tumbling
 const OVER_FADE_MS = 300; // …then fade the game-over panel in over this long
 const OVER_GRACE_MS = DEATH_MS + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
-let howtoPage = 0; // How to play: 0 the basics, 1 furniture & tunnels, 2 the flying books, 3 the power-ups
-const HOWTO_NEXT = ["Furniture ›", "Flying books ›", "Power-ups ›", "‹ The basics"]; // the page button, on each page
+let howtoPage = 0; // How to play: which topic (see HOWTO_PAGES)
 const selected = { ready: 0, paused: 0, howto: 0, over: 0, chars: 0 }; // highlighted button on each screen
 // Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen's
 // highlight stays on Start except while another button is hovered.
@@ -1508,8 +1507,8 @@ const MENU = {
     ["quit", "Quit"],
   ],
   howto: [
-    ["page", "Furniture ›"], // steps through the pages (its label changes: see HOWTO_NEXT)
-    ["back", "Back"],
+    ["next", "Next ›"], // ("Done" on the last page)
+    ["back", "Close"],
   ],
   over: [
     ["again", "Play again"],
@@ -1519,7 +1518,7 @@ const MENU = {
 // Where each screen's buttons go: a row in the wide layout, a column in the tall one.
 const BUTTON_Y = {
   wide: { ready: 178, chars: 234, paused: 196, howto: 220, over: 196 },
-  tall: { ready: 340, chars: 494, paused: 288, howto: 458, over: 330 },
+  tall: { ready: 340, chars: 494, paused: 288, howto: 446, over: 330 },
 };
 let BUTTONS = {};
 function makeButtons() {
@@ -1706,10 +1705,14 @@ function choose(id) {
   } else if (id === "resume") state = "running";
   else if (id === "howto") {
     howtoFrom = state;
-    selected.howto = 1; // Back, so Enter / Space still close it
+    selected.howto = 0; // Next, so Enter / Space step through the pages
     howtoPage = 0;
+    topics.open = false;
     state = "howto";
-  } else if (id === "page") howtoPage = (howtoPage + 1) % HOWTO_NEXT.length;
+  } else if (id === "next") {
+    if (howtoPage < HOWTO_PAGES.length - 1) howtoPage++;
+    else choose("back"); // (Done)
+  }
   else if (id === "back") state = howtoFrom;
   else if (id === "chars") state = "chars";
   else if (id === "done") state = "ready";
@@ -2576,7 +2579,7 @@ function dimBehindCard() {
   fillScreen();
 }
 // The card. `title` (optional) is written at the top, with the rules under it.
-function drawCard(x, y, w, h, title) {
+function drawCard(x, y, w, h, title, ribbon = true) {
   ctx.save();
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
   ctx.shadowBlur = 20;
@@ -2592,8 +2595,17 @@ function drawCard(x, y, w, h, title) {
   ctx.lineWidth = 1;
   ctx.strokeRect(x + 6, y + 6, w - 12, h - 12);
   // the ribbon bookmark, hanging from the top edge near the right corner
-  const rx = x + w - 46,
-    rw = 16,
+  if (ribbon) drawRibbon(x + w - 46, y);
+  if (!title) return;
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK;
+  ctx.font = "bold 26px Georgia, serif";
+  ctx.fillText(title, x + w / 2, y + 36);
+  cardRules(x, y + 48, w);
+}
+// The red ribbon bookmark hanging over a card's top edge at (rx, y).
+function drawRibbon(rx, y) {
+  const rw = 16,
     rh = 34;
   ctx.fillStyle = CARD_RED;
   ctx.beginPath();
@@ -2606,12 +2618,6 @@ function drawCard(x, y, w, h, title) {
   ctx.fill();
   ctx.fillStyle = "rgba(0, 0, 0, 0.18)"; // the fold over the top edge
   ctx.fillRect(rx, y - 4, rw, 4);
-  if (!title) return;
-  ctx.textAlign = "center";
-  ctx.fillStyle = INK;
-  ctx.font = "bold 26px Georgia, serif";
-  ctx.fillText(title, x + w / 2, y + 36);
-  cardRules(x, y + 48, w);
 }
 // The red double rule across a card at y.
 function cardRules(x, y, w) {
@@ -2644,7 +2650,7 @@ function drawButtons() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
     if (b.card) return drawCharacterCard(b, on);
-    if (b.id === "page") b = { ...b, label: HOWTO_NEXT[howtoPage] };
+    if (b.id === "next" && howtoPage === HOWTO_PAGES.length - 1) b = { ...b, label: "Done" };
     drawButton(
       b,
       on,
@@ -2724,155 +2730,172 @@ function drawPause() {
   );
 }
 
-// How to play: its own screen, opened from the start screen or the pause screen.
+// How to play: its own screen, opened from the start screen or the pause screen. One topic per
+// page, with only what that topic needs: Next steps through them, and the Topics list in the top
+// right jumps straight to one. (Keyboard: ← → flip pages, T opens Topics, Esc closes.)
+// Touch screens are told about taps and swipes, keyboards about keys.
+const touchUI = window.matchMedia && window.matchMedia("(hover: none)").matches;
+const HOWTO_PAGES = [
+  {
+    name: "Objective",
+    tip: "Dash through the library and collect as many pages as you can!",
+    rows: () => [
+      { title: "Loose pages", how: "Every one you grab adds to your score.", icon: iconPage },
+      { title: "Bookmarks", how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`, icon: iconBookmarkPick },
+      { title: "Go the distance", how: "The farther you run, the trickier it gets.", icon: iconStar },
+    ],
+  },
+  {
+    name: "Controls",
+    tip: touchUI ? "Tap and swipe anywhere on the game." : "Use the arrow keys, or Space and the letters below.",
+    rows: () =>
+      touchUI
+        ? [
+            { title: "Jump", how: "Tap. Hold your tap to jump higher.", icon: iconArrowUp },
+            { title: "Duck", how: "Swipe down and hold. Mid-air, it drops you fast.", icon: iconArrowDown },
+            { title: "Pause", how: "The pause button at the top.", icon: iconPauseBars },
+            { title: "Sound", how: "The Sound button at the top left.", icon: iconSound },
+          ]
+        : [
+            { title: "Jump", how: "Space or ↑. Hold it to jump higher.", icon: iconArrowUp },
+            { title: "Duck", how: "↓ or S, and hold. Mid-air, it drops you fast.", icon: iconArrowDown },
+            { title: "Pause", how: "P or Esc.", icon: iconPauseBars },
+            { title: "Sound", how: "M turns it on and off.", icon: iconSound },
+          ],
+  },
+  {
+    name: "Hearts",
+    tip: "Bumps hurt, but a little book tape fixes everything.",
+    rows: () => [
+      { title: `You have ${LIVES} hearts`, how: `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages.`, icon: iconHeart },
+      { title: "Book tape", how: "Shows up when you're hurt: grab it for +1 heart.", icon: iconTape },
+    ],
+  },
+  {
+    name: "Obstacles",
+    tip: "Things on the floor and in the way. Jump or duck!",
+    rows: () => [
+      { title: "Book stacks", how: "Jump over them. Some come two or three wide.", icon: iconStack },
+      { title: "Wet floors", how: "Jump the sign and the puddles: puddles make you slip.", icon: iconWetFloor },
+      { title: "Book tunnels", how: "Too tall to jump: duck in and hold it through.", icon: iconTunnel },
+    ],
+  },
+  {
+    name: "Furniture",
+    tip: "Jump on top and run along it. Never run into its side!",
+    rows: () => [
+      { title: "Carts, benches & chairs", how: "Hop up. Hitting the side ends your run!", icon: iconCart },
+      { title: "Reading tables", how: "Hop on top, or duck and slide under.", icon: iconTable },
+      { title: "Things on top", how: "Stacks and flying books up there: jump!", icon: iconTopStack },
+      { title: "Bookmarks up high", how: "Jump from the furniture to grab them.", icon: iconPerch },
+    ],
+  },
+  {
+    name: "Enemies",
+    tip: "Flying books! Duck most of them. Each kind moves its own way.",
+    rows: () => [
+      { title: "Flying books", how: "Duck under them, or jump clean over.", icon: iconFlyerOf("plain") },
+      { title: "Orange swoopers", how: "They rise and dive: run under, duck or jump.", icon: iconFlyerOf("swoop") },
+      { title: "Blue darters", how: "Faster than the floor. Duck early!", icon: iconFlyerOf("dart") },
+      { title: "Red chargers", how: "They shake and flash a “!”, then charge!", icon: iconFlyerOf("charge") },
+      { title: "A murder of books", how: "Skimming the floor? Jump! Up high? Duck!", icon: iconFlock },
+    ],
+  },
+  {
+    name: "Power-ups",
+    tip: "Glowing badges at the very top of a jump. One works at a time.",
+    rows: () => {
+      const secs = (type) => POWERS[type].ms / 1000;
+      return [
+        { title: "Bookmark magnet", how: `Pages fly to you for ${secs("magnet")} seconds.`, power: "magnet" },
+        { title: "Hardcover", how: `Takes your next bump. Lasts up to ${secs("shield")} seconds.`, power: "shield" },
+        { title: "Speed reading", how: `${secs("speed")} seconds of speed and double pages!`, power: "speed" },
+      ];
+    },
+  },
+];
+// The Topics list: open or not, which topic is highlighted, and where things were drawn (for taps).
+const topics = { open: false, focus: 0, pill: null, items: [] };
+
+// A line of text split into lines that fit `width` (at the current font).
+function wrapLines(text, width) {
+  const words = text.split(" "),
+    lines = [];
+  let line = "";
+  for (const w of words) {
+    const tryLine = line ? line + " " + w : w;
+    if (line && ctx.measureText(tryLine).width > width) {
+      lines.push(line);
+      line = w;
+    } else line = tryLine;
+  }
+  if (line) lines.push(line);
+  if (lines.length === 2) {
+    // two lines: split where they come out about even, so no word is left on its own
+    let bestLines = lines,
+      bestW = Infinity;
+    for (let i = 1; i < words.length; i++) {
+      const a = words.slice(0, i).join(" "),
+        b = words.slice(i).join(" "),
+        w = Math.max(ctx.measureText(a).width, ctx.measureText(b).width);
+      if (w <= width && w < bestW) {
+        bestW = w;
+        bestLines = [a, b];
+      }
+    }
+    return bestLines;
+  }
+  return lines;
+}
+
 function drawHowTo() {
   dimBehindCard();
   const pw = tall() ? 420 : 600,
     px = W / 2 - pw / 2,
     py = tall() ? 20 : 12,
     ph = tall() ? 590 : 284;
-  drawCard(px, py, pw, ph);
+  const page = HOWTO_PAGES[howtoPage],
+    n = HOWTO_PAGES.length;
+  drawCard(px, py, pw, ph, null, false); // (no ribbon: the Topics list goes in that corner)
+
+  // the header: a small "How to play" and the page number, the topic's name, the red rules
+  ctx.textAlign = "left";
+  ctx.fillStyle = INK_SOFT;
+  ctx.font = "italic 12px Georgia, serif";
+  ctx.fillText(`How to play · ${howtoPage + 1} of ${n}`, px + 22, py + 24);
   ctx.textAlign = "center";
   ctx.fillStyle = INK;
-  ctx.font = "bold 22px Georgia, serif";
-  ctx.fillText("How to play", W / 2, py + 30);
-  cardRules(px, py + 38, pw);
+  ctx.font = `bold ${tall() ? 24 : 22}px Georgia, serif`;
+  ctx.fillText(page.name, W / 2, tall() ? py + 58 : py + 34);
+  const rulesY = tall() ? py + 68 : py + 42;
+  cardRules(px, rulesY, pw);
 
-  // Four pages: the basics, furniture & tunnels, the flying books, the power-ups (the first button
-  // steps through them). Each has a line at the top (a red lead, then the rest; two lines when
-  // tall) and a hint at the bottom.
-  const PAGE_TEXT = [
-    {
-      lead: "Goal: ",
-      wide: "dash through the library and collect as many pages as you can!",
-      tall: ["dash through the library and", "collect as many pages as you can!"],
-      hint: ["Hold jump to go higher · P pauses · M sound on/off · Esc to go back", "Hold your tap to jump higher"],
-    },
-    {
-      lead: "Tip: ",
-      wide: "jump onto furniture and run along the top. Never run into its side!",
-      tall: ["jump onto furniture and run along it.", "Never run into its side!"],
-      hint: ["Running into furniture ends your run · Esc to go back", "Running into furniture ends your run"],
-    },
-    {
-      lead: "Tip: ",
-      wide: "duck most of them (↓ or swipe down & hold). Each kind moves its own way!",
-      tall: ["duck most of them: ↓ or swipe down & hold.", "Each kind moves its own way!"],
-      hint: ["Duck early: they're quicker than they look · Esc to go back", "Duck early: they're quicker than they look"],
-    },
-    {
-      lead: "Tip: ",
-      wide: "jump for the glowing badges! One at a time; its bar up top shows how long.",
-      tall: ["jump for the glowing badges!", "One at a time: its bar up top shows how long."],
-      hint: ["They float at the very top of a jump · ← → to choose · Esc to go back", "They float at the very top of a jump"],
-    },
-  ];
-  const page = PAGE_TEXT[howtoPage],
-    furniturePage = howtoPage === 1,
-    flyersPage = howtoPage === 2,
-    powersPage = howtoPage === 3;
-  const goalLead = page.lead,
-    goalText = tall() ? page.tall[0] : page.wide;
-  if (tall()) {
-    ctx.textAlign = "center";
-    ctx.fillStyle = INK;
-    ctx.font = "14px Georgia, serif";
-    ctx.fillText(page.tall[1], W / 2, py + 82);
-  }
-  ctx.font = "bold 14px Georgia, serif";
-  const leadW = ctx.measureText(goalLead).width;
-  ctx.font = "14px Georgia, serif";
-  const goalX = W / 2 - (leadW + ctx.measureText(goalText).width) / 2;
-  ctx.textAlign = "left";
-  ctx.fillStyle = CARD_RED;
-  ctx.font = "bold 14px Georgia, serif";
-  ctx.fillText(goalLead, goalX, py + 62);
+  // one line about the topic (two on a phone, if it needs them)
   ctx.fillStyle = INK;
   ctx.font = "14px Georgia, serif";
-  ctx.fillText(goalText, goalX + leadW, py + 62);
+  const tipLines = wrapLines(page.tip, pw - 48);
+  tipLines.forEach((l, i) => ctx.fillText(l, W / 2, rulesY + 24 + i * 19));
 
-  const furnitureRows = [
-    { title: "Carts, benches & chairs", how: "Jump on top. Their sides end your run!", icon: iconCart },
-    { title: "Reading tables", how: "Hop on top, or duck and slide under!", icon: iconTable },
-    { title: "Book tunnels", how: "Too tall to jump: duck and hold it!", icon: iconTunnel },
-    { title: "Things on top", how: "Stacks and flying books up there: jump!", icon: iconTopStack },
-    { title: "Bookmarks up high", how: "Jump from the furniture to grab them!", icon: iconPerch },
-  ];
-  const flyerRows = [
-    { title: "Flying books", how: "Duck under them, or jump clean over.", icon: iconFlyerOf("plain") },
-    { title: "Orange swoopers", how: "They rise and dive: run under, duck or jump.", icon: iconFlyerOf("swoop") },
-    { title: "Blue darters", how: "Faster than the floor. Duck early!", icon: iconFlyerOf("dart") },
-    { title: "Red chargers", how: "They shake and flash a “!”, then charge!", icon: iconFlyerOf("charge") },
-    { title: "A murder of books", how: "Skimming the floor? Jump! Up high? Duck!", icon: iconFlock },
-  ];
-  const secs = (type) => POWERS[type].ms / 1000;
-  const powerRows = [
-    {
-      title: "Bookmark magnet",
-      how: `Pages and bookmarks fly to you for ${secs("magnet")} seconds.`,
-      power: "magnet",
-    },
-    {
-      title: "Hardcover",
-      how: `Takes your next bump for you. Lasts up to ${secs("shield")} seconds.`,
-      power: "shield",
-    },
-    {
-      title: "Speed reading",
-      how: `${secs("speed")} seconds of speed: double pages, and you knock things flying!`,
-      power: "speed",
-    },
-  ];
-  const basicRows = [
-    {
-      title: "Jump stacks & wet floor signs",
-      how: "Space, ↑ or tap. Puddles make you slip!",
-      icon: iconStack,
-    },
-    {
-      title: "Duck the flying books",
-      how: "↓ or swipe down & hold. Some are sneaky!",
-      icon: iconFlyer,
-    },
-    {
-      title: "Collect loose pages",
-      how: `Rare bookmarks are worth ${BOOKMARK_PAGES} pages!`,
-      icon: iconPage,
-    },
-    {
-      title: "Hop onto carts & chairs",
-      how: "Run into the side and it's game over!",
-      icon: iconCart,
-    },
-    {
-      title: `You have ${LIVES} hearts`,
-      how: `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages!`,
-      icon: iconHeart,
-    },
-    {
-      title: "Grab book tape",
-      how: "It shows up when you're hurt: +1 heart!",
-      icon: iconTape,
-    },
-  ];
-  const rows = powersPage ? powerRows : flyersPage ? flyerRows : furniturePage ? furnitureRows : basicRows;
+  // the topic's rows: one column, or two when there are four or more on a wide screen
+  const rows = page.rows();
+  const twoCol = !tall() && rows.length >= 4;
+  const top = rulesY + 24 + (tipLines.length - 1) * 19 + (tall() ? 14 : 8); // just under the tip
+  const btnTop = BUTTON_Y[layout].howto;
+  const step = tall() ? Math.min(84, (btnTop - 28 - top) / rows.length) : 41;
   rows.forEach((r, i) => {
-    // the basics — wide: two columns of three · tall: one column of six
-    // furniture & the flying books — wide: two columns of three · tall: one column of five
-    // the power-ups — one column of three, a little more spread out
     let cx, ry, room;
-    if (flyersPage || furniturePage) {
-      cx = tall() ? px + 24 : px + 36 + (i % 2) * 284;
-      ry = tall() ? py + 106 + i * 68 : py + 74 + Math.floor(i / 2) * 46;
-      room = tall() ? pw - 24 - 46 - 14 : 284 - 46 - 12;
-    } else if (powersPage) {
-      cx = tall() ? px + 24 : px + 90;
-      ry = tall() ? py + 120 + i * 100 : py + 76 + i * 46;
-      room = tall() ? pw - 24 - 46 - 14 : pw - 90 - 46 - 60;
+    if (tall()) {
+      cx = px + 24;
+      ry = top + i * step;
+      room = pw - 24 - 46 - 14;
+    } else if (twoCol) {
+      cx = px + 36 + (i % 2) * 284;
+      ry = top + Math.floor(i / 2) * step;
+      room = 284 - 46 - 26; // (clear of the next column's picture)
     } else {
-      cx = tall() ? px + 24 : px + 36 + (i % 2) * 284;
-      ry = tall() ? py + 100 + i * 58 : py + 74 + Math.floor(i / 2) * 46;
-      room = tall() ? pw - 24 - 46 - 14 : 284 - 46 - 12; // leaves a little space before the next column / panel edge
+      cx = px + 110;
+      ry = top + i * step;
+      room = pw - 110 - 46 - 60;
     }
     if (r.power) drawPowerIcon(r.power, cx + 14, ry + 16, 19);
     else {
@@ -2883,28 +2906,111 @@ function drawHowTo() {
       ctx.fill();
       r.icon(cx + 14, ry + 16);
     }
+    // the title and what to do, each a touch smaller if it's too long for its space
+    const fit = (text, size, min, weight) => {
+      ctx.font = `${weight}${size}px Georgia, serif`;
+      const s = Math.max(min, Math.min(size, (size * room) / ctx.measureText(text).width));
+      ctx.font = `${weight}${s}px Georgia, serif`;
+    };
     ctx.textAlign = "left";
-    // titles at 15px and descriptions at 13px, each a touch smaller if too long for the column
     ctx.fillStyle = INK;
-    ctx.font = "bold 15px Georgia, serif";
-    const titleRoom = tall() || powersPage ? room : room - 14; // clear of the next column's icon (the flying book's wings reach left)
-    const titleFit = Math.max(
-      12,
-      Math.min(15, (15 * titleRoom) / ctx.measureText(r.title).width),
-    );
-    ctx.font = `bold ${titleFit}px Georgia, serif`;
+    fit(r.title, 15, 12, "bold ");
     ctx.fillText(r.title, cx + 46, ry + 13);
     ctx.fillStyle = INK_SOFT;
-    ctx.font = "13px Georgia, serif";
-    const fit = Math.max(
-      11,
-      Math.min(13, (13 * room) / ctx.measureText(r.how).width),
-    );
-    ctx.font = `${fit}px Georgia, serif`;
+    fit(r.how, 13, 11, "");
     ctx.fillText(r.how, cx + 46, ry + 31);
   });
+
   drawButtons();
-  hint(page.hint[tall() ? 1 : 0], py + ph - 12);
+  hint(
+    tall() ? (touchUI ? "Tap Topics to jump to any page" : "← → flip pages · T for topics") : "← → flip pages · T for topics · Esc to close",
+    py + ph - 12,
+  );
+  drawTopics(px, py, pw);
+}
+
+// The Topics list, in the card's top right corner: a little button, and when it's open, the list
+// of every topic (the one you're on in red).
+function drawTopics(px, py, pw) {
+  const pill = { x: px + pw - 22 - 96, y: py + 10, w: 96, h: 26 };
+  topics.pill = pill;
+  ctx.fillStyle = topics.open ? NAVY : "rgba(52, 64, 79, 0.1)";
+  roundRect(pill.x, pill.y, pill.w, pill.h, 13);
+  ctx.strokeStyle = topics.open ? NAVY : "rgba(52, 64, 79, 0.45)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.fillStyle = topics.open ? PAPER : INK;
+  ctx.font = "bold 13px Georgia, serif";
+  ctx.fillText("Topics ▾", pill.x + pill.w / 2, pill.y + 18);
+  topics.items = [];
+  if (!topics.open) return;
+  const iw = 160,
+    ih = tall() ? 34 : 24, // (taller rows on a phone, easier to tap)
+    ix = pill.x + pill.w - iw,
+    iy = pill.y + pill.h + 6;
+  ctx.save();
+  ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 4;
+  ctx.fillStyle = "#fbf6ea";
+  roundRect(ix, iy, iw, ih * HOWTO_PAGES.length + 8, 8);
+  ctx.restore();
+  ctx.strokeStyle = "rgba(52, 64, 79, 0.35)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  HOWTO_PAGES.forEach((p, i) => {
+    const r = { x: ix + 4, y: iy + 4 + i * ih, w: iw - 8, h: ih };
+    topics.items.push(r);
+    if (i === topics.focus) {
+      ctx.fillStyle = "rgba(215, 163, 94, 0.3)";
+      roundRect(r.x, r.y, r.w, r.h, 5);
+    }
+    ctx.textAlign = "left";
+    ctx.fillStyle = i === howtoPage ? CARD_RED : INK;
+    ctx.font = `${i === howtoPage ? "bold " : ""}14px Georgia, serif`;
+    ctx.fillText(`${i + 1}. ${p.name}`, r.x + 10, r.y + r.h / 2 + 5);
+  });
+}
+function openTopics() {
+  topics.open = true;
+  topics.focus = howtoPage;
+}
+function pickTopic(i) {
+  howtoPage = i;
+  topics.open = false;
+}
+
+// Little pictures for the Controls and Objective pages, each centered on (x, y).
+function iconArrowUp(x, y) {
+  poly(PAPER, x, y - 11, x + 9, y, x + 4, y, x + 4, y + 10, x - 4, y + 10, x - 4, y, x - 9, y);
+}
+function iconArrowDown(x, y) {
+  poly(PAPER, x, y + 11, x + 9, y, x + 4, y, x + 4, y - 10, x - 4, y - 10, x - 4, y, x - 9, y);
+}
+function iconPauseBars(x, y) {
+  R(x - 7, y - 9, 5, 18, PAPER);
+  R(x + 2, y - 9, 5, 18, PAPER);
+}
+function iconSound(x, y) {
+  drawSpeaker(x - 10, y, false);
+}
+function iconBookmarkPick(x, y) {
+  drawBookmark(x - 6, y - 12, 12, 23, RIBBON_RED);
+}
+function iconStar(x, y) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5,
+      r = i % 2 ? 5 : 12;
+    pts.push(x + Math.cos(a) * r, y + 1 + Math.sin(a) * r);
+  }
+  poly(GOLD, ...pts);
+}
+function iconWetFloor(x, y) {
+  oval(x + 5, y + 10, 9, 3, "#4f93cf");
+  poly("#f2c230", x - 4, y - 12, x + 4, y + 9, x - 12, y + 9);
+  poly("#1a1a1a", x - 4, y - 5, x, y + 4, x - 8, y + 4);
 }
 
 function drawGameOver() {
@@ -4819,6 +4925,31 @@ document.addEventListener("keydown", (e) => {
     const back =
       ["ArrowLeft", "ArrowUp", "KeyA", "KeyW"].includes(e.code) ||
       (e.code === "Tab" && e.shiftKey);
+    if (state === "howto") {
+      const k = e.code;
+      if (topics.open) {
+        e.preventDefault();
+        const n = HOWTO_PAGES.length;
+        if (k === "ArrowUp" || k === "KeyW" || (k === "Tab" && e.shiftKey)) topics.focus = (topics.focus + n - 1) % n;
+        else if (k === "ArrowDown" || k === "KeyS" || k === "Tab") topics.focus = (topics.focus + 1) % n;
+        else if ((k === "Enter" || k === "Space") && !e.repeat) pickTopic(topics.focus);
+        else if (k === "Escape" || k === "KeyT") topics.open = false;
+        else if (k === "KeyM") toggleMute();
+        return;
+      }
+      if (k === "KeyT") return openTopics();
+      if (k === "ArrowLeft" || k === "KeyA") {
+        e.preventDefault();
+        howtoPage = Math.max(0, howtoPage - 1);
+        return;
+      }
+      if (k === "ArrowRight" || k === "KeyD") {
+        e.preventDefault();
+        howtoPage = Math.min(HOWTO_PAGES.length - 1, howtoPage + 1);
+        return;
+      }
+      // (↑ ↓ and Tab move between Next and Close, below)
+    }
     // on the Characters screen the arrows flip through the characters
     if (state === "chars" && moveKeys.includes(e.code)) {
       e.preventDefault();
@@ -4927,6 +5058,15 @@ canvas.addEventListener("pointerdown", (e) => {
   if (isMenu()) {
     keyNav = false;
     if (state === "ready" && inside(cx, cy, PROFILE)) return choose("chars"); // tap your profile to change it
+    if (state === "howto") {
+      if (topics.open) {
+        const t = topics.items.findIndex((r) => inside(cx, cy, r));
+        if (t >= 0) pickTopic(t);
+        else topics.open = false; // a tap anywhere else just closes the list
+        return;
+      }
+      if (topics.pill && inside(cx, cy, topics.pill)) return openTopics();
+    }
     if (state === "chars") {
       const c = CHARACTERS.findIndex((_, i) => inside(cx, cy, cardRect(i)));
       if (c >= 0) return pickCharacter(c);
@@ -4968,6 +5108,12 @@ canvas.addEventListener("pointermove", (e) => {
   if (!isMenu()) return;
   keyNav = false;
   const [cx, cy] = toCanvas(e);
+  if (state === "howto" && topics.open) {
+    // hovering the Topics list highlights a topic
+    const t = topics.items.findIndex((r) => inside(cx, cy, r));
+    if (t >= 0) topics.focus = t;
+    return;
+  }
   const i = BUTTONS[state].findIndex((b) => inside(cx, cy, b));
   if (i >= 0) selected[state] = i;
   else if (state === "ready") selected.ready = 0; // off the buttons: back to Start
