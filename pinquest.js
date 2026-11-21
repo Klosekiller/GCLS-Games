@@ -524,7 +524,7 @@ function drawChair(x, y, w, h) {
   R(x + w - 11, y + h * 0.85, 5, h * 0.15, "#888");
 }
 
-// The friend from Stacks Dash: a teal book with glasses and little arms.
+// The friend from Dewey Dash (Dewey): a teal book with glasses and little arms.
 function drawFriend(x, y, s, pose, t) {
   let dy = 0,
     rot = 0,

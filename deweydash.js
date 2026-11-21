@@ -190,6 +190,8 @@ let slipTime = 0; // ms left of slipping after a puddle (no jumping)
 let jumpQueued = false; // jump pressed while slipping: it happens as soon as the slip ends
 let accLift = 0, // hats / glasses lifted by a jump: 0 in place … about 1 floating (see updateAccessories)
   accVel = 0;
+// (Saved settings keep their "runner-" names from before the game was renamed, so nobody loses
+// their best score, character or sound setting.)
 let best = Number(safeGet("runner-best-pages")) || 0; // most pages collected in one run
 
 // ---------- Sound (generated with the Web Audio API, no files needed) ----------
@@ -4363,40 +4365,49 @@ function drawCharacters() {
   );
 }
 
-// The title: "STACKS" on the spines of six library books standing on a little shelf (hopping in
-// a wave, one leaning on its neighbour), then "Dash" in gold, speeding off with a motion trail.
+// The title, "Dewey Dash": "DEWEY" on the spines of five library books standing on a little shelf
+// (one leaning on its neighbour), then "Dash" in gold, speeding off with a motion trail. Dewey (the
+// character) lives behind the D book, and every so often peeks out to say hello.
 // (cx, shelfY): the middle of the title, and the top of the shelf the books stand on.
+const TITLE_WORD = "DEWEY";
 const TITLE_BOOKS = [
   { color: "#7a2e2a", h: 56, tilt: 0 },
   { color: "#2f4a6b", h: 50, tilt: 0 },
   { color: "#3d6b4a", h: 58, tilt: 0 },
   { color: "#b0812f", h: 52, tilt: 0 },
-  { color: "#5b3a6b", h: 55, tilt: -0.1 }, // the K, leaning on the C
-  { color: "#2f6b6b", h: 49, tilt: 0 },
+  { color: "#5b3a6b", h: 55, tilt: -0.1 }, // the Y, leaning on the E
 ];
-// It animates once each time the start screen appears: the books hop in a wave, left to right,
-// then "Dash" zooms in from off the left of the screen, overshoots a touch and settles.
-const TITLE_WAVE_START = 250, // ms before the first book hops
+// When the game first loads: the books fade in and hop in a wave, left to right, "Dash" zooms in
+// from off the left of the screen (overshooting a touch and settling), then Dewey peeks out.
+// After that, every 15–30 seconds on the start screen, the books wave or Dewey peeks (taking turns).
+const TITLE_FADE_MS = 250, // the books fading in…
+  TITLE_WAVE_START = TITLE_FADE_MS, // …then hopping
   TITLE_HOP_GAP = 90, // each book hops this long after the one before
   TITLE_HOP_MS = 320, // one hop
-  DASH_START = TITLE_WAVE_START + 5 * TITLE_HOP_GAP + TITLE_HOP_MS - 80, // as the last book lands
+  DASH_START = TITLE_WAVE_START + (TITLE_BOOKS.length - 1) * TITLE_HOP_GAP + TITLE_HOP_MS - 80, // as the last book lands
   DASH_FLY_MS = 380;
 let titleTime = 0; // ms the title has been animating (see frame)
 const TITLE_DONE = DASH_START + DASH_FLY_MS; // "Dash" has landed
-// The books' wave: once in the opening sequence, then again every 15–30 seconds on the start screen.
-const randomWaveGap = () => 15000 + Math.random() * 15000;
-let waveTime = -TITLE_WAVE_START, // ms since the current wave began (the first one starts a moment in)
-  nextWave = randomWaveGap(); // ms until the next one (counted once the title has landed)
+const PEEK_OUT_MS = 340; // Dewey sliding out from behind the D book (then it stays out)
+const PEEK_MS = 1400; // one wiggle hello
+const randomTitleGap = () => 15000 + Math.random() * 15000;
+let waveTime = -TITLE_WAVE_START, // ms since the books' current wave began
+  peekTime = -(TITLE_DONE + 250 + PEEK_OUT_MS), // ms since Dewey's current hello began (the first: once it's out)
+  nextTitleAnim = randomTitleGap(), // ms until the next wave or peek (counted once the title has landed)
+  nextIsPeek = false; // which one it'll be
 function updateTitle(dt) {
   if (titleTime < DASH_START && titleTime + dt >= DASH_START) sfx.whoosh();
   titleTime += dt;
   if (state !== "ready") return; // (not while How to play or Characters is open)
   waveTime += dt;
+  peekTime += dt;
   if (titleTime < TITLE_DONE) return;
-  nextWave -= dt;
-  if (nextWave <= 0) {
-    waveTime = 0;
-    nextWave = randomWaveGap();
+  nextTitleAnim -= dt;
+  if (nextTitleAnim <= 0) {
+    if (nextIsPeek) peekTime = 0;
+    else waveTime = 0;
+    nextIsPeek = !nextIsPeek;
+    nextTitleAnim = randomTitleGap();
   }
 }
 
@@ -4420,7 +4431,33 @@ function updateIntro(dt) {
 function skipIntro() {
   intro = false;
   titleTime = Math.max(titleTime, TITLE_DONE + 1000); // the title, landed (and its speed lines showing)
-  waveTime = Math.max(waveTime, 10000); // no wave left mid-hop
+  peekTime = Math.max(peekTime, 10000); // no peek or wave left halfway
+  waveTime = Math.max(waveTime, 10000);
+}
+// Dewey, beside the D book (x0: that book's left edge, on the shelf top). Once "Dash" has landed
+// it slides out from behind the book and stays out, leaning out with a gentle sway; every so often
+// (its turn of the title animations) it does a little wiggle hello. It's mirrored, so it faces you
+// rather than the books, and while sliding out only the part past the book's edge shows.
+function drawPeek(x0) {
+  const t = titleTime - (TITLE_DONE + 250); // ms since it started coming out
+  if (t <= 0) return;
+  const ease = (v) => v * v * (3 - 2 * v);
+  const out = ease(Math.min(1, t / PEEK_OUT_MS));
+  const p = peekTime / PEEK_MS;
+  const hello = p > 0 && p < 1 ? Math.sin(p * Math.PI * 4) * 0.1 * Math.sin(p * Math.PI) : 0; // two wiggles, easing in and out
+  const sway = Math.sin(runTime * 0.002) * 0.03; // just standing there, leaning on the D
+  const k = 0.95, // its size (a little shorter than the D book)
+    bw = 40 * k;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x0 - 200, -200, 204, 210); // everything right of the book's edge is behind the book
+  ctx.clip();
+  ctx.translate(x0 + 4 + bw / 2 - out * (bw - 6), 0); // its feet on the shelf, sliding out from behind the D
+  ctx.rotate(-0.18 * out + hello + sway * out);
+  ctx.scale(-k, k);
+  const dewey = CHARACTERS.find((c) => c.name === "Dewey") || CHARACTERS[0];
+  drawCharacter(dewey, -20, -50, 40, 44);
+  ctx.restore();
 }
 function drawTitle(cx, shelfY) {
   const bw = 34, // a spine's width
@@ -4434,16 +4471,18 @@ function drawTitle(cx, shelfY) {
   ctx.save();
   ctx.translate(cx, shelfY);
   ctx.scale(s, s);
-  const x0 = -total / 2;
+  const x0 = -total / 2,
+    by = -6; // "Dash"'s baseline, a little above the shelf
 
-  // the shelf
+  // the shelf (with room on the left for Dewey to step out onto)
   ctx.fillStyle = "#5e3f24";
-  roundRect(x0 - 8, 0, booksW + 16, 8, 2);
+  roundRect(x0 - 40, 0, booksW + 48, 8, 2);
   ctx.fillStyle = "#8a6238";
-  ctx.fillRect(x0 - 8, 0, booksW + 16, 2);
+  ctx.fillRect(x0 - 40, 0, booksW + 48, 2);
 
-  // the books, hopping once, one after another
-  "STACKS".split("").forEach((letter, i) => {
+  drawPeek(x0); // (behind the books)
+  // the books, hopping in a wave when it's their turn
+  TITLE_WORD.split("").forEach((letter, i) => {
     const b = TITLE_BOOKS[i],
       hp = (waveTime - i * TITLE_HOP_GAP) / TITLE_HOP_MS,
       hop = hp > 0 && hp < 1 ? Math.sin(Math.PI * hp) * 8 : 0;
@@ -4470,8 +4509,7 @@ function drawTitle(cx, shelfY) {
   // "Dash": zooming in, then speed lines behind it, a dark outline, and gold shading
   const fp = (titleTime - DASH_START) / DASH_FLY_MS; // < 0 not yet, 0 → 1 flying, ≥ 1 landed
   if (fp < 0) return ctx.restore();
-  const home = x0 + booksW + space,
-    by = -6; // its baseline, a little above the shelf
+  const home = x0 + booksW + space; // just past the books
   let dx = home;
   if (fp < 1) {
     // from just off the left edge of the screen, overshooting a little before settling
@@ -4540,7 +4578,7 @@ function drawStartScreen() {
   if (intro) drawIntroLogo(tx, 30 + ty);
   else drawLogo(tx, 30 + ty, 30);
   // the title fades in just before its books start hopping
-  ctx.globalAlpha = intro ? Math.min(1, titleTime / TITLE_WAVE_START) : 1;
+  ctx.globalAlpha = intro ? Math.min(1, titleTime / TITLE_FADE_MS) : 1;
   drawTitle(tx, 150 + ty);
   ctx.globalAlpha = 1;
   ctx.shadowColor = "transparent";

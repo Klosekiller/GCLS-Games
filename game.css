@@ -102,7 +102,7 @@ button {
 [data-game="bookmobile"] .controls .down { grid-column: 2; grid-row: 2; }
 [data-game="bookmobile"] .controls .right { grid-column: 3; grid-row: 2; }
 
-/* Stacks Dash on a phone turned on its side: less padding, so the game can use the whole screen. */
+/* Dewey Dash on a phone turned on its side: less padding, so the game can use the whole screen. */
 @media (orientation: landscape) and (max-height: 500px) {
-  [data-game="runner"] { padding: 8px; }
+  [data-game="deweydash"] { padding: 8px; }
 }

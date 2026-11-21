@@ -96,7 +96,7 @@
     </div>
   </template>
 
-  <template id="game-runner" data-title="Stacks Dash" data-width="800" data-height="320">
+  <template id="game-deweydash" data-title="Dewey Dash" data-width="800" data-height="320">
     <!-- no instructions here: they're all on the game's How to play screen -->
   </template>
 
@@ -121,7 +121,12 @@
   <script>
     // Set the page up for the game named in ?g=, then load that game's script.
     (function () {
-      const id = new URLSearchParams(location.search).get("g") || "";
+      const RENAMED = { runner: "deweydash" }; // old links still work: ?g=runner is now ?g=deweydash
+      let id = new URLSearchParams(location.search).get("g") || "";
+      if (RENAMED[id]) {
+        id = RENAMED[id];
+        history.replaceState(null, "", "?g=" + id + location.hash); // show the new address
+      }
       const tpl = /^[a-z]+$/.test(id) && document.getElementById("game-" + id);
       if (!tpl) {
         location.replace("index.html"); // missing or unknown game: back to the list
