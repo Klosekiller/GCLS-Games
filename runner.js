@@ -2046,7 +2046,7 @@ function drawHowTo() {
   const rows = [
     {
       title: "Jump stacks & wet floor signs",
-      how: "Puddles soak a page and make you slip!",
+      how: "Space, ↑ or tap. Puddles make you slip!",
       icon: iconStack,
     },
     {
@@ -2104,8 +2104,8 @@ function drawHowTo() {
   drawButtons();
   hint(
     tall()
-      ? "Tap Back when you're ready"
-      : "P pauses · M turns the sound on or off · Enter, Space or Esc to go back",
+      ? "Hold your tap to jump higher"
+      : "Hold jump to go higher · P pauses · M sound on/off · Esc to go back",
     py + ph - 12,
   );
 }
@@ -3305,15 +3305,15 @@ function drawCharacters() {
 function drawStartScreen() {
   ctx.fillStyle = "rgba(26, 18, 12, 0.5)";
   ctx.fillRect(0, 0, W, H);
+  const tx = W / 2,
+    ty = tall() ? 90 : 0; // the tall layout drops the title, clear of the top bar and closer to the buttons
   // a little darker in the middle so the small text stays readable over the shelves
-  const shade = ctx.createRadialGradient(W / 2, 150, 40, W / 2, 150, 300);
+  const shade = ctx.createRadialGradient(W / 2, 150 + ty, 40, W / 2, 150 + ty, 300);
   shade.addColorStop(0, "rgba(26, 18, 12, 0.4)");
   shade.addColorStop(1, "rgba(26, 18, 12, 0)");
   ctx.fillStyle = shade;
   ctx.fillRect(0, 0, W, H);
 
-  const tx = W / 2,
-    ty = tall() ? 40 : 0; // the tall layout drops the title a little
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
   ctx.shadowBlur = 6;
   drawLogo(tx, 30 + ty, 30);

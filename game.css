@@ -26,6 +26,21 @@ canvas {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   touch-action: none;
   cursor: pointer;
+  /* taps and long presses shouldn't select the game, or pop up the copy / save image menu */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* On touch screens, a long press anywhere on the page shouldn't start selecting text either
+   (on iPhones it can spread from the instructions over the whole game). */
+@media (hover: none) {
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 .hint {
   width: 100%;
@@ -65,9 +80,6 @@ button {
 [data-game="globe"] canvas { cursor: grab; }
 [data-game="globe"] canvas:active { cursor: grabbing; }
 
-/* Pin Quest: little fingers shouldn't select things by accident */
-[data-game="pinquest"] canvas { user-select: none; -webkit-user-select: none; }
-
 /* Shelf Help: a row of six buttons */
 [data-game="books"] .controls {
   width: 100%;
@@ -90,9 +102,7 @@ button {
 [data-game="bookmobile"] .controls .down { grid-column: 2; grid-row: 2; }
 [data-game="bookmobile"] .controls .right { grid-column: 3; grid-row: 2; }
 
-/* Stacks Dash on a phone turned on its side: hide the instructions (they're in the game's
-   How to play) so the game can use the whole screen. */
+/* Stacks Dash on a phone turned on its side: less padding, so the game can use the whole screen. */
 @media (orientation: landscape) and (max-height: 500px) {
   [data-game="runner"] { padding: 8px; }
-  [data-game="runner"] .hint { display: none; }
 }
