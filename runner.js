@@ -24,6 +24,21 @@ const PAGES_LOST_ON_HIT = 3; // a bump knocks this many pages loose (not on the 
 // and always at the top of a jump over a stack, so you have to go for it.
 const REPAIR_FIRST_MS = 15000; // hurt for at least this long before the first roll appears…
 const REPAIR_EVERY_MS = 30000; // …and this long between rolls after that
+// Power-ups: a glowing badge at the top of a jump arc over a stack (like book tape), one at a
+// time. Grab it for a few seconds of help:
+//   magnet — loose pages and bookmarks nearby fly to you
+//   shield — a hardcover that takes the next bump for you (then it's used up)
+//   speed  — speed reading: run faster, pages count double, and knock obstacles out of the way
+const POWER_FIRST_MS = 20000; // the first one can turn up this far into a run…
+const POWER_GAP_MS = [25000, 40000]; // …then one every this long (a random time in between)
+const POWERS = {
+  magnet: { name: "Magnet", popup: "Bookmark magnet! Pages fly to you", ms: 8000, color: "#d94b4b" },
+  shield: { name: "Hardcover", popup: "Hardcover! It takes the next bump", ms: 20000, color: "#4b79d9" },
+  speed: { name: "Speed reading", popup: "Speed reading! Double pages", ms: 6000, color: "#f2c14e" },
+};
+const MAGNET_RANGE = 280; // px ahead of the book that the magnet reaches
+const MAGNET_PULL = 0.75; // how fast pages fly to the book (px per ms)
+const SPEED_BOOST = 1.6; // speed reading's speed, times normal
 const METERS_PER_PX = 0.02; // for showing the distance run
 const LIVES = 3; // hearts per run
 const HURT_MS = 1200; // after a bump the player blinks and can't be hit again for this long
@@ -112,6 +127,10 @@ let standingOn = null; // the piece of furniture the book is standing on, if any
 let lostPages = []; // pages knocked loose by a bump, flying off: { x, y, vx, vy, rot, spin, life }
 let pageLoss = null; // { amount, life }: the page counter flashes red and shows "−3"
 let repairWait = REPAIR_FIRST_MS; // ms of being hurt until the next roll of tape can appear
+let power = null; // the power-up in use: { type, time } (time: ms left)
+let powerWait = POWER_FIRST_MS; // ms until the next power-up can appear
+let baseSpeed = START_SPEED, // the run's own speed…
+  boost = 1; // …times this (eases up to SPEED_BOOST while speed reading)
 let healTime = 0; // ms left of the tape-sweeping-across-the-book animation
 let heartGain = null; // { index, life }: the heart that was just won back, popping in
 let slipTime = 0; // ms left of slipping after a puddle (no jumping)
@@ -169,6 +188,19 @@ const sfx = {
     tone(520, 110, 0.6, "triangle", 0.07, 0.2); // a falling "wheee" as the book tumbles away
   },
   count: () => tone(440, 440, 0.1, "triangle", 0.12), // each number of the 3, 2, 1
+  // power-ups: a bright run up when you grab one, a step down when it wears off
+  power: () =>
+    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, f * 1.01, 0.12, "sine", 0.11, i * 0.05)),
+  powerEnd: () => {
+    tone(784, 523, 0.14, "triangle", 0.07);
+    tone(523, 392, 0.16, "triangle", 0.06, 0.1);
+  },
+  block: () => {
+    tone(880, 300, 0.14, "square", 0.07);
+    tone(1400, 1400, 0.06, "sine", 0.08, 0.02);
+  },
+  knock: () => tone(240, 110, 0.1, "square", 0.08),
+  whoosh: () => tone(260, 900, 0.22, "sine", 0.06), // "Dash" zooming into the title
   start: () => {
     tone(523, 523, 0.08, "triangle", 0.12);
     tone(784, 784, 0.12, "triangle", 0.12, 0.08);
@@ -366,7 +398,10 @@ function reset() {
   pickups = [];
   particles = [];
   popups = [];
-  speed = START_SPEED;
+  speed = baseSpeed = START_SPEED;
+  boost = 1;
+  power = null;
+  powerWait = POWER_FIRST_MS;
   pages = 0;
   runDist = 0;
   runTime = 0;
@@ -629,6 +664,7 @@ function spawnWetFloor() {
 // Running (or ducking) through a puddle: splash, lose a soggy page, and slip for a moment.
 function checkPuddles() {
   if (!player.onGround || standingOn || hurtTime > 0) return; // jumping over is safe, so is furniture, and so is the blink after a bump
+  if (power && power.type === "speed") return; // speed reading skims right over
   const p = playerBox();
   for (const o of obstacles) {
     if (o.type !== "puddle" || o.soaked) continue;
@@ -720,7 +756,9 @@ function spawnPickups(o, airTime) {
     lives < LIVES &&
     repairWait <= 0 &&
     !pickups.some((b) => b.kind === "repair");
-  if (tape || r < 0.4) {
+  const powerUp =
+    !tape && !power && powerWait <= 0 && !pickups.some((b) => b.kind === "power");
+  if (tape || powerUp || r < 0.4) {
     // An arc over the stack that traces a full jump. The side items sit where the
     // player is a quarter of the jump away from the peak, so this works at any speed.
     const cx = o.x + o.w / 2;
@@ -737,6 +775,19 @@ function spawnPickups(o, airTime) {
         phase: Math.random() * Math.PI * 2,
       });
       repairWait = REPAIR_EVERY_MS;
+    } else if (powerUp) {
+      // so does a power-up
+      const types = Object.keys(POWERS);
+      pickups.push({
+        kind: "power",
+        type: types[(Math.random() * types.length) | 0],
+        x: cx - 13,
+        y: GROUND_Y - 142,
+        w: 26,
+        h: 26,
+        phase: Math.random() * Math.PI * 2,
+      });
+      powerWait = POWER_GAP_MS[0] + Math.random() * (POWER_GAP_MS[1] - POWER_GAP_MS[0]);
     } else addPickup(cx, GROUND_Y - 136);
     addPickup(cx + side, GROUND_Y - 100);
   } else if (r < 0.7) {
@@ -750,30 +801,106 @@ function updatePickups(dt) {
   const dx = speed * dt;
   for (const b of pickups) b.x -= dx;
   const p = playerBox();
+  const using = power && power.type;
+  if (using === "magnet") {
+    // loose pages and bookmarks just ahead fly to the book
+    const pcx = p.x + p.w / 2,
+      pcy = p.y + p.h / 2;
+    for (const b of pickups) {
+      if (b.kind !== "page" && b.kind !== "bookmark") continue;
+      const bx = b.x + b.w / 2,
+        by = b.y + b.h / 2;
+      if (bx < pcx - 60 || bx > pcx + MAGNET_RANGE) continue;
+      const ddx = pcx - bx,
+        ddy = pcy - by,
+        dist = Math.hypot(ddx, ddy) || 1,
+        step = Math.min(dist, MAGNET_PULL * dt);
+      b.x += (ddx / dist) * step;
+      b.y += (ddy / dist) * step;
+    }
+  }
+  const mult = using === "speed" ? 2 : 1; // speed reading: pages count double
   pickups = pickups.filter((b) => {
     if (b.x + b.w < -10) return false;
     const touching =
       p.x < b.x + b.w && p.x + p.w > b.x && p.y < b.y + b.h && p.y + p.h > b.y;
     if (!touching) return true;
     if (b.kind === "page") {
-      pages++;
+      pages += mult;
       sfx.page();
       burst(b.x + b.w / 2, b.y + b.h / 2, 5, PAPER, 3);
     } else if (b.kind === "repair") {
       heal(b);
+    } else if (b.kind === "power") {
+      startPower(b);
     } else {
-      pages += BOOKMARK_PAGES;
+      pages += BOOKMARK_PAGES * mult;
       sfx.bookmark();
       burst(b.x + b.w / 2, b.y + b.h / 2, 14, b.color);
       popups.push({
         x: b.x + b.w / 2,
         y: b.y,
-        text: `Bookmark! +${BOOKMARK_PAGES} pages`,
+        text: `Bookmark! +${BOOKMARK_PAGES * mult} pages`,
         life: 900,
       });
     }
     return false;
   });
+}
+
+// ---------- Power-ups ----------
+function startPower(b) {
+  const def = POWERS[b.type];
+  power = { type: b.type, time: def.ms };
+  sfx.power();
+  burst(b.x + b.w / 2, b.y + b.h / 2, 16, def.color, 5);
+  burst(b.x + b.w / 2, b.y + b.h / 2, 8, "#fff6c8", 3);
+  popups.push({ x: b.x + b.w / 2, y: b.y, text: def.popup, life: 1300 });
+}
+function updatePower(dt) {
+  if (power) {
+    power.time -= dt;
+    if (power.time <= 0) endPower();
+  } else if (powerWait > 0) powerWait -= dt; // the next one's clock only runs while none is in use
+}
+function endPower() {
+  const was = power.type;
+  power = null;
+  sfx.powerEnd();
+  // coming down from speed reading: a moment's blink, so it doesn't end inside an obstacle
+  if (was === "speed") hurtTime = Math.max(hurtTime, 700);
+}
+// Speed reading knocks a stack, flying book or sign out of the way.
+function knockAway(o) {
+  obstacles = obstacles.filter((x) => x !== o);
+  const cx = o.x + o.w / 2,
+    cy = o.y + o.h / 2;
+  const colors = o.books.length ? o.books.map((b) => b.color) : [o.color || "#f2c14e"];
+  for (let i = 0; i < 14; i++) {
+    particles.push({
+      x: cx,
+      y: cy,
+      vx: 0.1 + Math.random() * 0.35, // flung forward, out of the way
+      vy: -0.2 - Math.random() * 0.35,
+      life: 500 + Math.random() * 300,
+      color: colors[i % colors.length],
+      size: 5 + Math.random() * 3,
+    });
+  }
+  shake = 90;
+  sfx.knock();
+  popups.push({ x: cx, y: o.y - 6, text: "Whoosh!", life: 600 });
+}
+// The hardcover takes a bump: it's used up, and the book blinks safely past.
+function blockHit() {
+  power = null;
+  hurtTime = HURT_MS;
+  shake = 140;
+  sfx.block();
+  const b = playerBox();
+  burst(b.x + b.w / 2, b.y + b.h / 2, 14, POWERS.shield.color, 5);
+  burst(b.x + b.w / 2, b.y + b.h / 2, 8, GOLD, 4);
+  popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Blocked!", life: 800 });
 }
 
 // Book tape: win back a heart (never more than LIVES).
@@ -843,7 +970,10 @@ function update(dt) {
     return;
   }
   runTime += dt;
-  speed = Math.min(MAX_SPEED, speed + SPEED_RAMP * dt);
+  baseSpeed = Math.min(MAX_SPEED, baseSpeed + SPEED_RAMP * dt);
+  const wantBoost = power && power.type === "speed" ? SPEED_BOOST : 1;
+  boost += (wantBoost - boost) * Math.min(1, dt / 250); // eases up and back down
+  speed = baseSpeed * boost;
   runDist += speed * dt;
   distance += speed * dt;
 
@@ -851,6 +981,7 @@ function update(dt) {
   updateObstacles(dt);
   updatePickups(dt);
   updateParticles(dt);
+  updatePower(dt);
 
   if (hurtTime > 0) hurtTime -= dt;
   if (healTime > 0) healTime -= dt;
@@ -875,7 +1006,14 @@ function update(dt) {
   checkPuddles();
   if (hurtTime <= 0) {
     const hit = obstacles.find(hits);
-    if (hit) hit.type === "platform" ? smashInto(hit) : takeHit();
+    const using = power && power.type;
+    if (hit) {
+      if (using === "speed") {
+        if (hit.type !== "platform") knockAway(hit); // (furniture: speed reading runs straight through)
+      } else if (using === "shield") blockHit();
+      else if (hit.type === "platform") smashInto(hit);
+      else takeHit();
+    }
   }
 }
 
@@ -954,6 +1092,7 @@ function updateLostPages(dt) {
 
 function gameOver(fromSmash = false) {
   state = "over";
+  power = null;
   const b = playerBox();
   if (fromSmash) {
     // smashed into furniture on the last heart: the book stays flat on its back (see drawSmash)
@@ -1019,6 +1158,7 @@ const DEATH_MS = 900; // let the crash play out (pages flying, the book tumbling
 const OVER_FADE_MS = 300; // …then fade the game-over panel in over this long
 const OVER_GRACE_MS = DEATH_MS + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
+let howtoPage = 0; // How to play: 0 the basics, 1 the power-ups
 const selected = { ready: 0, paused: 0, howto: 0, over: 0, chars: 0 }; // highlighted button on each screen
 // Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen's
 // highlight stays on Start except while another button is hovered.
@@ -1071,7 +1211,10 @@ const MENU = {
     ["howto", "How to play"],
     ["quit", "Quit"],
   ],
-  howto: [["back", "Back"]],
+  howto: [
+    ["page", "Power-ups ›"], // flips between the two pages (its label changes: see drawButtons)
+    ["back", "Back"],
+  ],
   over: [
     ["again", "Play again"],
     ["menu", "Main menu"],
@@ -1080,7 +1223,7 @@ const MENU = {
 // Where each screen's buttons go: a row in the wide layout, a column in the tall one.
 const BUTTON_Y = {
   wide: { ready: 178, chars: 234, paused: 196, howto: 220, over: 196 },
-  tall: { ready: 340, chars: 494, paused: 288, howto: 466, over: 288 },
+  tall: { ready: 340, chars: 494, paused: 288, howto: 458, over: 330 },
 };
 let BUTTONS = {};
 function makeButtons() {
@@ -1105,23 +1248,54 @@ const onStartScreen = () =>
   state === "chars" ||
   (state === "howto" && howtoFrom === "ready");
 
-// Starting a run (Start, or Play again): the screen fades to black, the fresh run fades in
-// with the book standing ready, a 3, 2, 1 countdown, then "Go!" and off it runs.
-const FADE_OUT_MS = 450, // fading to black
-  FADE_IN_MS = 400, // the run fading in (the countdown's first moments)
-  COUNT_START_MS = 300, // when the "3" appears
+// Changing scenes (starting a run, or going back to the start screen from pause or game over):
+// an iris closes in on the book (pausing on it for a moment, like an old cartoon) down to black;
+// the change happens in the dark, then the iris opens out from the book in the new scene.
+// Starting a run then has the book standing ready, a 3, 2, 1 countdown, and "Go!".
+const IRIS_CLOSE_MS = 400, // closing in, down to a small circle around the book
+  IRIS_PAUSE_MS = 220, // holding on the book
+  IRIS_SNAP_MS = 130, // then shut
+  IRIS_PAUSE_R = 46, // the small circle's radius
+  FADE_OUT_MS = IRIS_CLOSE_MS + IRIS_PAUSE_MS + IRIS_SNAP_MS,
+  FADE_HOLD_MS = 150, // black, for a moment
+  FADE_IN_MS = 450, // the iris opening on the new scene
+  COUNT_START_MS = FADE_HOLD_MS + FADE_IN_MS, // when the "3" appears (once the screen is clear)
   COUNT_STEP_MS = 750, // how long each number stays
   GO_MS = 600; // how long "Go!" shows once running
 let fadeOut = null, // ms into the fade to black, or null when not fading
+  fadeThen = null, // what to do once the screen is black
+  fadeIn = Infinity, // ms since the new scene started fading in
   countTime = 0, // ms into the countdown
   countShown = 0; // the number last shown (so each one ticks once)
-function startRun() {
+function fadeTo(then) {
   if (fadeOut !== null) return; // already on its way
   fadeOut = 0;
+  fadeThen = then;
+}
+// Called every frame: moves the fades along, and makes the change once the screen is black.
+function updateFade(dt) {
+  fadeIn += dt;
+  if (fadeOut === null) return;
+  fadeOut += dt; // (the screen underneath keeps animating as it fades)
+  if (fadeOut < FADE_OUT_MS) return;
+  const then = fadeThen;
+  fadeOut = fadeThen = null;
+  then();
+  fadeIn = -FADE_HOLD_MS; // counts up through the hold (still black), then the reveal
+}
+function startRun() {
+  fadeTo(beginCountdown);
+}
+// Back to the start screen (Main menu from game over, or Quit from pause).
+function goHome() {
+  fadeTo(() => {
+    reset();
+    state = "ready";
+    if (!keyNav) selected.ready = 0; // Start is highlighted
+  });
 }
 // Called when the screen is fully black: set up the run and begin the countdown.
 function beginCountdown() {
-  fadeOut = null;
   reset(); // a fresh run (the start screen's animation clock kept ticking)
   state = "countdown";
   countTime = 0;
@@ -1139,20 +1313,28 @@ function updateCountdown(dt) {
     sfx.start();
   }
 }
-// Drawn over everything: the fade to black, the fade back in, the numbers and "Go!".
+// Drawn over everything: the iris, the numbers and "Go!".
 function drawTransition() {
+  const ease = (p) => p * p * (3 - 2 * p);
   if (fadeOut !== null) {
-    ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, fadeOut / FADE_OUT_MS)})`;
-    ctx.fillRect(0, 0, W, H);
+    const [cx, cy, full] = irisCenter();
+    let r;
+    if (fadeOut < IRIS_CLOSE_MS) r = IRIS_PAUSE_R + (full - IRIS_PAUSE_R) * (1 - ease(fadeOut / IRIS_CLOSE_MS));
+    else if (fadeOut < IRIS_CLOSE_MS + IRIS_PAUSE_MS) r = IRIS_PAUSE_R;
+    else {
+      const p = Math.min(1, (fadeOut - IRIS_CLOSE_MS - IRIS_PAUSE_MS) / IRIS_SNAP_MS);
+      r = IRIS_PAUSE_R * (1 - p * p); // speeding up as it shuts
+    }
+    drawIris(cx, cy, r);
     return;
+  }
+  if (fadeIn < 0) drawIris(0, 0, 0);
+  else if (fadeIn < FADE_IN_MS) {
+    const [cx, cy, full] = irisCenter();
+    drawIris(cx, cy, full * ease(fadeIn / FADE_IN_MS));
   }
   const cy = WORLD_Y + 140; // the middle of the room
   if (state === "countdown") {
-    const fadeIn = 1 - countTime / FADE_IN_MS;
-    if (fadeIn > 0) {
-      ctx.fillStyle = `rgba(0, 0, 0, ${fadeIn})`;
-      ctx.fillRect(0, 0, W, H);
-    }
     if (countTime < COUNT_START_MS) return;
     const into = (countTime - COUNT_START_MS) % COUNT_STEP_MS,
       p = into / COUNT_STEP_MS; // 0 → 1 through this number
@@ -1165,6 +1347,35 @@ function drawTransition() {
     countNumber("Go!", cy, 1 + p * 0.4, 1 - p);
   }
 }
+// Where the iris centers: on the book, wherever it is (standing, crashed into furniture, or
+// tumbling away at game over), kept on screen. Also returns the radius that uncovers everything.
+function irisCenter() {
+  let x = player.x + player.w / 2,
+    y = player.y + player.h / 2;
+  if (smash) {
+    x = smash.faceX - 18; // pressed against the furniture
+    y = smash.groundY - 22;
+  } else if (state === "over" && tumble) {
+    x = tumble.x;
+    y = tumble.y;
+  }
+  const cx = Math.min(W - 40, Math.max(40, x)),
+    cy = Math.min(H - 40, Math.max(40, WORLD_Y + y));
+  const full = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) + 10; // past the farthest corner
+  return [cx, cy, full];
+}
+// Black everywhere except a circle of radius r around (cx, cy).
+function drawIris(cx, cy, r) {
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  if (r > 0) {
+    ctx.moveTo(cx + r, cy);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  }
+  ctx.fill("evenodd");
+}
+
 function countNumber(text, cy, scale, alpha) {
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
@@ -1190,21 +1401,20 @@ function pause() {
 
 function choose(id) {
   if (state === "over" && overTime < OVER_GRACE_MS) return; // let the crash and the fade finish
-  if (fadeOut !== null) return; // a run is starting: the buttons are done
+  if (fadeOut !== null) return; // fading to another scene: the buttons are done
   if (id === "start" || id === "again") startRun();
-  else if (id === "menu") {
-    reset();
-    state = "ready";
-  } else if (id === "quit") {
+  else if (id === "menu") goHome();
+  else if (id === "quit") {
     saveBest(); // pages collected before quitting still count toward the best
-    reset();
-    state = "ready"; // back to the start screen
+    goHome();
   } else if (id === "resume") state = "running";
   else if (id === "howto") {
     howtoFrom = state;
-    selected.howto = 0;
+    selected.howto = 1; // Back, so Enter / Space still close it
+    howtoPage = 0;
     state = "howto";
-  } else if (id === "back") state = howtoFrom;
+  } else if (id === "page") howtoPage = 1 - howtoPage;
+  else if (id === "back") state = howtoFrom;
   else if (id === "chars") state = "chars";
   else if (id === "done") state = "ready";
   if (state === "ready" && !keyNav) selected.ready = 0; // back on the start screen: Start is highlighted
@@ -1260,10 +1470,7 @@ function frame(now) {
   updateMusic();
   const dt = Math.min(now - last, 50); // clamp so tab-switching doesn't teleport things
   last = now;
-  if (fadeOut !== null) {
-    fadeOut += dt; // (the screen underneath keeps animating as it fades)
-    if (fadeOut >= FADE_OUT_MS) beginCountdown();
-  }
+  updateFade(dt);
   if (state === "running") update(dt);
   else if (state === "countdown") updateCountdown(dt);
   else if (state === "over") {
@@ -1275,6 +1482,9 @@ function frame(now) {
     // start screen: the library drifts by slowly while the book jogs on the spot
     runTime += dt;
     distance += START_DRIFT * dt;
+    // the title animates once the screen is fully showing (after the iris opens)
+    if (intro) updateIntro(dt);
+    if (!intro || introTime >= INTRO_TITLE_AT) updateTitle(dt);
   }
   draw();
   drawTransition();
@@ -1912,12 +2122,15 @@ function draw() {
       );
     else if (b.kind === "repair")
       drawTape(b.x + b.w / 2, b.y + b.h / 2 + bob, true);
+    else if (b.kind === "power") drawPowerUp(b, bob);
     else drawBookmark(b.x, b.y + bob, b.w, b.h, b.color);
   }
 
   if (smash) drawSmash();
-  else if (state !== "over") drawPlayer();
-  else drawTumble();
+  else if (state !== "over") {
+    drawPlayer();
+    drawPowerAura();
+  } else drawTumble();
 
   for (const l of lostPages) {
     ctx.globalAlpha = Math.min(1, l.life / 300); // fade out at the end
@@ -1946,6 +2159,8 @@ function draw() {
   else if (!onStartScreen()) drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, 12);
   if (state === "running") drawPauseButton();
 
+  // (the corner badges fade up with the rest of the start screen in the opening sequence)
+  ctx.globalAlpha = state === "ready" ? introUI() : 1;
   // Sound button (click/tap it, or press M)
   const mb = MUTE_BTN;
   ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
@@ -1960,10 +2175,12 @@ function draw() {
 
   if (onStartScreen()) {
     drawBestBadge();
+    ctx.globalAlpha = 1;
     if (state === "howto") drawHowTo();
     if (state === "chars") drawCharacters();
     return; // the start screen has no score bar
   }
+  ctx.globalAlpha = 1;
 
   // HUD
   ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
@@ -2001,6 +2218,8 @@ function draw() {
     sy + 22,
   );
 
+  drawPowerHUD();
+
   // Overlays
   if (state === "paused") drawPause();
   if (state === "howto") drawHowTo();
@@ -2008,12 +2227,60 @@ function draw() {
 }
 
 // ---------- Menu drawing ----------
-function drawPanel(x, y, w, h) {
-  ctx.fillStyle = "rgba(26, 18, 12, 0.92)";
-  roundRect(x, y, w, h, 12);
-  ctx.strokeStyle = GOLD;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+// The menus (pause, how to play, game over, characters) are library catalog cards: cream paper
+// with a soft shadow, dark ink, a red double rule under the title and a red ribbon bookmark.
+const INK = "#3a2a1e", // text on the cards
+  INK_SOFT = "#7a6a55", // quieter text
+  CARD_RED = "#a8382f"; // the rules, ribbon and stamp
+
+// A darker veil over the game, so the card stands out.
+function dimBehindCard() {
+  ctx.fillStyle = "rgba(10, 6, 4, 0.6)";
+  ctx.fillRect(0, 0, W, H);
+}
+// The card. `title` (optional) is written at the top, with the rules under it.
+function drawCard(x, y, w, h, title) {
+  ctx.save();
+  ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
+  ctx.shadowBlur = 20;
+  ctx.shadowOffsetY = 6;
+  const paper = ctx.createLinearGradient(0, y, 0, y + h);
+  paper.addColorStop(0, "#f7f0df");
+  paper.addColorStop(1, "#eadfc5");
+  ctx.fillStyle = paper;
+  roundRect(x, y, w, h, 6);
+  ctx.restore();
+  // a faint inner border, like a printed card
+  ctx.strokeStyle = "rgba(168, 56, 47, 0.18)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 6, y + 6, w - 12, h - 12);
+  // the ribbon bookmark, hanging from the top edge near the right corner
+  const rx = x + w - 46,
+    rw = 16,
+    rh = 34;
+  ctx.fillStyle = CARD_RED;
+  ctx.beginPath();
+  ctx.moveTo(rx, y - 4);
+  ctx.lineTo(rx + rw, y - 4);
+  ctx.lineTo(rx + rw, y + rh);
+  ctx.lineTo(rx + rw / 2, y + rh - 7);
+  ctx.lineTo(rx, y + rh);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.18)"; // the fold over the top edge
+  ctx.fillRect(rx, y - 4, rw, 4);
+  if (!title) return;
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK;
+  ctx.font = "bold 26px Georgia, serif";
+  ctx.fillText(title, x + w / 2, y + 36);
+  cardRules(x, y + 48, w);
+}
+// The red double rule across a card at y.
+function cardRules(x, y, w) {
+  ctx.fillStyle = CARD_RED;
+  ctx.fillRect(x + 22, y, w - 44, 2);
+  ctx.fillRect(x + 22, y + 4, w - 44, 1);
 }
 
 // One button; the selected one is gold. `scale` makes it pulse.
@@ -2040,6 +2307,7 @@ function drawButtons() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
     if (b.card) return drawCharacterCard(b, on);
+    if (b.id === "page") b = { ...b, label: howtoPage ? "‹ The basics" : "Power-ups ›" };
     drawButton(
       b,
       on,
@@ -2075,7 +2343,7 @@ function drawCharacterCard(b, on) {
 
 function hint(text, y) {
   ctx.textAlign = "center";
-  ctx.fillStyle = "#c9bc9f";
+  ctx.fillStyle = INK_SOFT;
   ctx.font = "12px Georgia, serif";
   ctx.fillText(text, W / 2, y);
 }
@@ -2096,22 +2364,18 @@ function drawPauseButton() {
 }
 
 function drawPause() {
-  ctx.fillStyle = "rgba(26, 18, 12, 0.45)";
-  ctx.fillRect(0, 0, W, H);
+  dimBehindCard();
   const pw = tall() ? 380 : 500, // wide enough for three buttons in a row
     py = tall() ? 120 : 34,
     ph = tall() ? 400 : 252;
-  drawPanel(W / 2 - pw / 2, py, pw, ph);
-  drawLogo(W / 2, py + 10, 26);
+  drawCard(W / 2 - pw / 2, py, pw, ph, "Shh… paused");
   ctx.textAlign = "center";
-  ctx.fillStyle = PAPER;
-  ctx.font = "bold 34px Georgia, serif";
-  ctx.fillText("Shh… paused", W / 2, py + 86);
+  ctx.fillStyle = INK;
   ctx.font = "16px Georgia, serif";
-  ctx.fillText("Your run will wait right here.", W / 2, py + 114);
-  ctx.fillStyle = GOLD;
+  ctx.fillText("Your run will wait right here.", W / 2, py + 92);
+  ctx.fillStyle = CARD_RED;
   ctx.font = "bold 15px Georgia, serif";
-  ctx.fillText("Press P or Esc to keep reading", W / 2, py + 138);
+  ctx.fillText("Press P or Esc to keep reading", W / 2, py + 120);
   drawButtons();
   hint(
     tall()
@@ -2123,42 +2387,70 @@ function drawPause() {
 
 // How to play: its own screen, opened from the start screen or the pause screen.
 function drawHowTo() {
-  ctx.fillStyle = "rgba(26, 18, 12, 0.55)";
-  ctx.fillRect(0, 0, W, H);
+  dimBehindCard();
   const pw = tall() ? 420 : 600,
     px = W / 2 - pw / 2,
     py = tall() ? 20 : 12,
-    ph = tall() ? 600 : 284;
-  drawPanel(px, py, pw, ph);
+    ph = tall() ? 590 : 284;
+  drawCard(px, py, pw, ph);
   ctx.textAlign = "center";
-  ctx.fillStyle = GOLD;
-  ctx.font = "bold 24px Georgia, serif";
-  ctx.fillText("How to play", W / 2, py + 34);
+  ctx.fillStyle = INK;
+  ctx.font = "bold 22px Georgia, serif";
+  ctx.fillText("How to play", W / 2, py + 30);
+  cardRules(px, py + 38, pw);
 
-  // The goal: a gold "Goal:" followed by the rest, centered together (two lines when tall)
-  const goalLead = "Goal: ",
-    goalText = tall()
-      ? "dash through the library and"
-      : "dash through the library and collect as many pages as you can!";
+  // Two pages: the basics, then the power-ups (the first button flips between them).
+  const powersPage = howtoPage === 1;
+  // At the top: a red "Goal:" (or "Tip:") followed by the rest, centered together (two lines when tall)
+  const goalLead = powersPage ? "Tip: " : "Goal: ",
+    goalText = powersPage
+      ? tall()
+        ? "jump for the glowing badges!"
+        : "jump for the glowing badges! One at a time; its bar up top shows how long."
+      : tall()
+        ? "dash through the library and"
+        : "dash through the library and collect as many pages as you can!";
   if (tall()) {
     ctx.textAlign = "center";
-    ctx.fillStyle = PAPER;
+    ctx.fillStyle = INK;
     ctx.font = "14px Georgia, serif";
-    ctx.fillText("collect as many pages as you can!", W / 2, py + 76);
+    ctx.fillText(
+      powersPage ? "One at a time: its bar up top shows how long." : "collect as many pages as you can!",
+      W / 2,
+      py + 82,
+    );
   }
   ctx.font = "bold 14px Georgia, serif";
   const leadW = ctx.measureText(goalLead).width;
   ctx.font = "14px Georgia, serif";
   const goalX = W / 2 - (leadW + ctx.measureText(goalText).width) / 2;
   ctx.textAlign = "left";
-  ctx.fillStyle = GOLD;
+  ctx.fillStyle = CARD_RED;
   ctx.font = "bold 14px Georgia, serif";
-  ctx.fillText(goalLead, goalX, py + 56);
-  ctx.fillStyle = PAPER;
+  ctx.fillText(goalLead, goalX, py + 62);
+  ctx.fillStyle = INK;
   ctx.font = "14px Georgia, serif";
-  ctx.fillText(goalText, goalX + leadW, py + 56);
+  ctx.fillText(goalText, goalX + leadW, py + 62);
 
-  const rows = [
+  const secs = (type) => POWERS[type].ms / 1000;
+  const powerRows = [
+    {
+      title: "Bookmark magnet",
+      how: `Pages and bookmarks fly to you for ${secs("magnet")} seconds.`,
+      power: "magnet",
+    },
+    {
+      title: "Hardcover",
+      how: `Takes your next bump for you. Lasts up to ${secs("shield")} seconds.`,
+      power: "shield",
+    },
+    {
+      title: "Speed reading",
+      how: `${secs("speed")} seconds of speed: double pages, and you knock things flying!`,
+      power: "speed",
+    },
+  ];
+  const basicRows = [
     {
       title: "Jump stacks & wet floor signs",
       how: "Space, ↑ or tap. Puddles make you slip!",
@@ -2190,24 +2482,40 @@ function drawHowTo() {
       icon: iconTape,
     },
   ];
-  rows.forEach((r, i) => {
-    // wide: two columns of three · tall: one column of six
-    const cx = tall() ? px + 24 : px + 36 + (i % 2) * 284,
-      ry = tall() ? py + 96 + i * 58 : py + 70 + Math.floor(i / 2) * 46;
-    r.icon(cx + 14, ry + 16);
+  (powersPage ? powerRows : basicRows).forEach((r, i) => {
+    // the basics — wide: two columns of three · tall: one column of six
+    // the power-ups — one column of three, a little more spread out
+    let cx, ry, room;
+    if (powersPage) {
+      cx = tall() ? px + 24 : px + 90;
+      ry = tall() ? py + 120 + i * 100 : py + 76 + i * 46;
+      room = tall() ? pw - 24 - 46 - 14 : pw - 90 - 46 - 60;
+    } else {
+      cx = tall() ? px + 24 : px + 36 + (i % 2) * 284;
+      ry = tall() ? py + 100 + i * 58 : py + 74 + Math.floor(i / 2) * 46;
+      room = tall() ? pw - 24 - 46 - 14 : 284 - 46 - 12; // leaves a little space before the next column / panel edge
+    }
+    if (r.power) drawPowerIcon(r.power, cx + 14, ry + 16, 19);
+    else {
+      // each picture on a little navy badge, so it shows up on the paper
+      ctx.fillStyle = NAVY;
+      ctx.beginPath();
+      ctx.arc(cx + 14, ry + 16, 19, 0, Math.PI * 2);
+      ctx.fill();
+      r.icon(cx + 14, ry + 16);
+    }
     ctx.textAlign = "left";
-    const room = tall() ? pw - 24 - 46 - 14 : 284 - 46 - 12; // leaves a little space before the next column / panel edge
     // titles at 15px and descriptions at 13px, each a touch smaller if too long for the column
-    ctx.fillStyle = PAPER;
+    ctx.fillStyle = INK;
     ctx.font = "bold 15px Georgia, serif";
-    const titleRoom = tall() ? room : room - 14; // clear of the next column's icon (the flying book's wings reach left)
+    const titleRoom = tall() || powersPage ? room : room - 14; // clear of the next column's icon (the flying book's wings reach left)
     const titleFit = Math.max(
       12,
       Math.min(15, (15 * titleRoom) / ctx.measureText(r.title).width),
     );
     ctx.font = `bold ${titleFit}px Georgia, serif`;
     ctx.fillText(r.title, cx + 46, ry + 13);
-    ctx.fillStyle = "#c9bc9f";
+    ctx.fillStyle = INK_SOFT;
     ctx.font = "13px Georgia, serif";
     const fit = Math.max(
       11,
@@ -2218,9 +2526,13 @@ function drawHowTo() {
   });
   drawButtons();
   hint(
-    tall()
-      ? "Hold your tap to jump higher"
-      : "Hold jump to go higher · P pauses · M sound on/off · Esc to go back",
+    powersPage
+      ? tall()
+        ? "They float at the very top of a jump"
+        : "They float at the very top of a jump · ← → to choose · Esc to go back"
+      : tall()
+        ? "Hold your tap to jump higher"
+        : "Hold jump to go higher · P pauses · M sound on/off · Esc to go back",
     py + ph - 12,
   );
 }
@@ -2233,32 +2545,61 @@ function drawGameOver() {
   ctx.globalAlpha = fade;
   ctx.translate(0, (1 - fade) * 12);
 
-  ctx.fillStyle = "rgba(26, 18, 12, 0.45)";
-  ctx.fillRect(0, 0, W, H);
+  dimBehindCard();
   const pw = 380,
     px = W / 2 - pw / 2,
     py = tall() ? 120 : 34,
     ph = tall() ? 360 : 252;
-  drawPanel(px, py, pw, ph);
-  drawLogo(W / 2, py + 10, 26);
+  drawCard(px, py, pw, ph);
 
+  // the run's numbers, like the lines of a due-date card
+  const sy = py + (tall() ? 122 : 100); // the numbers' baseline
   ctx.textAlign = "center";
-  ctx.fillStyle = PAPER;
-  ctx.font = "bold 34px Georgia, serif";
-  ctx.fillText("Overdue!", W / 2, py + 86);
-  ctx.font = "16px Georgia, serif";
-  ctx.fillText(
-    `${pages} page${pages === 1 ? "" : "s"} collected · ${Math.floor(runDist * METERS_PER_PX)} m run`,
-    W / 2,
-    py + 112,
-  );
-  ctx.fillStyle = GOLD;
+  const stats = [
+    [pages, pages === 1 ? "page collected" : "pages collected"],
+    [`${Math.floor(runDist * METERS_PER_PX)} m`, "run"],
+  ];
+  stats.forEach(([n, label], i) => {
+    const x = W / 2 + (i === 0 ? -80 : 80);
+    ctx.fillStyle = INK;
+    ctx.font = "bold 30px Georgia, serif";
+    ctx.fillText(String(n), x, sy);
+    ctx.fillStyle = INK_SOFT;
+    ctx.font = "13px Georgia, serif";
+    ctx.fillText(label, x, sy + 18);
+  });
+  ctx.fillStyle = "rgba(168, 56, 47, 0.3)"; // a line between them
+  ctx.fillRect(W / 2 - 0.5, sy - 26, 1, 48);
+  cardRules(px, sy + 26, pw);
+  ctx.fillStyle = newBest && best > 0 ? CARD_RED : INK_SOFT;
   ctx.font = "bold 15px Georgia, serif";
   ctx.fillText(
     newBest && best > 0 ? "★ New best! ★" : `Best: ${best} pages`,
     W / 2,
-    py + 136,
+    sy + 48,
   );
+
+  // "OVERDUE", rubber-stamped across the top of the card: it slams down as the card appears
+  const sp = Math.min(1, Math.max(0, (overTime - DEATH_MS - 120) / 220));
+  if (sp > 0) {
+    const scale = 1 + (1 - sp) * (1 - sp) * 0.9;
+    ctx.save();
+    ctx.globalAlpha = fade * Math.min(1, sp * 2) * 0.92;
+    ctx.translate(W / 2, py + (tall() ? 52 : 44));
+    ctx.rotate(-0.07);
+    ctx.scale(scale, scale);
+    ctx.strokeStyle = CARD_RED;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-104, -24, 208, 48);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-98, -18, 196, 36);
+    ctx.fillStyle = CARD_RED;
+    ctx.font = "bold 30px Georgia, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("OVERDUE", 0, 2);
+    ctx.restore();
+  }
 
   drawButtons();
   hint(
@@ -2824,6 +3165,136 @@ function runTransform(pose, fx, fy) {
   );
   ctx.translate(-fx, -fy);
 }
+// ---------- Power-up drawing ----------
+// A power-up's picture on a navy disc, centered on (cx, cy), r the disc's radius.
+function drawPowerIcon(type, cx, cy, r) {
+  const s = r / 13; // drawn at r = 13, scaled to fit
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(s, s);
+  ctx.fillStyle = NAVY;
+  ctx.beginPath();
+  ctx.arc(0, 0, 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = POWERS[type].color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  if (type === "magnet") {
+    // a horseshoe magnet with silver tips
+    ctx.strokeStyle = "#e0453f";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-5.5, -5);
+    ctx.lineTo(-5.5, 0);
+    ctx.arc(0, 0, 5.5, Math.PI, 0, true);
+    ctx.lineTo(5.5, -5);
+    ctx.stroke();
+    ctx.fillStyle = "#e8e8e8";
+    ctx.fillRect(-7.5, -8, 4, 3);
+    ctx.fillRect(3.5, -8, 4, 3);
+  } else if (type === "shield") {
+    // a little blue hardcover with gold corners
+    ctx.fillStyle = "#4b79d9";
+    roundRect(-6, -8, 12, 16, 2);
+    ctx.fillStyle = "#2f4f99";
+    ctx.fillRect(-6, -8, 3, 16);
+    ctx.fillStyle = GOLD;
+    poly(GOLD, 6, -8, 6, -4, 2, -8);
+    poly(GOLD, 6, 8, 6, 4, 2, 8);
+    ctx.beginPath();
+    ctx.arc(1.5, 0, 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // a lightning bolt
+    poly("#f2c14e", 2, -9, -5, 1, -0.5, 1, -2, 9, 5, -1, 0.5, -1);
+  }
+  ctx.restore();
+}
+// A power-up waiting to be grabbed: its icon, glowing and gently pulsing.
+function drawPowerUp(b, bob) {
+  const cx = b.x + b.w / 2,
+    cy = b.y + b.h / 2 + bob,
+    pulse = 0.5 + 0.5 * Math.sin(runTime * 0.008 + b.phase);
+  const glow = ctx.createRadialGradient(cx, cy, 6, cx, cy, 26 + pulse * 6);
+  glow.addColorStop(0, "rgba(255, 240, 180, 0.65)");
+  glow.addColorStop(1, "rgba(255, 240, 180, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(cx - 34, cy - 34, 68, 68);
+  drawPowerIcon(b.type, cx, cy, 13 + pulse);
+}
+// Around the book while a power-up is in use. It flickers in the last 1.5 seconds.
+function drawPowerAura() {
+  if (!power) return;
+  if (power.time < 1500 && Math.floor(power.time / 120) % 2) return;
+  const b = playerBox(),
+    cx = b.x + b.w / 2,
+    cy = b.y + b.h / 2;
+  ctx.save();
+  if (power.type === "magnet") {
+    // rings pulsing outward, like a magnet's pull
+    for (let k = 0; k < 2; k++) {
+      const t = ((runTime / 900 + k / 2) % 1);
+      ctx.strokeStyle = `rgba(224, 69, 63, ${0.8 * (1 - t)})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 26 + t * 40, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (power.type === "shield") {
+    // a see-through blue cover around the book
+    const pad = 9;
+    ctx.fillStyle = "rgba(75, 121, 217, 0.18)";
+    roundRect(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2, 12);
+    ctx.strokeStyle = `rgba(127, 176, 255, ${0.6 + 0.3 * Math.sin(runTime * 0.01)})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = GOLD; // gold corners, like a hardcover's
+    const x0 = b.x - pad,
+      y0 = b.y - pad,
+      x1 = b.x + b.w + pad,
+      y1 = b.y + b.h + pad;
+    poly(GOLD, x1, y0, x1, y0 + 8, x1 - 8, y0);
+    poly(GOLD, x0, y1, x0, y1 - 8, x0 + 8, y1);
+  } else {
+    // golden streaks trailing behind
+    ctx.strokeStyle = "rgba(242, 193, 78, 0.8)";
+    ctx.lineCap = "round";
+    for (let k = 0; k < 4; k++) {
+      const yy = b.y + 6 + k * (b.h - 12) / 3,
+        len = 30 + Math.sin(runTime * 0.03 + k * 1.7) * 12 + k * 4;
+      ctx.lineWidth = 3 - k * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(b.x - 4, yy);
+      ctx.lineTo(b.x - 4 - len, yy);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+// The power-up in use, in the top bar: its icon, name, and how long it has left.
+function drawPowerHUD() {
+  if (!power) return;
+  const def = POWERS[power.type],
+    w = 150,
+    h = 26,
+    x = tall() ? W / 2 - w / 2 : MUTE_BTN.x + MUTE_BTN.w + 8,
+    y = tall() ? 94 : 50;
+  ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
+  roundRect(x, y, w, h, 8);
+  drawPowerIcon(power.type, x + 14, y + h / 2, 9);
+  ctx.textAlign = "left";
+  ctx.fillStyle = PAPER;
+  ctx.font = "bold 12px Georgia, serif";
+  ctx.fillText(def.name, x + 28, y + 12);
+  // the time left, as a bar that runs down
+  const bw = w - 38,
+    left = Math.max(0, power.time / def.ms);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+  ctx.fillRect(x + 28, y + 16, bw, 4);
+  ctx.fillStyle = def.color;
+  ctx.fillRect(x + 28, y + 16, bw * left, 4);
+}
+
 // A couple of faint speed lines trailing behind a running book.
 function speedLines(px, py, ph, t) {
   ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
@@ -3347,7 +3818,7 @@ function pickCharacter(i) {
 
 // The character cards on the Characters screen (shared by drawing and tapping).
 // Wide: one row of four. Tall: a 2 × 2 grid.
-const CARD = { w: 136, h: 160, gap: 12, y: 58 };
+const CARD = { w: 136, h: 160, gap: 12, y: 64 };
 const CARD_TALL = { w: 180, h: 190, gap: 14, y: 82 };
 function cardRect(i) {
   if (tall()) {
@@ -3371,26 +3842,25 @@ function cardRect(i) {
 }
 
 function drawCharacters() {
-  ctx.fillStyle = "rgba(26, 18, 12, 0.55)";
-  ctx.fillRect(0, 0, W, H);
+  dimBehindCard();
   const pw = tall() ? 420 : 620,
-    py = tall() ? 26 : 18,
-    ph = tall() ? 562 : 284;
-  drawPanel(W / 2 - pw / 2, py, pw, ph);
+    px = W / 2 - pw / 2,
+    py = tall() ? 26 : 12,
+    ph = tall() ? 562 : 296;
+  drawCard(px, py, pw, ph);
   ctx.textAlign = "center";
-  ctx.fillStyle = GOLD;
-  ctx.font = "bold 24px Georgia, serif";
-  ctx.fillText("Choose your book", W / 2, py + 34);
+  ctx.fillStyle = INK;
+  ctx.font = "bold 22px Georgia, serif";
+  ctx.fillText("Choose your book", W / 2, py + 30);
+  cardRules(px, py + 38, pw);
 
   CHARACTERS.forEach((c, i) => {
     const on = i === charIndex;
     const r = cardRect(i),
       lift = on ? -4 : 0;
-    ctx.fillStyle = on
-      ? "rgba(215, 163, 94, 0.22)"
-      : "rgba(255, 255, 255, 0.05)";
+    ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : "rgba(52, 64, 79, 0.06)";
     roundRect(r.x, r.y + lift, r.w, r.h, 10);
-    ctx.strokeStyle = on ? MAPLE : "rgba(212, 166, 74, 0.45)";
+    ctx.strokeStyle = on ? CARD_RED : "rgba(122, 106, 85, 0.35)";
     ctx.lineWidth = on ? 2.5 : 1;
     ctx.stroke();
     // the character, jogging on a little shelf (the chosen one runs, the others wait)
@@ -3416,11 +3886,11 @@ function drawCharacters() {
     }
     ctx.restore();
     ctx.textAlign = "center";
-    ctx.fillStyle = on ? GOLD : PAPER;
+    ctx.fillStyle = on ? CARD_RED : INK;
     ctx.font = "bold 17px Georgia, serif";
     const ty = r.y + lift + (tall() ? 140 : 124); // name, then the two blurb lines
     ctx.fillText(c.name, r.x + r.w / 2, ty);
-    ctx.fillStyle = "#c9bc9f";
+    ctx.fillStyle = INK_SOFT;
     ctx.font = "12px Georgia, serif";
     ctx.fillText(c.blurb[0], r.x + r.w / 2, ty + 17);
     ctx.fillText(c.blurb[1], r.x + r.w / 2, ty + 31);
@@ -3434,13 +3904,164 @@ function drawCharacters() {
   );
 }
 
+// The title: "STACKS" on the spines of six library books standing on a little shelf (hopping in
+// a wave, one leaning on its neighbour), then "Dash" in gold, speeding off with a motion trail.
+// (cx, shelfY): the middle of the title, and the top of the shelf the books stand on.
+const TITLE_BOOKS = [
+  { color: "#7a2e2a", h: 56, tilt: 0 },
+  { color: "#2f4a6b", h: 50, tilt: 0 },
+  { color: "#3d6b4a", h: 58, tilt: 0 },
+  { color: "#b0812f", h: 52, tilt: 0 },
+  { color: "#5b3a6b", h: 55, tilt: -0.1 }, // the K, leaning on the C
+  { color: "#2f6b6b", h: 49, tilt: 0 },
+];
+// It animates once each time the start screen appears: the books hop in a wave, left to right,
+// then "Dash" zooms in from off the left of the screen, overshoots a touch and settles.
+const TITLE_WAVE_START = 250, // ms before the first book hops
+  TITLE_HOP_GAP = 90, // each book hops this long after the one before
+  TITLE_HOP_MS = 320, // one hop
+  DASH_START = TITLE_WAVE_START + 5 * TITLE_HOP_GAP + TITLE_HOP_MS - 80, // as the last book lands
+  DASH_FLY_MS = 380;
+let titleTime = 0; // ms the title has been animating (see frame)
+const TITLE_DONE = DASH_START + DASH_FLY_MS; // "Dash" has landed
+// The books' wave: once in the opening sequence, then again every 15–30 seconds on the start screen.
+const randomWaveGap = () => 15000 + Math.random() * 15000;
+let waveTime = -TITLE_WAVE_START, // ms since the current wave began (the first one starts a moment in)
+  nextWave = randomWaveGap(); // ms until the next one (counted once the title has landed)
+function updateTitle(dt) {
+  if (titleTime < DASH_START && titleTime + dt >= DASH_START) sfx.whoosh();
+  titleTime += dt;
+  if (state !== "ready") return; // (not while How to play or Characters is open)
+  waveTime += dt;
+  if (titleTime < TITLE_DONE) return;
+  nextWave -= dt;
+  if (nextWave <= 0) {
+    waveTime = 0;
+    nextWave = randomWaveGap();
+  }
+}
+
+// The opening sequence, when the game first loads: on black, the logo drops in with a gold glow,
+// then the title animates, then the library, buttons and badges fade up. A tap or key skips it.
+const INTRO_LOGO_MS = 650, // the logo dropping in
+  INTRO_TITLE_AT = 750, // when the title starts animating
+  INTRO_UI_DELAY = 150, // after "Dash" lands, before the rest fades up
+  INTRO_UI_MS = 700; // the rest fading up
+let intro = true, // still playing?
+  introTime = 0; // ms into it
+// How faded-up the library, buttons and badges are: 0 hidden … 1 showing (always 1 after the intro).
+function introUI() {
+  if (!intro) return 1;
+  return Math.min(1, Math.max(0, (titleTime - TITLE_DONE - INTRO_UI_DELAY) / INTRO_UI_MS));
+}
+function updateIntro(dt) {
+  introTime += dt;
+  if (introUI() >= 1) intro = false;
+}
+function skipIntro() {
+  intro = false;
+  titleTime = Math.max(titleTime, TITLE_DONE + 1000); // the title, landed (and its speed lines showing)
+  waveTime = Math.max(waveTime, 10000); // no wave left mid-hop
+}
+function drawTitle(cx, shelfY) {
+  const bw = 34, // a spine's width
+    gap = 3,
+    booksW = TITLE_BOOKS.length * bw + (TITLE_BOOKS.length - 1) * gap,
+    space = 26; // between the books and "Dash" (its speed lines go here)
+  ctx.font = "bold italic 56px Georgia, serif";
+  const dashW = ctx.measureText("Dash").width;
+  const total = booksW + space + dashW;
+  const s = Math.min(1, (W - 48) / total); // shrink to fit a narrow screen
+  ctx.save();
+  ctx.translate(cx, shelfY);
+  ctx.scale(s, s);
+  const x0 = -total / 2;
+
+  // the shelf
+  ctx.fillStyle = "#5e3f24";
+  roundRect(x0 - 8, 0, booksW + 16, 8, 2);
+  ctx.fillStyle = "#8a6238";
+  ctx.fillRect(x0 - 8, 0, booksW + 16, 2);
+
+  // the books, hopping once, one after another
+  "STACKS".split("").forEach((letter, i) => {
+    const b = TITLE_BOOKS[i],
+      hp = (waveTime - i * TITLE_HOP_GAP) / TITLE_HOP_MS,
+      hop = hp > 0 && hp < 1 ? Math.sin(Math.PI * hp) * 8 : 0;
+    ctx.save();
+    ctx.translate(x0 + i * (bw + gap) + bw / 2, -hop);
+    ctx.rotate(b.tilt);
+    ctx.fillStyle = b.color;
+    roundRect(-bw / 2, -b.h, bw, b.h, 3);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.14)"; // rounded spine: light on the left…
+    ctx.fillRect(-bw / 2 + 3, -b.h + 2, 4, b.h - 4);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; // …shade on the right
+    ctx.fillRect(bw / 2 - 6, -b.h + 2, 3, b.h - 4);
+    ctx.fillStyle = GOLD; // gold bands
+    ctx.fillRect(-bw / 2 + 3, -b.h + 6, bw - 6, 2);
+    ctx.fillRect(-bw / 2 + 3, -9, bw - 6, 2);
+    ctx.fillStyle = PAPER;
+    ctx.font = "bold 26px Georgia, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(letter, 0, -b.h / 2 + 1);
+    ctx.restore();
+  });
+
+  // "Dash": zooming in, then speed lines behind it, a dark outline, and gold shading
+  const fp = (titleTime - DASH_START) / DASH_FLY_MS; // < 0 not yet, 0 → 1 flying, ≥ 1 landed
+  if (fp < 0) return ctx.restore();
+  const home = x0 + booksW + space,
+    by = -6; // its baseline, a little above the shelf
+  let dx = home;
+  if (fp < 1) {
+    // from just off the left edge of the screen, overshooting a little before settling
+    const start = -cx / s - dashW - 20,
+      q = fp - 1,
+      back = 1 + 2.7 * q * q * q + 1.7 * q * q;
+    dx = start + (home - start) * back;
+    // a streak behind it while it flies, shrinking as it slows
+    const tail = (1 - fp) * 160;
+    ctx.save();
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = "rgba(243, 234, 215, 0.55)";
+    for (const y of [-38, -27, -16]) roundRect(dx - 6 - tail, y, tail, 3, 1.5);
+    ctx.restore();
+  } else {
+    // landed: short speed lines in the gap, fading in
+    ctx.save();
+    ctx.shadowColor = "transparent";
+    ctx.globalAlpha = Math.min(1, (fp - 1) * 4);
+    ctx.fillStyle = "rgba(243, 234, 215, 0.75)";
+    for (const [y, len] of [[-38, 14], [-27, 20], [-16, 12]]) {
+      const flick = Math.sin(runTime * 0.012 + y) * 2; // a little flicker, as if moving
+      roundRect(dx - 4 - len + flick, y, len, 3, 1.5);
+    }
+    ctx.restore();
+  }
+  ctx.font = "bold italic 56px Georgia, serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.lineWidth = 6;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(20, 14, 10, 0.9)";
+  ctx.strokeText("Dash", dx, by);
+  const g = ctx.createLinearGradient(0, by - 42, 0, by + 4);
+  g.addColorStop(0, "#fff2bf");
+  g.addColorStop(0.5, GOLD);
+  g.addColorStop(1, "#a8741f");
+  ctx.fillStyle = g;
+  ctx.fillText("Dash", dx, by);
+  ctx.restore();
+}
+
 // The start screen: the title with Start and How to play buttons.
 // The library keeps drifting by behind it, and the book jogs on the spot.
 function drawStartScreen() {
   ctx.fillStyle = "rgba(26, 18, 12, 0.5)";
   ctx.fillRect(0, 0, W, H);
   const tx = W / 2,
-    ty = tall() ? 140 : 0; // the tall layout drops the title down to sit just above the buttons
+    ty = tall() ? 160 : 0; // the tall layout drops the title down to sit just above the buttons
   // a little darker in the middle so the small text stays readable over the shelves
   const shade = ctx.createRadialGradient(W / 2, 150 + ty, 40, W / 2, 150 + ty, 300);
   shade.addColorStop(0, "rgba(26, 18, 12, 0.4)");
@@ -3448,21 +4069,25 @@ function drawStartScreen() {
   ctx.fillStyle = shade;
   ctx.fillRect(0, 0, W, H);
 
+  // the opening sequence: black over the library until it fades up
+  const ui = introUI();
+  if (ui < 1) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${1 - ui})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
   ctx.shadowBlur = 6;
-  drawLogo(tx, 30 + ty, 30);
-  ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(0, 0, 0, 0.45)"; // drop shadow
-  ctx.font = "bold 46px Georgia, serif";
-  ctx.fillText("Stacks Dash", tx + 2, 121 + ty);
-  ctx.fillStyle = PAPER;
-  ctx.fillText("Stacks Dash", tx, 119 + ty);
-  ctx.fillStyle = GOLD;
-  ctx.font = "italic 16px Georgia, serif";
-  ctx.fillText("Run, jump and duck through the library!", tx, 147 + ty);
+  if (intro) drawIntroLogo(tx, 30 + ty);
+  else drawLogo(tx, 30 + ty, 30);
+  // the title fades in just before its books start hopping
+  ctx.globalAlpha = intro ? Math.min(1, titleTime / TITLE_WAVE_START) : 1;
+  drawTitle(tx, 150 + ty);
+  ctx.globalAlpha = 1;
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
 
+  ctx.globalAlpha = ui;
   drawButtons();
 
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
@@ -3478,6 +4103,41 @@ function drawStartScreen() {
   );
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
+// The opening sequence's logo: it drops in from above, lands with a little bounce, and a soft
+// gold glow bursts out behind it. (x, top): where it ends up, as for drawLogo.
+function drawIntroLogo(x, top) {
+  const h = 30,
+    plateH = h * 1.36, // the logo's white plate (see drawLogo)
+    cy = top + plateH / 2;
+  const p = Math.min(1, introTime / INTRO_LOGO_MS);
+  if (p <= 0) return;
+  // the glow, once it lands (at about 70% of the drop)
+  const g = (introTime - INTRO_LOGO_MS * 0.7) / 900;
+  if (g > 0 && g < 1) {
+    const r = 30 + g * 90;
+    const glow = ctx.createRadialGradient(x, cy, 0, x, cy, r);
+    glow.addColorStop(0, `rgba(212, 166, 74, ${0.55 * (1 - g)})`);
+    glow.addColorStop(1, "rgba(212, 166, 74, 0)");
+    ctx.save();
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - r, cy - r, r * 2, r * 2);
+    ctx.restore();
+  }
+  // the drop: falls from above, lands at 70%, a small bounce after
+  let dy;
+  if (p < 0.7) {
+    const q = p / 0.7;
+    dy = -(1 - q * q) * (top + plateH + 20); // speeding up as it falls
+  } else dy = -Math.sin(((p - 0.7) / 0.3) * Math.PI) * 8;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, p * 3);
+  ctx.translate(0, dy);
+  drawLogo(x, top, h);
+  ctx.restore();
 }
 
 // Little pictures for the How to play screen, each centered on (x, y).
@@ -3533,6 +4193,12 @@ function iconHeart(x, y) {
 
 // ---------- Input ----------
 document.addEventListener("keydown", (e) => {
+  // During the opening sequence, any key skips to the start screen.
+  if (intro && state === "ready") {
+    if (e.code === "Space" || e.code === "Enter" || e.code.startsWith("Arrow")) e.preventDefault();
+    skipIntro();
+    return;
+  }
   // Menu screens: ← → pick a button, Enter / Space choose it, Esc goes back
   if (isMenu()) {
     const buttons = BUTTONS[state];
@@ -3647,8 +4313,12 @@ function endGesture(e) {
   gesture = null;
 }
 
+// Right-clicking the game does nothing: no browser menu…
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
+  if (e.pointerType === "mouse" && e.button !== 0) return; // …and only the left button plays
+  if (intro && state === "ready") return skipIntro(); // a tap skips the opening sequence
   const [cx, cy] = toCanvas(e);
   if (inside(cx, cy, MUTE_BTN)) return toggleMute();
   if (isMenu()) {
