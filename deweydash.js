@@ -19,6 +19,8 @@ const START_SPEED = 0.3, // px per ms
 const BG_PARALLAX = 0.25; // background scrolls at a quarter of the ground speed, so it feels far away
 const BOOKMARK_CHANCE = 0.015; // each collectible has this chance of being a rare bookmark instead of a page
 const BOOKMARK_PAGES = 10; // a bookmark is worth this many pages
+const PLUS_MS = 700; // how long the little "+1" for a page takes to float up and fade away
+const PAGE_GAP = 40; // px between the middles of neighbouring pages in a row (arcs over jumps follow the jump instead)
 const PAGES_LOST_ON_HIT = 3; // a bump knocks this many pages loose (not on the last heart)
 // Book tape wins back a heart. It only shows up while you're missing one, never right away,
 // and always at the top of a jump over a stack, so you have to go for it.
@@ -179,6 +181,7 @@ let obstacles = [];
 let pickups = []; // loose pages and the odd bookmark: { kind, x, y, w, h, color, phase }
 let particles = [];
 let popups = [];
+let plusOnes = []; // the faint "+1" that floats up from each page picked up: { x, y, text, life }
 let speed, pages, runDist, nextSpawn, state, runTime; // pages collected, px run this run
 let upcoming = "stack"; // what turns up next (picked ahead of time: see Spacing)
 let distance = 0; // total scrolled distance, drives the background
@@ -294,7 +297,8 @@ const sfx = {
 // A bouncy "storybook chiptune" loop at 150 BPM, two of the book's hops to a beat. It follows
 // the game: plucks and bass on the start screen, the full tune while running, an extra
 // sparkly layer later in a run, muffled when paused, a dip on a bump, and a little "aww" at
-// game over. The Sound button turns it off with everything else.
+// game over, then a slow, wistful music-box tune on the game-over screen (see OVER_MELODY).
+// The Sound button turns it off with everything else.
 const MUSIC_BPM = 150;
 const MUSIC_VOLUME = 0.55; // overall music level (the sound effects aren't affected)
 const MUSIC_STEP = 60 / MUSIC_BPM / 4; // one 16th note, in seconds
@@ -313,6 +317,24 @@ const MUSIC_MELODY = [
   [[0, 76, 2], [2, 74, 2], [4, 72, 2], [6, 76, 2], [8, 81, 3], [11, 79, 1], [12, 76, 4]],
   [[0, 74, 2], [2, 76, 2], [4, 77, 2], [6, 74, 2], [8, 71, 2], [10, 74, 2], [12, 71, 2], [14, 74, 2]],
 ];
+// The game-over tune: slower and gentler, a music box over a library clock's tick-tock, in
+// A minor. 8 bars: Am  F  C  G | Am  F  Dm  E (the E leans back round to the Am).
+const OVER_BPM = 92;
+const OVER_STEP = 60 / OVER_BPM / 4;
+const OVER_VOLUME = MUSIC_VOLUME * 0.8;
+const OVER_CHORDS = [[57, 60, 64], [57, 60, 65], [55, 60, 64], [55, 59, 62], [57, 60, 64], [57, 60, 65], [57, 62, 65], [56, 59, 64]];
+const OVER_BASS = [45, 41, 48, 43, 45, 41, 50, 40];
+const OVER_MELODY = [
+  [[0, 76, 6], [6, 74, 2], [8, 72, 4], [12, 71, 4]],
+  [[0, 72, 6], [6, 69, 2], [8, 72, 8]],
+  [[0, 67, 4], [4, 72, 4], [8, 76, 6], [14, 74, 2]],
+  [[0, 74, 8], [8, 71, 8]],
+  [[0, 76, 6], [6, 74, 2], [8, 72, 4], [12, 76, 4]],
+  [[0, 77, 6], [6, 76, 2], [8, 74, 4], [12, 72, 4]],
+  [[0, 74, 4], [4, 72, 4], [8, 69, 4], [12, 71, 4]],
+  [[0, 68, 8], [8, 71, 8]],
+];
+const OVER_DELAY = 1.6; // seconds after the run ends before it starts (once the "aww" has finished)
 let music = null; // the music's audio nodes, made the first time it plays
 let musicStep = 0, // where we are in the loop (128 sixteenths = 8 bars)
   musicNext = 0, // when the next 16th is due, on the audio clock
@@ -408,6 +430,23 @@ function scheduleMusicStep(step, t, mode) {
   }
 }
 
+// Everything that plays on one 16th note of the game-over tune.
+function scheduleOverStep(step, t) {
+  const bar = Math.floor(step / 16) % 8,
+    s = step % 16;
+  const chord = OVER_CHORDS[bar],
+    root = OVER_BASS[bar];
+  // a soft, held bass note at the start of each bar, and again (quieter) halfway
+  if (s === 0) mNote(noteHz(root), t, OVER_STEP * 10, "triangle", 0.07, 0.02);
+  if (s === 8) mNote(noteHz(root), t, OVER_STEP * 6, "triangle", 0.045, 0.02);
+  // the music box: the chord rippling up and down an octave higher, ringing on
+  if (s % 2 === 0) mNote(noteHz(chord[[0, 1, 2, 1][(s / 2) % 4]] + 12), t, 0.6, "sine", 0.02);
+  // the tune
+  for (const [ms, n, len] of OVER_MELODY[bar]) if (ms === s) mNote(noteHz(n), t, OVER_STEP * len * 0.95, "triangle", 0.04, 0.02);
+  // the library clock: tick… tock…
+  if (s % 4 === 0) mNote(s % 8 === 0 ? 1250 : 940, t, 0.03, "sine", 0.018);
+}
+
 // A little "aww" for game over: three notes stepping down.
 function playMusicSting(t) {
   [67, 63, 60].forEach((n, i) => mNote(noteHz(n), t + i * 0.28, i === 2 ? 0.8 : 0.3, "triangle", 0.07, 0.02));
@@ -434,25 +473,34 @@ function updateMusic() {
   const m = musicNodes(),
     now = m.a.currentTime;
   if (mode !== musicMode) {
-    if (mode === "over") playMusicSting(now + 0.05);
-    else if (musicMode === "over" || musicMode === "") {
+    if (mode === "over") {
+      playMusicSting(now + 0.05);
+      // then the game-over tune, from the top, once the "aww" (and a long wipeout) has played out
+      musicStep = 0;
+      musicNext = now + Math.max(OVER_DELAY, deathMs / 1000 + 0.2);
+    } else if (musicMode === "over" || musicMode === "") {
       musicStep = 0; // a fresh start after game over (or the very first time)
       musicNext = now + 0.05;
     }
     m.filter.frequency.setTargetAtTime(mode === "paused" ? 650 : 18000, now, 0.1); // muffled when paused
     musicMode = mode;
   }
-  const level = muted ? 0 : mode === "menu" ? MUSIC_VOLUME * 0.75 : mode === "paused" ? MUSIC_VOLUME * 0.6 : MUSIC_VOLUME;
+  const level = muted ? 0
+    : mode === "menu" ? MUSIC_VOLUME * 0.75
+    : mode === "paused" ? MUSIC_VOLUME * 0.6
+    : mode === "over" ? OVER_VOLUME
+    : MUSIC_VOLUME;
   if (level !== musicLevel) {
     m.out.gain.setTargetAtTime(level, now, 0.08);
     musicLevel = level;
   }
-  if (mode === "over" || muted) return; // (the sting plays out by itself)
+  if (muted) return;
   if (musicNext < now - 0.2) musicNext = now + 0.05; // fell behind (the tab was hidden): pick up from now
   while (musicNext < now + 0.15) {
-    scheduleMusicStep(musicStep, musicNext, mode === "paused" ? "run" : mode);
+    if (mode === "over") scheduleOverStep(musicStep, musicNext);
+    else scheduleMusicStep(musicStep, musicNext, mode === "paused" ? "run" : mode);
     musicStep = (musicStep + 1) % 128;
-    musicNext += MUSIC_STEP;
+    musicNext += mode === "over" ? OVER_STEP : MUSIC_STEP;
   }
 }
 // The first tap or key press is allowed to start sound, so the music can begin.
@@ -481,6 +529,7 @@ function reset() {
   pickups = [];
   particles = [];
   popups = [];
+  plusOnes = [];
   speed = baseSpeed = START_SPEED;
   boost = 1;
   power = null;
@@ -873,12 +922,12 @@ function spawnPlatform() {
       color: MARK_COLORS[(Math.random() * MARK_COLORS.length) | 0],
       phase: Math.random() * Math.PI * 2,
     });
-    for (let cx2 = o.x + 30; cx2 < cx - 30; cx2 += 45) addPickup(cx2, o.y - 34);
+    for (let cx2 = o.x + 30; cx2 < cx - 30; cx2 += PAGE_GAP) addPickup(cx2, o.y - 34);
   } else {
-    for (let cx = o.x + 30; cx < o.x + w - 20; cx += 45) addPickup(cx, o.y - 34);
+    for (let cx = o.x + 30; cx < o.x + w - 20; cx += PAGE_GAP) addPickup(cx, o.y - 34);
   }
   if (kind === "table")
-    for (let cx = o.x + 34; cx < o.x + w - 24; cx += 40) addPickup(cx, FLOOR - 34); // under the table too
+    for (let cx = o.x + 34; cx < o.x + w - 24; cx += PAGE_GAP) addPickup(cx, FLOOR - 34); // under the table too
   return { w, jumpy: skim || topStack };
 }
 
@@ -897,7 +946,7 @@ function spawnTunnel() {
     color: SPINES[2],
     seed: Math.random() * 1000,
   });
-  for (let cx = W + 10 + 34; cx < W + 10 + w - 24; cx += 40) addPickup(cx, FLOOR - 34);
+  for (let cx = W + 10 + 34; cx < W + 10 + w - 24; cx += PAGE_GAP) addPickup(cx, FLOOR - 34);
   return w;
 }
 
@@ -1134,7 +1183,7 @@ function spawnPickups(o, airTime) {
     if (o.swoop || o.dart || o.charge) return; // nothing under the tricky ones, so nobody gets lured in
     // A pair tucked right under the flying book, a reward for ducking.
     if (r < 0.5)
-      for (let k = 0; k < 2; k++) addPickup(o.x + 8 + k * 28, FLOOR - 28);
+      for (let k = -0.5; k <= 0.5; k++) addPickup(o.x + o.w / 2 + k * PAGE_GAP, FLOOR - 28);
     return;
   }
   const tape =
@@ -1178,7 +1227,7 @@ function spawnPickups(o, airTime) {
   } else if (r < 0.7) {
     // A row on the floor, halfway between this stack and the next one.
     const mid = o.x + (o.w + nextSpawn) / 2;
-    for (let k = -1; k <= 1; k++) addPickup(mid + k * 28, FLOOR - 34);
+    for (let k = -1; k <= 1; k++) addPickup(mid + k * PAGE_GAP, FLOOR - 34);
   }
 }
 
@@ -1214,6 +1263,8 @@ function updatePickups(dt) {
       pages += mult;
       sfx.page();
       burst(b.x + b.w / 2, b.y + b.h / 2, 5, PAPER, 3);
+      // (+2 while speed reading). It starts just above the book's head, clear of its face.
+      plusOnes.push({ x: b.x + b.w / 2, y: Math.min(b.y, p.y) - 4, text: `+${mult}`, life: PLUS_MS });
     } else if (b.kind === "repair") {
       heal(b);
     } else if (b.kind === "power") {
@@ -1332,6 +1383,12 @@ function updateParticles(dt) {
     p.life -= dt;
   }
   popups = popups.filter((p) => p.life > 0);
+  for (const p of plusOnes) {
+    p.x -= speed * dt; // left behind where the page was, so a row of pages leaves a row of +1s
+    p.y -= 0.035 * dt;
+    p.life -= dt;
+  }
+  plusOnes = plusOnes.filter((p) => p.life > 0);
   // these keep going on the game-over screen too
   if (shake > 0) shake -= dt;
   if (heartPop && (heartPop.life -= dt) <= 0) heartPop = null;
@@ -2577,6 +2634,20 @@ function draw() {
     ctx.fillStyle = p.color;
     ctx.fillRect(p.x, p.y, p.size, p.size * 0.75);
   }
+  // each page's "+1": small, no box, drifting up and fading out. Gold with a dark outline, so it
+  // reads against the pale shelves and the dark walls alike.
+  ctx.font = "bold 15px Georgia, serif";
+  ctx.textAlign = "center";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(30, 20, 12, 0.85)";
+  ctx.fillStyle = "#ffd84a";
+  for (const p of plusOnes) {
+    ctx.globalAlpha = Math.min(1, p.life / (PLUS_MS * 0.4)); // solid, then fades over its last part
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.lineJoin = "miter";
   for (const p of popups) {
     ctx.globalAlpha = Math.min(1, Math.max(0, p.life / 700));
     ctx.font = "bold 16px Georgia, serif";
