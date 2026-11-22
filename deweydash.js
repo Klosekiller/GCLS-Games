@@ -28,7 +28,7 @@ const REPAIR_EVERY_MS = 30000; // …and this long between rolls after that
 // time. Grab it for a few seconds of help:
 //   magnet — loose pages and bookmarks nearby fly to you
 //   shield — a hardcover that takes the next bump for you (then it's used up)
-//   speed  — speed reading: run faster, pages count double, and knock obstacles out of the way
+//   speed  — speed reading: run faster, pages count double, and knock flying books out of the way
 const POWER_FIRST_MS = 20000; // the first one can turn up this far into a run…
 const POWER_GAP_MS = [25000, 40000]; // …then one every this long (a random time in between)
 const POWERS = {
@@ -99,7 +99,8 @@ const PLATFORMS = {
 };
 const TABLE_SLAB = 14; // the tabletop's thickness: the only solid part of the table (it's open underneath)
 // Book tunnels: a long wall of books hanging from the ceiling with a low gap at the floor. Too
-// tall to jump: duck in and keep ducking until you're out the other side.
+// tall to jump: duck in and keep ducking until you're out the other side. It's a solid bookshelf,
+// so running into it ends the run, like furniture does (see smashInto).
 const TUNNEL_START_MS = 20000;
 const TUNNEL_CHANCE = 0.12;
 const TUNNEL_W = [200, 360]; // length range
@@ -131,6 +132,19 @@ const SLIP_JUMP_BUFFER_MS = 250; // a jump pressed this close to the end of a sl
 // Each puddle is its own size and shape, with a random stretch of dry floor before the next.
 const PUDDLE_W = [40, 86]; // width range (the widest is still well inside a jump)
 const PUDDLE_GAP = [220, 380]; // dry floor between one puddle and the next (a slip lasts longer, so one splash usually means more)
+// Wipeout: hitting a puddle while speed reading. The book's feet go out from under it: it flips
+// over backwards a few times, sailing forward a little, slams down flat on its back and lies
+// there with a halo of stars around its head. It takes every heart left, so the run ends.
+const WIPEOUT = {
+  flipMs: 1000, // in the air, flipping
+  flips: 3, // full backflips (then a quarter more, to land on its back)
+  peak: 110, // px high at the top of the flips
+  forward: 90, // px it sails forward
+  starsAt: 120, // ms after the slam that the first star appears…
+  starEvery: 90, // …then another every this long…
+  stars: 6, // …until the halo has this many
+  overMs: 1900, // ms after the slip that the game-over panel starts to fade in
+};
 
 // ---------- Palette ----------
 const SPINES = [
@@ -176,6 +190,7 @@ let heartPop = null; // { index, life }: the heart that was just lost, popping a
 let shedTimer = 0; // on the last heart, the book drops a loose page now and then
 let tumble = null; // after the last bump: { x, y, vx, vy, rot, shed } of the book flying off screen
 let smash = null; // a hard stop into furniture: { t, final, faceX, groundY }
+let wipeout = null; // speed reading into a puddle: { t, x, groundY, slammed } (see wipeOut)
 let standingOn = null; // the piece of furniture the book is standing on, if any
 let lostPages = []; // pages knocked loose by a bump, flying off: { x, y, vx, vy, rot, spin, life }
 let pageLoss = null; // { amount, life }: the page counter flashes red and shows "−3"
@@ -232,6 +247,12 @@ const sfx = {
   splash: () => {
     tone(900, 320, 0.12, "sine", 0.1);
     tone(620, 220, 0.14, "sine", 0.08, 0.06);
+  },
+  // feet out from under it: a squeak, then a "whoa-oa-oa" wobbling up and down through the flips
+  wipeout: () => {
+    tone(1300, 1700, 0.08, "sine", 0.08);
+    [0, 1, 2].forEach((i) => tone(320, 700, 0.17, "triangle", 0.07, 0.1 + i * 0.3));
+    [0, 1, 2].forEach((i) => tone(700, 320, 0.13, "triangle", 0.06, 0.27 + i * 0.3));
   },
   hurt: () => {
     tone(330, 160, 0.16, "triangle", 0.16);
@@ -476,6 +497,7 @@ function reset() {
   shedTimer = 0;
   tumble = null;
   smash = null;
+  wipeout = null;
   standingOn = null;
   lostPages = [];
   pageLoss = null;
@@ -957,11 +979,13 @@ function puddleShape(w) {
 // Running (or ducking) through a puddle: splash, lose a soggy page, and slip for a moment.
 function checkPuddles() {
   if (!player.onGround || standingOn || hurtTime > 0) return; // jumping over is safe, so is furniture, and so is the blink after a bump
-  if (power && power.type === "speed") return; // speed reading skims right over
   const p = playerBox();
   for (const o of obstacles) {
     if (o.type !== "puddle" || o.soaked) continue;
-    if (p.x + 8 < o.x + o.w - 8 && p.x + p.w - 8 > o.x + 8) soak(o);
+    if (p.x + 8 < o.x + o.w - 8 && p.x + p.w - 8 > o.x + 8) {
+      if (power && power.type === "speed") return wipeOut(o); // far too fast for a wet floor
+      soak(o);
+    }
   }
 }
 function soak(o) {
@@ -969,17 +993,7 @@ function soak(o) {
   slipTime = SLIP_MS;
   sfx.splash();
   const b = playerBox();
-  for (let i = 0; i < 12; i++) {
-    particles.push({
-      x: b.x + b.w / 2 + (Math.random() - 0.5) * 30,
-      y: FLOOR - 2,
-      vx: (Math.random() - 0.5) * 0.35,
-      vy: -0.2 - Math.random() * 0.3,
-      life: 400 + Math.random() * 300,
-      color: Math.random() < 0.5 ? "#7fb8e0" : "#cfe6f5",
-      size: 3 + Math.random() * 2,
-    });
-  }
+  splash(b);
   popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Slippery!", life: 700 });
   if (pages > 0) {
     // one soggy page comes loose
@@ -993,6 +1007,82 @@ function soak(o) {
       rot: 0.2,
       spin: 0.008,
       life: 900,
+    });
+  }
+}
+
+// Speed reading into a puddle: the book wipes out (see drawWipeout) and the run ends.
+function wipeOut(o) {
+  o.soaked = true;
+  const b = playerBox();
+  splash(b);
+  splash(b);
+  sfx.splash();
+  sfx.wipeout();
+  heartPop = { index: 0, count: lives, life: 500 }; // every heart left pops at once
+  lives = 0;
+  wipeout = { t: 0, x: player.x, groundY: player.y + player.h, slammed: false };
+  player.ducking = false;
+  duckHeld = false;
+  popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Wipeout!", life: 1100 });
+  gameOver(true);
+}
+function updateWipeout(dt) {
+  const wo = wipeout;
+  wo.t += dt;
+  if (wo.slammed || wo.t < WIPEOUT.flipMs) return;
+  // the slam: the screen jolts, dust puffs out both ways, and a few pages fly loose
+  wo.slammed = true;
+  shake = 320;
+  sfx.thunk();
+  const { cx, cy } = wipeoutPose(wo.t);
+  for (let i = 0; i < 12; i++) {
+    const dir = i % 2 ? 1 : -1;
+    particles.push({
+      x: cx + dir * (10 + Math.random() * 20),
+      y: FLOOR - 3,
+      vx: dir * (0.06 + Math.random() * 0.16) + speed * 0.5, // (particles drift with the run: cancel that, the run has stopped)
+      vy: -0.06 - Math.random() * 0.14,
+      life: 380 + Math.random() * 250,
+      color: i % 3 ? "#d8cfc0" : "#b3a893",
+      size: 4 + Math.random() * 2,
+    });
+  }
+  burst(cx, cy, 8, PAPER, 6);
+}
+// The wiping-out book, t ms in: its middle (cx, cy), how far it's turned, and its squash (in
+// its own turned frame). Flipping backwards is turning anticlockwise, ending flat on its back.
+function wipeoutPose(t) {
+  const k = Math.min(1, t / WIPEOUT.flipMs);
+  const forward = WIPEOUT.forward * (1 - (1 - k) * (1 - k)); // eases off as it sails
+  const cx = Math.min(W - 30, wipeout.x + player.w / 2 + forward);
+  const ang = -(WIPEOUT.flips * 2 + 0.5) * Math.PI * k;
+  let sx = 1,
+    sy = 1,
+    bounce = 0;
+  const after = t - WIPEOUT.flipMs;
+  if (after > 0) {
+    const s = Math.max(0, 1 - after / 180); // slammed flat, springing back
+    sx = 1 - 0.3 * s; // (on its back, the book's own x runs up and down the screen)
+    sy = 1 + 0.2 * s;
+    if (after > 60 && after < 320) bounce = Math.sin(((after - 60) / 260) * Math.PI) * 8; // a little bounce
+  }
+  // half its height on screen: 25 standing (legs too), 20 lying down (squashed a bit more)
+  const half = k < 1 ? 25 - 5 * k : 20 * sx;
+  const cy = wipeout.groundY - half - 4 * WIPEOUT.peak * k * (1 - k) - bounce;
+  return { cx, cy, ang, sx, sy };
+}
+
+function splash(b) {
+  for (let i = 0; i < 12; i++) {
+    particles.push({
+      x: b.x + b.w / 2 + (Math.random() - 0.5) * 30,
+      y: FLOOR - 2,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: -0.2 - Math.random() * 0.3,
+      life: 400 + Math.random() * 300,
+      color: Math.random() < 0.5 ? "#7fb8e0" : "#cfe6f5",
+      size: 3 + Math.random() * 2,
     });
   }
 }
@@ -1159,13 +1249,10 @@ function updatePower(dt) {
   } else if (powerWait > 0) powerWait -= dt; // the next one's clock only runs while none is in use
 }
 function endPower() {
-  const was = power.type;
   power = null;
   sfx.powerEnd();
-  // coming down from speed reading: a moment's blink, so it doesn't end inside an obstacle
-  if (was === "speed") hurtTime = Math.max(hurtTime, 700);
 }
-// Speed reading knocks a stack, flying book or sign out of the way.
+// Speed reading knocks a flying book out of the way.
 function knockAway(o) {
   obstacles = obstacles.filter((x) => x !== o);
   const cx = o.x + o.w / 2,
@@ -1299,27 +1386,33 @@ function update(dt) {
   }
 
   checkPuddles();
+  if (state !== "running") return; // wiped out in a puddle: the run's over
   if (hurtTime <= 0) {
     const hit = obstacles.find(hits);
     const using = power && power.type;
     if (hit) {
-      if (using === "speed") {
-        if (hit.type !== "platform") knockAway(hit); // (furniture: speed reading runs straight through)
-      } else if (using === "shield") blockHit();
-      else if (hit.type === "platform") smashInto(hit); // (the table's edge too: duck under it or hop up)
+      // furniture and bookshelves (the book tunnels) are solid: running into one ends the run
+      const solid = hit.type === "platform" || hit.type === "tunnel";
+      if (using === "speed" && hit.type === "flyer") knockAway(hit); // speed reading only clears flying books
+      else if (using === "shield") blockHit();
+      else if (solid) smashInto(hit); // (the table's edge too: duck under it or hop up)
       else takeHit();
     }
   }
 }
 
-// Running into furniture: a hard stop, and the end of the run. The run freezes while the book
-// smashes into it and falls over backwards, and it stays down (see drawSmash) as the game ends.
+// Running into furniture or a bookshelf: a hard stop, and the end of the run. The run freezes
+// while the book smashes into it and falls over backwards, and it stays down (see drawSmash) as
+// the game ends.
 function smashInto(o) {
-  // running into furniture takes every heart you have left: the run ends with the smash
+  // takes every heart you have left: the run ends with the smash
   heartPop = { index: 0, count: lives, life: 500 };
   lives = 0;
   const b = playerBox();
-  smash = { t: 0, final: true, faceX: o.x, groundY: player.y + player.h };
+  // Usually it's the front face. But standing up inside a book tunnel hits the shelf overhead:
+  // then the book stays where it is rather than snapping back to the tunnel's entrance.
+  const faceX = o.x < player.x ? player.x + player.w : o.x;
+  smash = { t: 0, final: true, faceX, groundY: player.y + player.h };
   player.ducking = false;
   duckHeld = false;
   shake = 260;
@@ -1329,6 +1422,7 @@ function smashInto(o) {
     particles.push({ x: o.x, y: b.y + 10 + Math.random() * 20, vx: -0.05 - Math.random() * 0.15, vy: -0.15 - Math.random() * 0.2, life: 500 + Math.random() * 200, color: i % 2 ? "#ffe27a" : "#fff6c8", size: 4 });
   }
   popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Thunk!", life: 900 });
+  burst(b.x + b.w / 2, b.y + b.h / 2, 10, PAPER, 6);
   gameOver(true);
 }
 
@@ -1385,14 +1479,14 @@ function updateLostPages(dt) {
   if (pageLoss && (pageLoss.life -= dt) <= 0) pageLoss = null;
 }
 
-function gameOver(fromSmash = false) {
+// stayPut: the book ends the run where it is, on its back (a smash or a wipeout draws it), rather
+// than tumbling away off the screen.
+function gameOver(stayPut = false) {
   state = "over";
   power = null;
+  deathMs = wipeout ? WIPEOUT.overMs : DEATH_MS; // a wipeout takes longer to play out
   const b = playerBox();
-  if (fromSmash) {
-    // smashed into furniture on the last heart: the book stays flat on its back (see drawSmash)
-    burst(b.x + b.w / 2, b.y + b.h / 2, 10, PAPER, 6);
-  } else {
+  if (!stayPut) {
     shake = 300;
     sfx.crash();
     // loose pages fly everywhere…
@@ -1451,7 +1545,8 @@ let newBest = false;
 let overTime = 0; // ms since the run ended
 const DEATH_MS = 900; // let the crash play out (pages flying, the book tumbling away) first…
 const OVER_FADE_MS = 300; // …then fade the game-over panel in over this long
-const OVER_GRACE_MS = DEATH_MS + OVER_FADE_MS; // its buttons work once the panel is fully shown
+let deathMs = DEATH_MS; // (this run's wait: longer after a wipeout, see WIPEOUT.overMs)
+const overGraceMs = () => deathMs + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
 let howtoPage = 0; // How to play: which topic (see HOWTO_PAGES)
 const selected = { ready: 0, paused: 0, howto: 0, over: 0, chars: 0 }; // highlighted button on each screen
@@ -1647,7 +1742,9 @@ function drawTransition() {
 function irisCenter() {
   let x = player.x + player.w / 2,
     y = player.y + player.h / 2;
-  if (smash) {
+  if (wipeout) {
+    ({ cx: x, cy: y } = wipeoutPose(wipeout.t)); // wherever it is in its flips, or lying flat
+  } else if (smash) {
     x = smash.faceX - 18; // pressed against the furniture
     y = smash.groundY - 22;
   } else if (state === "over" && tumble) {
@@ -1695,7 +1792,7 @@ function pause() {
 }
 
 function choose(id) {
-  if (state === "over" && overTime < OVER_GRACE_MS) return; // let the crash and the fade finish
+  if (state === "over" && overTime < overGraceMs()) return; // let the crash and the fade finish
   if (fadeOut !== null) return; // fading to another scene: the buttons are done
   if (id === "start" || id === "again") startRun();
   else if (id === "menu") goHome();
@@ -1747,9 +1844,8 @@ function wantedLayout() {
     ? "tall"
     : "wide";
 }
-const embedded = () => document.documentElement.classList.contains("embed"); // (in the Library Games player)
 function fullTop(name) {
-  if (name !== "tall" || embedded()) return 0;
+  if (name !== "tall") return 0;
   const { w, h } = LAYOUTS.tall;
   return Math.max(0, Math.round(((w * window.innerHeight) / window.innerWidth - h) / 2));
 }
@@ -1758,7 +1854,7 @@ function applyLayout(name) {
   W = LAYOUTS[name].w;
   H = LAYOUTS[name].h;
   TOP = fullTop(name);
-  document.documentElement.classList.toggle("fullscreen", name === "tall" && !embedded());
+  document.documentElement.classList.toggle("fullscreen", name === "tall");
   canvas.width = W;
   canvas.height = H + 2 * TOP;
   WORLD_Y = LAYOUTS[name].worldY;
@@ -1805,6 +1901,7 @@ function frame(now) {
   else if (state === "over") {
     updateTumble(dt);
     if (smash) smash.t += dt; // a final smash keeps animating (the book lies there, seeing stars)
+    if (wipeout) updateWipeout(dt); // so does a wipeout (the flips, the slam, the halo)
     updateParticles(dt);
     overTime += dt;
   } else if (onStartScreen()) {
@@ -2462,7 +2559,8 @@ function draw() {
     else drawBookmark(b.x, b.y + bob, b.w, b.h, b.color);
   }
 
-  if (smash) drawSmash();
+  if (wipeout) drawWipeout();
+  else if (smash) drawSmash();
   else if (state !== "over") {
     drawPlayer();
     drawPowerAura();
@@ -2777,7 +2875,7 @@ const HOWTO_PAGES = [
     rows: () => [
       { title: "Book stacks", how: "Jump over them. Some come two or three wide.", icon: iconStack },
       { title: "Wet floors", how: "Jump the sign and the puddles: puddles make you slip.", icon: iconWetFloor },
-      { title: "Book tunnels", how: "Too tall to jump: duck in and hold it through.", icon: iconTunnel },
+      { title: "Book tunnels", how: "Duck in and hold it. Hit it and the run's over!", icon: iconTunnel },
     ],
   },
   {
@@ -2809,7 +2907,7 @@ const HOWTO_PAGES = [
       return [
         { title: "Bookmark magnet", how: `Pages fly to you for ${secs("magnet")} seconds.`, power: "magnet" },
         { title: "Hardcover", how: `Takes your next bump. Lasts up to ${secs("shield")} seconds.`, power: "shield" },
-        { title: "Speed reading", how: `${secs("speed")} seconds of speed and double pages!`, power: "speed" },
+        { title: "Speed reading", how: `${secs("speed")} seconds: double pages, flying books bounce off!`, power: "speed" },
       ];
     },
   },
@@ -3015,7 +3113,7 @@ function iconWetFloor(x, y) {
 
 function drawGameOver() {
   // wait for the crash to finish, then fade in (rising slightly as it appears)
-  const fade = Math.min(1, Math.max(0, (overTime - DEATH_MS) / OVER_FADE_MS));
+  const fade = Math.min(1, Math.max(0, (overTime - deathMs) / OVER_FADE_MS));
   if (fade === 0) return;
   ctx.save();
   ctx.globalAlpha = fade;
@@ -3056,7 +3154,7 @@ function drawGameOver() {
   );
 
   // "OVERDUE", rubber-stamped across the top of the card: it slams down as the card appears
-  const sp = Math.min(1, Math.max(0, (overTime - DEATH_MS - 120) / 220));
+  const sp = Math.min(1, Math.max(0, (overTime - deathMs - 120) / 220));
   if (sp > 0) {
     const scale = 1 + (1 - sp) * (1 - sp) * 0.9;
     ctx.save();
@@ -3315,6 +3413,50 @@ function drawSmash() {
       sparkle(hx + Math.cos(a) * 14, hy + Math.sin(a) * 5, 4, i === 1 ? "#fff6c8" : "#ffe27a");
     }
   }
+}
+
+// The wipeout (see wipeOut): legs kicking, flipping over backwards through the air, slammed flat
+// on its back, then lying there with a halo of stars forming around its head.
+function drawWipeout() {
+  const t = wipeout.t,
+    c = CHARACTERS[charIndex];
+  const { cx, cy, ang, sx, sy } = wipeoutPose(t);
+  const after = t - WIPEOUT.flipMs; // ms since the slam (negative: still in the air)
+  // its shadow on the floor, shrinking as it goes up
+  const height = Math.max(0, wipeout.groundY - 25 - cy);
+  oval(cx, FLOOR - 1, Math.max(8, 24 - height * 0.12), 4, "rgba(0, 0, 0, 0.22)");
+  // the halo: a ring of stars round its head (on the left, lying on its back), popping in one by
+  // one. The ring is tipped toward us, so stars on the far side go behind the book.
+  const halo = [];
+  if (after > 0) {
+    const hx = cx - 14, // above its head end (it's 20 tall, lying down)
+      hy = cy - 30;
+    for (let i = 0; i < WIPEOUT.stars; i++) {
+      const p = Math.min(1, (after - WIPEOUT.starsAt - i * WIPEOUT.starEvery) / 160);
+      if (p <= 0) break;
+      const pop = 1 + 2.7 * (p - 1) ** 3 + 1.7 * (p - 1) ** 2; // overshoots a little, then settles
+      const a = after * 0.004 + (i * Math.PI * 2) / WIPEOUT.stars;
+      const depth = Math.sin(a); // -1 far side … 1 near side
+      halo.push({
+        x: hx + Math.cos(a) * 22,
+        y: hy + depth * 7,
+        r: (5.5 + 1.5 * depth) * pop,
+        color: i % 2 ? "#fff6c8" : "#ffe27a",
+        behind: depth < 0,
+      });
+    }
+  }
+  for (const s of halo) if (s.behind) sparkle(s.x, s.y, s.r, s.color);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  ctx.scale(sx, sy);
+  const look = { wear: LIVES - lives };
+  if (after < 0) look.flail = [Math.sin(t * 0.045) * 1.1 - 0.5, Math.sin(t * 0.045 + 2.2) * 1.1 - 0.5]; // kicking
+  else if (after > 350) look.step = Math.sin(t * 0.03) * 4; // legs wiggling in the air
+  drawCharacter(c, -20, -25, 40, 44, look); // (centered: the body, and its legs below)
+  ctx.restore();
+  for (const s of halo) if (!s.behind) sparkle(s.x, s.y, s.r, s.color);
 }
 
 // ---------- Furniture ----------

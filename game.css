@@ -5,7 +5,9 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
+  /* (dvh: the screen's visible height on phones, with the browser's toolbars showing) */
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -15,13 +17,16 @@ body {
   color: #e8dcc0;
   font-family: Georgia, serif;
   padding: 16px;
+  --reserve: 32px; /* the page's height that isn't the game: its padding, top and bottom */
+  /* no double-tap zoom on phones: quick taps around the game shouldn't zoom or scroll the page */
+  touch-action: manipulation;
 }
 canvas {
   width: 100%;
   max-width: var(--w);
   /* A game that sets --ratio (width ÷ height) is also kept short enough to fit the screen. */
-  max-width: min(var(--w), calc((100vh - 32px) * var(--ratio, 1000)));
-  max-width: min(var(--w), calc((100dvh - 32px) * var(--ratio, 1000)));
+  max-width: min(var(--w), calc((100vh - var(--reserve)) * var(--ratio, 1000)));
+  max-width: min(var(--w), calc((100dvh - var(--reserve)) * var(--ratio, 1000)));
   border-radius: 10px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   touch-action: none;
@@ -127,5 +132,20 @@ html.fullscreen .controls { display: none; }
 
 /* Dewey Dash on a phone turned on its side: less padding, so the game can use the whole screen. */
 @media (orientation: landscape) and (max-height: 500px) {
-  [data-game="deweydash"] { padding: 8px; }
+  [data-game="deweydash"] {
+    padding: 8px;
+    --reserve: 16px;
+  }
+}
+
+/* Dewey Dash on a touch screen: it always fits on the screen, with nothing below it, so the page
+   never scrolls (taps and swipes are all for the game). */
+@media (hover: none) {
+  html:has(> body[data-game="deweydash"]),
+  body[data-game="deweydash"] {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body[data-game="deweydash"] { min-height: 0; }
 }
