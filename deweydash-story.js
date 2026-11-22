@@ -62,7 +62,7 @@ const LEVELS = [
   },
   {
     id: "1-B",
-    name: "Back the Way He Came",
+    name: "Chasing the Cart",
     place: "Hughes Main Library",
     scenes: [
       [sceneDesk, 1000],
@@ -74,7 +74,7 @@ const LEVELS = [
     features: { double: 0, flyer: 0, wet: 10000, swoop: 18000, tunnel: 26000 },
     chances: { flyer: 0.3, wet: 0.14, tunnel: 0.14 },
     goal: "enter",
-    intro: "turnaround",
+    intro: "chase",
   },
   {
     id: "1-C",
@@ -1134,6 +1134,25 @@ function sceneGlobeDoor(x, w) {
   tiles(x, w, "#3b3c43", "#2b2c31");
   drawGlassDoors(x + w - GOAL_FROM_RIGHT, false);
 }
+// A staff door, centered on cx: always shut, and with no window, so nothing behind it ever shows.
+// swish: it has just swung closed (a few motion arcs beside it).
+function drawStaffDoor(cx, top, swish) {
+  const w = 66;
+  R(cx - w / 2 - 5, top - 5, w + 10, FLOOR - top + 5, "#8a939d");
+  R(cx - w / 2, top, w, FLOOR - top, "#5f6e7f");
+  R(cx - w / 2 + 7, top + 8, w - 14, FLOOR - top - 16, "#6a798b");
+  R(cx - 17, top + 20, 34, 13, "#eef1f3");
+  label("STAFF", cx, top + 30, 9, "#3a3f46");
+  R(cx + w / 2 - 13, FLOOR - 106, 5, 22, "#c9ced3");
+  if (!swish) return;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(cx - w / 2, FLOOR - 60, w + 8 + i * 11, -0.5, 0.2); // (just past its swinging edge)
+    ctx.stroke();
+  }
+}
 // The glass doors to the outside, centered on cx: you can see the lawn and the sky through them.
 function drawGlassDoors(cx, open) {
   const top = CEIL + 8,
@@ -1662,7 +1681,9 @@ const BOOKS = {
       },
     },
   ],
-  turnaround: [
+  // Dewey follows the courier cart through a staff door and comes out beside the main circulation
+  // desk. The staff areas are only told, never shown: the doors are always shut.
+  chase: [
     {
       focus: 610, zoom: 1.4, focusY: 200,
       text: "Dewey gathered up every page he could find in the children's wing. But when he counted them, some were still missing!",
@@ -1674,25 +1695,44 @@ const BOOKS = {
       },
     },
     {
-      focus: 520, zoom: 1.25, focusY: 190,
-      text: "Then he spotted it: the courier cart, rolling toward the doors. Its bins were stuffed with pages. HIS pages!",
+      focus: 200, zoom: 1.3, focusY: 200,
+      text: "Then he spotted it: the courier cart, its bins stuffed with pages (HIS pages!), rolling right out through the staff door.",
       art: (t) => {
-        sceneDesk(0, 1000);
-        const cx = 500 + ((t * 0.03) % 260);
-        drawCourierCart(cx, FLOOR, t);
-        speedStreaks(cx - 12, FLOOR - 100, 70, 1, t);
-        drawDewey(360, FLOOR, 1.2, { wear: 1 });
-        label("!", 380, 196 + Math.sin(t * 0.01) * 2, 34, "#c92a2f", "Georgia, serif");
+        scenePAL(0, 900);
+        drawStaffDoor(84, CEIL + 70, true);
+        drawPage(104, FLOOR - 6, 16, 6, 0.1); // one caught under the door
+        flutterPages(150, FLOOR - 40, 3, 30, t, 11);
+        drawDewey(300, FLOOR, 1.3, { wear: 1 }, 0, true);
+        label("!", 290, 186 + Math.sin(t * 0.01) * 2, 34, "#c92a2f", "Georgia, serif");
       },
     },
     {
-      focus: 470, zoom: 1.3, focusY: 200,
-      text: "The courier carries books to every branch in the county. If those bins left, his pages would go with them! Dewey spun around and raced back the way he came.",
+      focus: 190, zoom: 1.3, focusY: 200,
+      text: "The courier carries books to every branch in the county. If that cart left, his pages would go with it! So Dewey dashed through the door after it, around corners and down long back hallways...",
       art: (t) => {
-        sceneKidsComputers(0, 1000);
-        drawDewey(470, FLOOR, 1.6, { run: t * 1.5, wear: 1 }, 0, true);
-        speedStreaks(510, 196, 70, -1, t);
-        for (let i = 0; i < 4; i++) oval(520 + i * 16, FLOOR - 4 - i * 2, 9 - i, 5 - i * 0.6, "rgba(205, 191, 163, 0.8)");
+        scenePAL(0, 900);
+        drawStaffDoor(84, CEIL + 70, true);
+        for (let i = 0; i < 6; i++) oval(130 + i * 18, FLOOR - 6 - (i % 2) * 5, 11 - i, 7 - i * 0.7, "rgba(205, 191, 163, 0.85)"); // his dust
+        speedStreaks(150, FLOOR - 70, 50, -1, t);
+        flutterPages(170, FLOOR - 60, 2, 24, t, 5);
+        comicBurst(250, 150, 40, "WHOOSH!", "#2f6db5");
+      },
+    },
+    {
+      focus: 270, zoom: 1.1, focusY: 190,
+      text: "...until he burst out right beside the main circulation desk! And there went the cart, rattling off toward the lobby. After it!",
+      art: (t) => {
+        // the navy wall just before the desk, with the staff door he came out of
+        R(0, 0, 200, CEIL, "#d8d4cc");
+        R(0, CEIL, 200, FLOOR - CEIL, "#344050");
+        tiles(0, 200, "#3e3633", "#2d2725");
+        sceneDesk(200, 1000);
+        drawStaffDoor(100, CEIL + 50, true);
+        const cx = 400 + ((t * 0.03) % 120);
+        drawCourierCart(cx, FLOOR, t);
+        speedStreaks(cx - 14, FLOOR - 100, 60, 1, t);
+        for (let i = 0; i < 4; i++) oval(150 - i * 14, FLOOR - 5 - (i % 2) * 4, 9 - i, 6 - i, "rgba(205, 191, 163, 0.85)");
+        drawDewey(190, FLOOR, 1.3, { run: t * 1.4, wear: 1 });
       },
     },
   ],
