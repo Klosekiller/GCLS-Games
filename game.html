@@ -9,8 +9,9 @@
 <body>
   <!-- Every game plays on this page: game.html?g=catch loads catch.js.
        Each game's instructions (and touch controls, if it has them) live in a
-       <template> below. The template's data- attributes give the page title
-       and the canvas size. To add a game, add a template and a .js file. -->
+       <template> below. The template's data- attributes give the page title,
+       the canvas size and any extra scripts the game needs (data-scripts).
+       To add a game, add a template and a .js file. -->
   <canvas id="game" width="640" height="480"></canvas>
 
   <template id="game-bookmobile" data-title="Bookmobile Route" data-width="900" data-height="600">
@@ -95,7 +96,7 @@
     </div>
   </template>
 
-  <template id="game-deweydash" data-title="Dewey Dash" data-width="800" data-height="320">
+  <template id="game-deweydash" data-title="Dewey Dash" data-width="800" data-height="320" data-scripts="deweydash-story.js">
     <!-- no instructions here: they're all on the game's How to play screen -->
   </template>
 
@@ -141,9 +142,13 @@
       if (d.label) canvas.setAttribute("aria-label", d.label);
       document.body.appendChild(tpl.content.cloneNode(true));
 
-      const script = document.createElement("script");
-      script.src = id + ".js";
-      document.body.appendChild(script);
+      // the game's script, then any others it lists in data-scripts (in that order)
+      for (const src of [id + ".js", ...(d.scripts ? d.scripts.split(" ") : [])]) {
+        const script = document.createElement("script");
+        script.src = src;
+        script.async = false; // (run in the order added, not whichever loads first)
+        document.body.appendChild(script);
+      }
     })();
   </script>
 </body>

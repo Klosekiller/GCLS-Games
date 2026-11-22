@@ -148,6 +148,28 @@ const WIPEOUT = {
   overMs: 1900, // ms after the slip that the game-over panel starts to fade in
 };
 
+// When each hazard joins a run. In Endless Mode, at these times. In Story Mode, each level says
+// which ones it has and when (its `features`), and can change how often they turn up (`chances`).
+const FEATURES = {
+  flyer: FLYER_START_MS,
+  double: DOUBLE_STACKS_START_MS,
+  swoop: SWOOP_START_MS,
+  dart: DART_START_MS,
+  charge: CHARGE_START_MS,
+  flock: FLOCK_START_MS,
+  wet: WET_START_MS,
+  platform: PLATFORM_START_MS,
+  tunnel: TUNNEL_START_MS,
+};
+function has(f) {
+  const at = story ? story.level.features[f] : FEATURES[f];
+  return at != null && runTime > at;
+}
+function chance(f, base) {
+  const c = story && story.level.chances && story.level.chances[f];
+  return c != null ? c : base;
+}
+
 // ---------- Palette ----------
 const SPINES = [
   "#8c2f39",
@@ -176,7 +198,8 @@ const RIBBON_RED = "#c92a2f",
 const MARK_COLORS = [RIBBON_RED, RIBBON_BLUE, RIBBON_YELLOW];
 
 // ---------- State ----------
-const player = { x: 70, y: GROUND_Y, w: 40, h: 44, vy: 0, onGround: true };
+const PLAYER_X = 70; // where the book runs, from the left of the screen (every run and level starts here)
+const player = { x: PLAYER_X, y: GROUND_Y, w: 40, h: 44, vy: 0, onGround: true };
 let obstacles = [];
 let pickups = []; // loose pages and the odd bookmark: { kind, x, y, w, h, color, phase }
 let particles = [];
@@ -194,6 +217,10 @@ let shedTimer = 0; // on the last heart, the book drops a loose page now and the
 let tumble = null; // after the last bump: { x, y, vx, vy, rot, shed } of the book flying off screen
 let smash = null; // a hard stop into furniture: { t, final, faceX, groundY }
 let wipeout = null; // speed reading into a puddle: { t, x, groundY, slammed } (see wipeOut)
+// The Story Mode level being played, or null in Endless Mode. Story Mode lives in
+// deweydash-story.js (loaded after this file); this file calls into it only while `story` is set
+// or on Story Mode's own screens.
+let story = null;
 let standingOn = null; // the piece of furniture the book is standing on, if any
 let lostPages = []; // pages knocked loose by a bump, flying off: { x, y, vx, vy, rot, spin, life }
 let pageLoss = null; // { amount, life }: the page counter flashes red and shows "−3"
@@ -520,6 +547,7 @@ let PROFILE = { x: 0, y: 12, w: 112, h: 32 };
 let SCORE = { x: 0, y: 12 }; // the pages / best / distance bar
 
 function reset() {
+  player.x = PLAYER_X; // (the end of a story level has it run on to the goal, off its spot)
   player.y = GROUND_Y;
   player.vy = 0;
   player.onGround = true;
@@ -675,7 +703,7 @@ function makeStack(x, stackW, targetH, base = FLOOR) {
 
 function spawnObstacle() {
   const count =
-    runTime > DOUBLE_STACKS_START_MS && Math.random() < 0.35
+    has("double") && Math.random() < 0.35
       ? 2 + (Math.random() < 0.3)
       : 1;
   const stackW = count === 1 ? 30 : 26;
@@ -702,7 +730,7 @@ function spawnObstacle() {
 // A book flapping its covers at head height: duck under it (or time a jump over it).
 function spawnFlyer() {
   const h = 22;
-  const swoop = runTime > SWOOP_START_MS && Math.random() < SWOOP_CHANCE;
+  const swoop = has("swoop") && Math.random() < chance("swoop", SWOOP_CHANCE);
   const o = {
     type: "flyer",
     swoop,
@@ -715,12 +743,12 @@ function spawnFlyer() {
     phase: Math.random() * Math.PI * 2,
   };
   if (swoop) o.y = swoopBottom(o) - h;
-  else if (runTime > CHARGE_START_MS && Math.random() < CHARGE_CHANCE) {
+  else if (has("charge") && Math.random() < chance("charge", CHARGE_CHANCE)) {
     const [a, b] = CHARGE_DELAY_MS;
     o.charge = { t: 0, at: a + Math.random() * (b - a) }; // t: ms on screen
     o.color = CHARGE_COLOR;
     o.x += CHARGE_LEAD;
-  } else if (runTime > DART_START_MS && Math.random() < DART_CHANCE) {
+  } else if (has("dart") && Math.random() < chance("dart", DART_CHANCE)) {
     o.dart = true;
     o.color = DART_COLOR;
     o.x += (DART_EXTRA * (W + 10 - player.x)) / speed; // the head start it'll make up
@@ -762,7 +790,7 @@ function updateObstacles(dt) {
 
   // Spawn based on distance so gaps stay jumpable as speed rises.
   nextSpawn -= dx;
-  if (nextSpawn <= 0) {
+  if (nextSpawn <= 0 && !(story && storyNearEnd())) { // (nothing new near the end of a story level)
     const airTime = (2 * -JUMP_VELOCITY) / GRAVITY; // ms spent in a full jump
     let o = null,
       len, // how far it reaches past where it starts
@@ -794,18 +822,18 @@ function updateObstacles(dt) {
 
 // ---------- Spacing ----------
 function pickNext() {
-  if (runTime > WET_START_MS && Math.random() < WET_CHANCE) return "wet";
-  if (runTime > PLATFORM_START_MS && Math.random() < PLATFORM_CHANCE) return "platform";
-  if (runTime > TUNNEL_START_MS && Math.random() < TUNNEL_CHANCE) return "tunnel";
-  if (runTime > FLOCK_START_MS && Math.random() < FLOCK_CHANCE)
+  if (has("wet") && Math.random() < chance("wet", WET_CHANCE)) return "wet";
+  if (has("platform") && Math.random() < chance("platform", PLATFORM_CHANCE)) return "platform";
+  if (has("tunnel") && Math.random() < chance("tunnel", TUNNEL_CHANCE)) return "tunnel";
+  if (has("flock") && Math.random() < chance("flock", FLOCK_CHANCE))
     return "flock-" + ["low", "high", "split"][(Math.random() * 3) | 0];
-  if (runTime > FLYER_START_MS && Math.random() < FLYER_CHANCE) return "flyer";
+  if (has("flyer") && Math.random() < chance("flyer", FLYER_CHANCE)) return "flyer";
   return "stack";
 }
 // How you might need to get past what's coming. (A flying book might turn out to be a swooper,
 // which sometimes needs a jump.)
 function nextMoves(kind) {
-  if (kind === "flyer") return runTime > SWOOP_START_MS ? ["duck", "jump"] : ["duck"];
+  if (kind === "flyer") return has("swoop") ? ["duck", "jump"] : ["duck"];
   if (kind === "platform") return ["high"];
   if (kind === "tunnel" || kind === "flock-high" || kind === "flock-split") return ["duck"];
   return ["jump"];
@@ -1155,7 +1183,9 @@ function hits(o) {
 // ---------- Pages to collect (and the rare bookmark) ----------
 // `cx` is the item's center, `y` the top of where a bookmark would hang.
 function addPickup(cx, y) {
-  if (Math.random() < BOOKMARK_CHANCE) {
+  const bookmark = Math.random() < BOOKMARK_CHANCE;
+  if (story) story.pagesThere += bookmark ? BOOKMARK_PAGES : 1; // (the pages there were to find, for a level's stars)
+  if (bookmark) {
     pickups.push({
       kind: "bookmark",
       x: cx - 7,
@@ -1408,6 +1438,7 @@ function update(dt) {
     }
     return;
   }
+  if (story && storyFinishing(dt)) return; // the end of a story level: the book runs on to the goal
   runTime += dt;
   baseSpeed = Math.min(MAX_SPEED, baseSpeed + SPEED_RAMP * dt);
   const wantBoost = power && power.type === "speed" ? SPEED_BOOST : 1;
@@ -1415,6 +1446,7 @@ function update(dt) {
   speed = baseSpeed * boost;
   runDist += speed * dt;
   distance += speed * dt;
+  if (story) storyCheckEnd(); // reached the end of the level's library?
 
   updatePlayer(dt);
   updateObstacles(dt);
@@ -1606,13 +1638,14 @@ let deathMs = DEATH_MS; // (this run's wait: longer after a wipeout, see WIPEOUT
 const overGraceMs = () => deathMs + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
 let howtoPage = 0; // How to play: which topic (see HOWTO_PAGES)
-const selected = { ready: 0, paused: 0, howto: 0, over: 0, chars: 0 }; // highlighted button on each screen
+const selected = { ready: 0, paused: 0, howto: 0, over: 0, chars: 0, levels: 0, cleared: 0 }; // highlighted button on each screen
 // Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen's
 // highlight stays on Start except while another button is hovered.
 let keyNav = false;
 
 // Keep the most pages collected in one run. Returns true if this run beat it.
 function saveBest() {
+  if (story) return false; // (Endless Mode's best only: a story level has stars instead)
   if (pages <= best) return false;
   best = pages;
   safeSet("runner-best-pages", best);
@@ -1649,9 +1682,16 @@ function buttonCol(y, ...items) {
 }
 const MENU = {
   ready: [
-    ["start", "Start"],
+    ["story", "Story"],
+    ["endless", "Endless"],
     ["howto", "How to play"],
   ], // (+ the character card under them, added in makeButtons)
+  levels: [["home", "Back"]], // Story Mode's level list (+ a tile for each level: see storyButtons)
+  cleared: [
+    ["continue", "Continue"],
+    ["replay", "Play again"],
+    ["map", "Levels"],
+  ],
   chars: [["done", "Done"]],
   paused: [
     ["resume", "Resume"],
@@ -1669,8 +1709,8 @@ const MENU = {
 };
 // Where each screen's buttons go: a row in the wide layout, a column in the tall one.
 const BUTTON_Y = {
-  wide: { ready: 178, chars: 234, paused: 196, howto: 220, over: 196 },
-  tall: { ready: 340, chars: 494, paused: 288, howto: 446, over: 330 },
+  wide: { ready: 178, chars: 234, paused: 196, howto: 220, over: 196, levels: 252, cleared: 226 },
+  tall: { ready: 340, chars: 494, paused: 288, howto: 446, over: 330, levels: 486, cleared: 318 },
 };
 let BUTTONS = {};
 function makeButtons() {
@@ -1684,15 +1724,17 @@ function makeButtons() {
   // The start screen's Characters option is a card with the chosen character's portrait,
   // set apart under the main buttons. It's still a button, so the arrow keys reach it.
   const card = tall()
-    ? { w: COL_BTN.w, h: 58, y: BUTTON_Y.tall.ready + 2 * (COL_BTN.h + COL_BTN.gap) + 6 } // (just under the two buttons)
+    ? { w: COL_BTN.w, h: 58, y: BUTTON_Y.tall.ready + MENU.ready.length * (COL_BTN.h + COL_BTN.gap) + 6 } // (just under the buttons)
     : { w: 260, h: 46, y: 232 };
   BUTTONS.ready.push({ id: "chars", label: "Characters", card: true, x: W / 2 - card.w / 2, ...card });
+  if (typeof storyButtons === "function") storyButtons(); // (once deweydash-story.js has loaded)
 }
 const isMenu = () => state in BUTTONS;
 // Is the start screen (or a screen opened from it) showing? Then there's no score bar.
 const onStartScreen = () =>
   state === "ready" ||
   state === "chars" ||
+  state === "levels" ||
   (state === "howto" && howtoFrom === "ready");
 
 // Changing scenes (starting a run, or going back to the start screen from pause or game over):
@@ -1736,6 +1778,7 @@ function startRun() {
 // Back to the start screen (Main menu from game over, or Quit from pause).
 function goHome() {
   fadeTo(() => {
+    if (story) leaveStory();
     reset();
     state = "ready";
     if (!keyNav) selected.ready = 0; // Start is highlighted
@@ -1851,6 +1894,7 @@ function pause() {
 function choose(id) {
   if (state === "over" && overTime < overGraceMs()) return; // let the crash and the fade finish
   if (fadeOut !== null) return; // fading to another scene: the buttons are done
+  if (storyChoose(id)) return; // Story Mode's choices (and Endless, which leaves it)
   if (id === "start" || id === "again") startRun();
   else if (id === "menu") goHome();
   else if (id === "quit") {
@@ -1875,6 +1919,7 @@ function choose(id) {
 
 // What Esc does on each menu screen.
 function goBack() {
+  if (storyGoBack()) return;
   if (state === "paused") choose("resume");
   else if (state === "howto") choose("back");
   else if (state === "chars") choose("done");
@@ -1961,7 +2006,9 @@ function frame(now) {
     if (wipeout) updateWipeout(dt); // so does a wipeout (the flips, the slam, the halo)
     updateParticles(dt);
     overTime += dt;
-  } else if (onStartScreen()) {
+  } else if (state === "book") updateBook(dt);
+  else if (state === "cleared") updateCleared(dt);
+  else if (onStartScreen()) {
     // start screen: the library drifts by slowly while the book jogs on the spot
     runTime += dt;
     distance += START_DRIFT * dt;
@@ -2512,6 +2559,7 @@ const SCENES = [
 const LOOP = SCENES.reduce((s, z) => s + z.w, 0);
 
 function drawBackground() {
+  if (story) return drawStoryBackground(); // a story level's own run of scenes, start to finish
   const off = distance * BG_PARALLAX;
   let sx = Math.floor(off / LOOP) * LOOP - off; // screen x where the current loop starts
   const seams = [];
@@ -2578,6 +2626,7 @@ function drawTallFloor() {
 }
 
 function draw() {
+  if (state === "book") return drawBook(); // a Story Mode picture book takes the whole screen
   // a quick shake when the player gets bumped (the HUD stays still)
   ctx.save();
   if (shake > 0) {
@@ -2593,6 +2642,7 @@ function draw() {
 
   for (const o of obstacles) if (o.type === "puddle") drawPuddle(o); // on the floor, under everything
   for (const o of obstacles) {
+    if (story && storyDrawObstacle(o)) continue; // (outdoors: hedges, birds and sprinklers)
     if (o.type === "flyer") drawFlyingBook(o, o.skimY == null); // (no floor shadow when it's up on furniture)
     else if (o.type === "tunnel") drawTunnel(o);
     else if (o.type === "sign") drawWetSign(o);
@@ -2619,8 +2669,11 @@ function draw() {
   if (wipeout) drawWipeout();
   else if (smash) drawSmash();
   else if (state !== "over") {
-    drawPlayer();
-    drawPowerAura();
+    if (!(story && story.hidden)) {
+      // (at the end of some story levels the book goes in through a door, or aboard the Bookmobile)
+      drawPlayer();
+      drawPowerAura();
+    }
   } else drawTumble();
 
   for (const l of lostPages) {
@@ -2683,6 +2736,7 @@ function draw() {
     ctx.globalAlpha = 1;
     if (state === "howto") drawHowTo();
     if (state === "chars") drawCharacters();
+    if (state === "levels") drawLevels();
     return; // the start screen has no score bar
   }
   ctx.globalAlpha = 1;
@@ -2713,15 +2767,18 @@ function draw() {
     ctx.fillStyle = PAPER;
     ctx.fillText("× " + pages, SCORE.x + 32, sy + 22);
   }
-  ctx.fillStyle = GOLD;
-  ctx.fillText("BEST " + best, SCORE.x + 108, sy + 22);
-  ctx.textAlign = "right";
-  ctx.fillStyle = PAPER;
-  ctx.fillText(
-    "DISTANCE " + Math.floor(runDist * METERS_PER_PX) + " m",
-    SCORE.x + 346,
-    sy + 22,
-  );
+  if (story) drawStoryProgress(SCORE.x, sy); // the level, and how far through it the book is
+  else {
+    ctx.fillStyle = GOLD;
+    ctx.fillText("BEST " + best, SCORE.x + 108, sy + 22);
+    ctx.textAlign = "right";
+    ctx.fillStyle = PAPER;
+    ctx.fillText(
+      "DISTANCE " + Math.floor(runDist * METERS_PER_PX) + " m",
+      SCORE.x + 346,
+      sy + 22,
+    );
+  }
 
   drawPowerHUD();
 
@@ -2729,6 +2786,7 @@ function draw() {
   if (state === "paused") drawPause();
   if (state === "howto") drawHowTo();
   if (state === "over") drawGameOver();
+  if (story) drawStoryOverlay(); // a level's title as it begins, and the card when it's cleared
 }
 
 // ---------- Menu drawing ----------
@@ -2819,6 +2877,8 @@ function drawButtons() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
     if (b.card) return drawCharacterCard(b, on);
+    if (b.tile != null) return drawLevelTile(b, on); // Story Mode's level list
+    if (story && state === "over") b = { ...b, label: b.id === "again" ? "Try again" : "Levels" };
     if (b.id === "next" && howtoPage === HOWTO_PAGES.length - 1) b = { ...b, label: "Done" };
     drawButton(
       b,
@@ -3202,7 +3262,9 @@ function drawGameOver() {
   ctx.textAlign = "center";
   const stats = [
     [pages, pages === 1 ? "page collected" : "pages collected"],
-    [`${Math.floor(runDist * METERS_PER_PX)} m`, "run"],
+    story
+      ? [`${Math.round(storyProgress() * 100)}%`, "of the way through " + story.level.id]
+      : [`${Math.floor(runDist * METERS_PER_PX)} m`, "run"],
   ];
   stats.forEach(([n, label], i) => {
     const x = W / 2 + (i === 0 ? -80 : 80);
@@ -3219,7 +3281,9 @@ function drawGameOver() {
   ctx.fillStyle = newBest && best > 0 ? CARD_RED : INK_SOFT;
   ctx.font = "bold 15px Georgia, serif";
   ctx.fillText(
-    newBest && best > 0 ? "★ New best! ★" : `Best: ${best} pages`,
+    story
+      ? `Level ${story.level.id} · ${story.level.name}`
+      : newBest && best > 0 ? "★ New best! ★" : `Best: ${best} pages`,
     W / 2,
     sy + 48,
   );
@@ -3249,7 +3313,7 @@ function drawGameOver() {
   drawButtons();
   hint(
     tall()
-      ? "Main menu goes back to the start screen"
+      ? story ? "Levels goes back to the list of levels" : "Main menu goes back to the start screen"
       : "← → to choose · Enter or Space to select · Esc for the menu",
     py + ph - 14,
   );
@@ -4958,11 +5022,7 @@ function drawStartScreen() {
   // (who you're playing as is on the character card, and the best score is up by the profile)
   ctx.fillStyle = PAPER;
   ctx.font = "13px Georgia, serif";
-  ctx.fillText(
-    tall() ? "Tap a button to choose" : "← → to choose · Enter or Space to select",
-    tx,
-    tall() ? 578 : 302,
-  );
+  if (!tall()) ctx.fillText("← → to choose · Enter or Space to select", tx, 302); // (no room under the buttons on a phone)
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
@@ -5115,6 +5175,7 @@ function iconHeart(x, y) {
 
 // ---------- Input ----------
 document.addEventListener("keydown", (e) => {
+  if (state === "book") return bookKey(e); // turning the pages of a Story Mode picture book
   // During the opening sequence, any key skips to the start screen.
   if (intro && state === "ready") {
     if (e.code === "Space" || e.code === "Enter" || e.code.startsWith("Arrow")) e.preventDefault();
@@ -5266,6 +5327,7 @@ canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   if (e.pointerType === "mouse" && e.button !== 0) return; // …and only the left button plays
   if (intro && state === "ready") return skipIntro(); // a tap skips the opening sequence
+  if (state === "book") return bookTap(e); // a tap turns the page
   const [cx, cy] = toCanvas(e);
   if (inside(cx, cy, MUTE_BTN)) return toggleMute();
   if (isMenu()) {
