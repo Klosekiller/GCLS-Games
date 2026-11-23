@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Library Games</title>
+  <link rel="stylesheet" href="index.css" />
+</head>
+<body>
+  <!-- One-day test links: test.html?g=<game>&t=<token>, made with makeTestLink()
+       (see testlink.js). A link from today opens the game with no password;
+       anything else shows the message below. The games themselves live in game.html. -->
+  <header id="expired" hidden>
+    <h1>This test link has expired</h1>
+    <p>Test links only work on the day they were sent. Please ask for a new one.</p>
+    <p><a href="index.html">Back to Library Games</a></p>
+  </header>
+
+  <script src="testlink.js"></script>
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      if (validTestToken(params.get("g"), params.get("t"))) {
+        location.replace("game.html" + location.search); // play it, no password
+      } else {
+        document.getElementById("expired").hidden = false;
+      }
+    })();
+  </script>
+</body>
+</html>

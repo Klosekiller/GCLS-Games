@@ -755,5 +755,87 @@
   </main>
 
   <footer>Made for our library. Your best scores are saved on this device.</footer>
+
+  <!-- Asks for the password before opening a game (see pass.js) -->
+  <dialog id="pass-dialog" aria-labelledby="pass-title">
+    <form id="pass-form">
+      <h2 id="pass-title">Enter the password</h2>
+      <p id="pass-game"></p>
+      <p id="pass-error" class="pass-error" role="alert" hidden></p>
+      <label for="pass-input">Password</label>
+      <input id="pass-input" type="password" autocomplete="off" required />
+      <div class="pass-buttons">
+        <button type="button" id="pass-cancel" class="pass-cancel">Cancel</button>
+        <button type="submit" class="pass-go">Play →</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="pass.js"></script>
+  <script src="testlink.js"></script> <!-- for makeTestLink("game") in the console -->
+  <script>
+    (function () {
+      const dialog = document.getElementById("pass-dialog");
+      const form = document.getElementById("pass-form");
+      const input = document.getElementById("pass-input");
+      const error = document.getElementById("pass-error");
+      const gameName = document.getElementById("pass-game");
+      let target = null; // the game link that was clicked
+
+      function showError(msg) {
+        error.textContent = msg;
+        error.hidden = !msg;
+      }
+
+      function open(link, msg) {
+        target = link;
+        gameName.textContent = link ? link.querySelector("h3").textContent : "";
+        gameName.hidden = !link;
+        input.value = "";
+        showError(msg || "");
+        dialog.showModal();
+        input.focus();
+      }
+
+      // game.html saves the password for this tab once it's been right
+      // (sessionStorage: cleared when the tab closes)
+      function savedPass() {
+        try { return sessionStorage.getItem("gamePass"); } catch { return null; }
+      }
+
+      function go(link, pass) {
+        const url = new URL(link.href);
+        url.searchParams.set("pass", pass);
+        location.href = url.href; // game.html checks the password
+      }
+
+      document.querySelectorAll("a.game").forEach((link) => {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (savedPass() === GAME_PASS) go(link, GAME_PASS);
+          else open(link);
+        });
+      });
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (!target) { dialog.close(); return; }
+        go(target, input.value);
+      });
+
+      document.getElementById("pass-cancel").addEventListener("click", () => dialog.close());
+
+      // Sent back here by game.html with a wrong or missing password
+      const params = new URLSearchParams(location.search);
+      if (params.get("error") === "pass") {
+        history.replaceState(null, "", location.pathname); // so a refresh doesn't repeat it
+        const banner = document.createElement("p");
+        banner.className = "pass-error pass-banner";
+        banner.setAttribute("role", "alert");
+        banner.textContent = "That password wasn't right. Pick a game and try again.";
+        document.querySelector("header").appendChild(banner);
+      }
+    })();
+  </script>
 </body>
 </html>

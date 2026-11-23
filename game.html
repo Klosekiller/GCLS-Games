@@ -117,11 +117,27 @@
     </div>
   </template>
 
+  <script src="pass.js"></script>
+  <script src="testlink.js"></script>
   <script src="common.js"></script>
   <script>
     // Set the page up for the game named in ?g=, then load that game's script.
     (function () {
-      const id = new URLSearchParams(location.search).get("g") || "";
+      const params = new URLSearchParams(location.search);
+      if (params.has("t")) {
+        // a one-day test link (see testlink.js); test.html explains an expired one
+        if (!validTestToken(params.get("g"), params.get("t"))) {
+          location.replace("test.html" + location.search);
+          return;
+        }
+      } else if (params.get("pass") !== GAME_PASS) {
+        location.replace("index.html?error=pass"); // wrong or missing password
+        return;
+      } else {
+        // remember it for this tab, so index.html stops asking (cleared when the tab closes)
+        try { sessionStorage.setItem("gamePass", GAME_PASS); } catch {}
+      }
+      const id = params.get("g") || "";
       const tpl = /^[a-z]+$/.test(id) && document.getElementById("game-" + id);
       if (!tpl) {
         location.replace("index.html"); // missing or unknown game: back to the list
