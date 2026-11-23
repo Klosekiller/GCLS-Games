@@ -9,8 +9,9 @@
 // The story: Dewey, an adult nonfiction book who lives upstairs at Hughes Main Library, is brought
 // back a few days early. On his way home his tired binding gives way and his pages scatter, and some
 // end up in the courier bins bound for every branch. He has until his due date (story only: nothing
-// times the player) to get them all back. Level 1 is Hughes Main, downstairs and outside; each
-// branch will be a level of its own.
+// times the player) to get them all back. The story is told in chapters, one per library, each a
+// few levels long: Chapter 1 is Hughes Main, downstairs and outside; each branch will be a chapter
+// of its own.
 //
 // Only a library's public areas are ever shown. Staff windows and doors appear only closed and
 // frosted. The places are drawn from photos of the real branches (kept in reference/, not part of
@@ -18,6 +19,7 @@
 
 // ---------- Saved progress ----------
 const STORY_KEY = "deweydash-story"; // { unlocked: the furthest level you can play, stars: { "1-A": 3, … } }
+// (stars are kept under each level's id, which never changes, whatever the level is called on screen)
 const progress = (() => {
   try {
     const p = JSON.parse(safeGet(STORY_KEY) || "{}");
@@ -40,10 +42,14 @@ function saveProgress() {
 // `chances`: how often some of them turn up, if not the usual. `goal`: what happens at the end,
 // once the library stops scrolling and the book runs on to it: "stop" (stops there), "enter" (goes
 // in through a door) or "hop" (jumps aboard). `intro` / `outro`: picture books (see BOOKS).
+// `id`: the level's name inside the game (for saved stars: never change it). `chapter` and `num`:
+// what players see, "Chapter 1, Level 2" (the levels are numbered within their chapter).
 const GOAL_FROM_RIGHT = 190; // the goal's distance from the right edge of the screen at the end
 const LEVELS = [
   {
     id: "1-A",
+    chapter: 1,
+    num: 1,
     name: "Down the Long Aisle",
     place: "Hughes Main Library",
     scenes: [
@@ -62,6 +68,8 @@ const LEVELS = [
   },
   {
     id: "1-B",
+    chapter: 1,
+    num: 2,
     name: "Chasing the Cart",
     place: "Hughes Main Library",
     scenes: [
@@ -78,6 +86,8 @@ const LEVELS = [
   },
   {
     id: "1-C",
+    chapter: 1,
+    num: 3,
     name: "Out the Door",
     place: "Hughes Main Library",
     outdoor: true, // hedges, birds and sprinklers instead of books (see storyDrawObstacle)
@@ -95,6 +105,10 @@ const LEVELS = [
     outro: "bookmobile",
   },
 ];
+// What players see a level called: "Level 2", "Chapter 1, Level 2", or for tight spots "1-2".
+const levelName = (lv) => `Level ${lv.num}`,
+  chapterLevelName = (lv) => `Chapter ${lv.chapter}, Level ${lv.num}`,
+  levelShortName = (lv) => `${lv.chapter}-${lv.num}`;
 const DEWEY = Math.max(0, CHARACTERS.findIndex((c) => c.name === "Dewey")); // Story Mode's hero
 
 // ---------- Playing a level ----------
@@ -313,7 +327,7 @@ function continueStory() {
 // ---------- The level list ----------
 // One tile per level (added to the "levels" screen's buttons, before its Back button).
 function storyButtons() {
-  const tiles = LEVELS.map((lv, i) => ({ id: "level-" + i, label: lv.id, tile: i, ...levelTileRect(i) }));
+  const tiles = LEVELS.map((lv, i) => ({ id: "level-" + i, label: chapterLevelName(lv), tile: i, ...levelTileRect(i) }));
   BUTTONS.levels = [...tiles, ...BUTTONS.levels];
 }
 function levelTileRect(i) {
@@ -333,7 +347,8 @@ function drawLevels() {
   ctx.textAlign = "center";
   ctx.fillStyle = INK_SOFT;
   ctx.font = "italic 14px Georgia, serif";
-  ctx.fillText("Level 1 · Hughes Main Library", W / 2, py + (tall() ? 84 : 78));
+  const lv = LEVELS[Math.min(selected.levels, LEVELS.length - 1)] || LEVELS[0]; // (the highlighted level's chapter)
+  ctx.fillText(`Chapter ${lv.chapter} · ${lv.place}`, W / 2, py + (tall() ? 84 : 78));
   drawButtons();
   if (!tall()) hint("Tab or ← → to choose · Enter to play · Esc to go back", py + ph - 6);
 }
@@ -380,10 +395,12 @@ function drawLevelTile(b, on) {
   const ink = locked ? "#d8d0c2" : on ? "#fff" : PAPER;
   ctx.textAlign = "center";
   if (tall()) {
-    // id on the left, name and stars on the right
+    // the level's number on the left (under a small "LEVEL"), name and stars on the right
     ctx.fillStyle = ink;
-    ctx.font = "bold 28px Georgia, serif";
-    ctx.fillText(lv.id, x + 50, b.y + b.h / 2 + 10);
+    ctx.font = "bold 11px Georgia, serif";
+    ctx.fillText("LEVEL", x + 50, b.y + 30);
+    ctx.font = "bold 36px Georgia, serif";
+    ctx.fillText(String(lv.num), x + 50, b.y + 68);
     ctx.textAlign = "left";
     ctx.font = "bold 16px Georgia, serif";
     ctx.fillText(lv.name, x + 100, b.y + 38);
@@ -395,8 +412,8 @@ function drawLevelTile(b, on) {
     return;
   }
   ctx.fillStyle = ink;
-  ctx.font = "bold 30px Georgia, serif";
-  ctx.fillText(lv.id, x + b.w / 2, b.y + 40);
+  ctx.font = "bold 28px Georgia, serif";
+  ctx.fillText(levelName(lv), x + b.w / 2, b.y + 40);
   ctx.font = "bold 14px Georgia, serif";
   ctx.fillText(lv.name, x + b.w / 2, b.y + 66);
   if (locked) {
@@ -413,7 +430,7 @@ function drawStoryProgress(x, sy) {
   ctx.textAlign = "left";
   ctx.fillStyle = GOLD;
   ctx.font = "bold 16px Georgia, serif";
-  ctx.fillText(story.level.id, x + 100, sy + 22);
+  ctx.fillText(levelShortName(story.level), x + 100, sy + 22); // (chapter-level, as "1-2")
   const bx = x + 146,
     bw = 186,
     by = sy + 12;
@@ -439,12 +456,14 @@ function drawLevelBanner() {
   ctx.save();
   ctx.globalAlpha = a;
   const y = tall() ? WORLD_Y - 14 : WORLD_Y + 76; // (under the score bar, above the countdown's numbers)
+  const top = `${chapterLevelName(story.level)} · ${story.level.place}`.toUpperCase();
+  ctx.font = "bold 13px Georgia, serif";
+  const bw = Math.min(W - 16, Math.max(340, ctx.measureText(top).width + 36)); // (wide enough for the longer chapter names)
   ctx.fillStyle = "rgba(20, 14, 10, 0.72)";
-  roundRect(W / 2 - 170, y - 22, 340, 52, 10);
+  roundRect(W / 2 - bw / 2, y - 22, bw, 52, 10);
   ctx.textAlign = "center";
   ctx.fillStyle = GOLD;
-  ctx.font = "bold 13px Georgia, serif";
-  ctx.fillText(`LEVEL ${story.level.id} · ${story.level.place.toUpperCase()}`, W / 2, y - 3);
+  ctx.fillText(top, W / 2, y - 3);
   ctx.fillStyle = PAPER;
   ctx.font = "bold 19px Georgia, serif";
   ctx.fillText(story.level.name, W / 2, y + 20);
@@ -461,11 +480,11 @@ function drawCleared() {
     ph = tall() ? 470 : 266,
     px = W / 2 - pw / 2,
     py = tall() ? 86 : 22;
-  drawCard(px, py, pw, ph, `Level ${story.level.id} complete!`);
+  drawCard(px, py, pw, ph, `${levelName(story.level)} complete!`);
   ctx.textAlign = "center";
   ctx.fillStyle = INK_SOFT;
   ctx.font = "italic 14px Georgia, serif";
-  ctx.fillText(story.level.name, W / 2, py + 72);
+  ctx.fillText(`Chapter ${story.level.chapter} · ${story.level.name}`, W / 2, py + 72);
   // the stars land one at a time
   const sy = py + (tall() ? 118 : 108);
   for (let i = 0; i < 3; i++) {

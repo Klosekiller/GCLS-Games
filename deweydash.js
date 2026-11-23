@@ -3281,6 +3281,9 @@ function drawPause() {
 // through), "icon" (one big picture, on a navy badge when `badge`), "row" (`count` of `item` in a
 // row) or "power" (a power-up's badge). `keys`: the keys that do it, shown as keycaps on a keyboard.
 const touchUI = window.matchMedia && window.matchMedia("(hover: none)").matches;
+// With a controller plugged in (see Game controller, at the end), the Controls cards show its buttons.
+const padUI = () => pad.polling,
+  PAD_FACES = { A: "#6cc24a", B: "#e5484d" }; // the A and B buttons' letter colors
 const HOWTO_PAGES = [
   {
     name: "Goal",
@@ -3293,9 +3296,22 @@ const HOWTO_PAGES = [
   },
   {
     name: "Controls",
-    tip: touchUI ? "Tap and swipe anywhere on the game." : "Use the arrow keys, or Space and the letters below.",
+    tip: () =>
+      padUI()
+        ? "Use your controller's buttons, the left stick or the D-pad."
+        : touchUI
+          ? "Tap and swipe anywhere on the game."
+          : "Use the arrow keys, or Space and the letters below.",
+    // (with a controller plugged in, its buttons instead: still four cards, so the screens don't change)
     rows: () =>
-      touchUI
+      padUI()
+        ? [
+            { title: "Jump", how: "A, or push ↑. Hold it to jump higher.", pic: "jump", over: "stack", keys: ["A", "↑"] },
+            { title: "Duck", how: "B, or pull ↓, and hold. Mid-air, it drops you fast.", pic: "duck", over: iconFlyer, keys: ["B", "↓"] },
+            { title: "Pause", how: "The Start button (≡).", pic: "icon", icon: iconPauseBars, badge: true, keys: ["Start"] },
+            { title: "Sound", how: "The View button (⧉) turns it on and off.", pic: "icon", icon: iconSound, badge: true, keys: ["View"] },
+          ]
+        : touchUI
         ? [
             { title: "Jump", how: "Tap. Hold your tap to jump higher.", pic: "jump", over: "stack" },
             { title: "Duck", how: "Swipe down and hold. Mid-air, it drops you fast.", pic: "duck", over: iconFlyer },
@@ -3444,7 +3460,7 @@ function drawHowTo() {
   ctx.fillText(page.name, W / 2, L.nameY);
   ctx.fillStyle = "#e8dcc0";
   ctx.font = `${tall() ? 15 : 12}px Georgia, serif`;
-  const tipLines = wrapLines(page.tip, W - 60);
+  const tipLines = wrapLines(typeof page.tip === "function" ? page.tip() : page.tip, W - 60);
   tipLines.forEach((l, i) => ctx.fillText(l, W / 2, L.tipY + i * 19));
 
   // the progress bar: one segment per section (done in gold, this one in cream). Tap to jump.
@@ -3495,7 +3511,11 @@ function drawHowTo() {
     ctx.font = "11px Georgia, serif";
     ctx.fillText(
       `Screen ${howtoScreen + 1} of ${HOWTO_SCREENS.length} · ` +
-        (touchUI ? "swipe to flip · ✕ to close" : "← → to flip · Tab for the buttons · T for all tips · Esc to close"),
+        (padUI()
+          ? "◀ ▶ to flip · ▲ ▼ for the buttons · A to choose · B to close"
+          : touchUI
+            ? "swipe to flip · ✕ to close"
+            : "← → to flip · Tab for the buttons · T for all tips · Esc to close"),
       W / 2,
       BUTTON_Y.wide.howto + 50,
     );
@@ -3696,23 +3716,38 @@ function drawHowtoPic(r, x, y, w, h, now) {
     drawPowerIcon(r.power, cx, y + (h - 12) / 2, 22 * s);
   }
 
-  // the keys that do it (keyboards only), as keycaps in the top right corner
-  if (r.keys && !touchUI) {
+  // the keys that do it (keyboards and controllers only), as keycaps in the top right corner;
+  // a controller's A and B buttons are round, in their own colors
+  if (r.keys && (!touchUI || padUI())) {
     ctx.font = `bold ${11 * s}px Georgia, serif`;
     let kx = x + w - 6 * s;
     for (let i = r.keys.length - 1; i >= 0; i--) {
       const label = r.keys[i],
-        kw = Math.max(18 * s, ctx.measureText(label).width + 10 * s),
+        face = PAD_FACES[label],
         kh = 18 * s,
+        kw = face ? kh : Math.max(18 * s, ctx.measureText(label).width + 10 * s),
         ky = y + 6 * s;
       kx -= kw;
-      ctx.fillStyle = "#b9a888";
-      roundRect(kx, ky + 2 * s, kw, kh, 4 * s);
-      ctx.fillStyle = "#fffaf0";
-      roundRect(kx, ky, kw, kh, 4 * s);
       ctx.textAlign = "center";
-      ctx.fillStyle = INK;
-      ctx.fillText(label, kx + kw / 2, ky + kh / 2 + 4 * s);
+      if (face) {
+        ctx.fillStyle = "#2a2a2a"; // a dark button with a colored letter, like the real thing
+        ctx.beginPath();
+        ctx.arc(kx + kw / 2, ky + kh / 2 + 1.5 * s, kh / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#454545";
+        ctx.beginPath();
+        ctx.arc(kx + kw / 2, ky + kh / 2, kh / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = face;
+        ctx.fillText(label, kx + kw / 2, ky + kh / 2 + 4 * s);
+      } else {
+        ctx.fillStyle = "#b9a888";
+        roundRect(kx, ky + 2 * s, kw, kh, 4 * s);
+        ctx.fillStyle = "#fffaf0";
+        roundRect(kx, ky, kw, kh, 4 * s);
+        ctx.fillStyle = INK;
+        ctx.fillText(label, kx + kw / 2, ky + kh / 2 + 4 * s);
+      }
       if (i > 0) {
         ctx.font = `italic ${10 * s}px Georgia, serif`;
         ctx.fillStyle = INK_SOFT;
@@ -3905,7 +3940,7 @@ function drawGameOver() {
   const stats = [
     [pages, pages === 1 ? "page collected" : "pages collected"],
     story
-      ? [`${Math.round(storyProgress() * 100)}%`, "of the way through " + story.level.id]
+      ? [`${Math.round(storyProgress() * 100)}%`, "of the way through " + levelName(story.level)]
       : [`${Math.floor(runDist * METERS_PER_PX)} m`, "run"],
   ];
   stats.forEach(([n, label], i) => {
@@ -3924,7 +3959,7 @@ function drawGameOver() {
   ctx.font = "bold 15px Georgia, serif";
   ctx.fillText(
     story
-      ? `Level ${story.level.id} · ${story.level.name}`
+      ? `${chapterLevelName(story.level)} · ${story.level.name}`
       : newBest && best > 0 ? "★ New best! ★" : `Best: ${best} pages`,
     W / 2,
     sy + 48,
@@ -5481,13 +5516,17 @@ function updateTitle(dt) {
   }
 }
 
-// The opening sequence, when the game first loads: on black, the logo drops in with a gold glow,
-// then "presents" fades in beside it, then the title animates, then the library, buttons and
-// badges fade up. A tap or key skips it.
-const INTRO_LOGO_MS = 650, // the logo dropping in
-  INTRO_PRESENTS_AT = INTRO_LOGO_MS + 100, // then "presents" fading in, once it has landed…
-  INTRO_PRESENTS_MS = 450,
-  INTRO_TITLE_AT = INTRO_PRESENTS_AT + INTRO_PRESENTS_MS + 300, // …then, after a beat, the title
+// The opening sequence, when the game first loads, in two parts. First the studio card, like a
+// game company's: on black, the library's logo drops in big in the middle with a gold glow,
+// "presents" fades in under it, it holds for a moment, then fades away. Then the start screen
+// builds itself (with no logo on it): the title animates, then the library, buttons and badges
+// fade up. A tap or key skips it all.
+const SPLASH_DROP_MS = 650, // the logo dropping in
+  SPLASH_PRESENTS_AT = SPLASH_DROP_MS + 150, // then "presents" fading in, once it has landed…
+  SPLASH_PRESENTS_MS = 500,
+  SPLASH_OUT_AT = SPLASH_PRESENTS_AT + SPLASH_PRESENTS_MS + 1300, // …holding a moment…
+  SPLASH_OUT_MS = 500, // …then fading back to black
+  INTRO_TITLE_AT = SPLASH_OUT_AT + SPLASH_OUT_MS + 250, // and after a beat of black, the title
   INTRO_UI_DELAY = 150, // after "Dash" lands, before the rest fades up
   INTRO_UI_MS = 700; // the rest fading up
 let intro = true, // still playing?
@@ -5634,7 +5673,7 @@ function drawTitle(cx, shelfY) {
   ctx.restore();
 }
 
-// The full library logo (the icon and the wordmark), for the start screen. Like drawLogo, it sits
+// The full library logo (the icon and the wordmark), for the studio card. Like drawLogo, it sits
 // on a white plate so the brand colors stay true; (cx, top): the plate's top middle, h: the
 // logo's height. FULL_LOGO_PLATE: the plate's height, for a logo h tall.
 const FULL_LOGO = new Image();
@@ -5649,45 +5688,16 @@ function drawFullLogo(cx, top, h) {
   roundRect(cx - w / 2 - pad, top, w + pad * 2, h + pad * 2, Math.min(8, pad * 1.5));
   if (FULL_LOGO.complete && FULL_LOGO.naturalWidth) ctx.drawImage(FULL_LOGO, cx - w / 2, top + pad, w, h);
 }
-const START_LOGO_H = 42, // the start screen's logo height
-  START_LOGO_TOP = 22, // and its plate's top (in the wide layout)
-  PRESENTS_FONT = "italic 13px Georgia, serif";
-// "presents", on a little dark tag hovering over the bottom right corner of the start screen's
-// logo (logoX: the logo's middle, top: its plate's top, as for drawFullLogo).
-function drawPresents(logoX, top, alpha = 1) {
-  const h = START_LOGO_H,
-    right = logoX + (h * (FULL_LOGO_RATIO + FULL_LOGO_PAD * 2)) / 2, // the plate's right edge
-    bottom = top + FULL_LOGO_PLATE(h); // and its bottom edge
-  ctx.save();
-  ctx.globalAlpha *= alpha;
-  ctx.font = PRESENTS_FONT;
-  const tw = ctx.measureText("presents").width,
-    tagW = tw + 14,
-    tagH = 20,
-    x = right - 22, // mostly outside the plate, just catching its corner (clear of the wordmark)
-    y = bottom - 7;
-  ctx.fillStyle = "rgba(26, 18, 12, 0.92)";
-  roundRect(x, y, tagW, tagH, 6);
-  ctx.strokeStyle = GOLD;
-  ctx.lineWidth = 1;
-  ctx.shadowColor = "transparent";
-  ctx.stroke();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = PAPER;
-  ctx.fillText("presents", x + tagW / 2, y + tagH / 2 + 1);
-  ctx.restore();
-}
+const SPLASH_LOGO_H = 80; // the studio card's logo height (fits the phone layout's width too)
 
 // The start screen: the title with Start and How to play buttons.
 // The library keeps drifting by behind it, and the book jogs on the spot.
 function drawStartScreen() {
   ctx.fillStyle = "rgba(26, 18, 12, 0.5)";
   fillScreen();
-  // the tall layout drops the logo and the (stacked) title down to sit just above the buttons
+  // the tall layout drops the (stacked) title down to sit just above the buttons
   const tx = W / 2,
-    titleY = tall() ? 248 : 150, // the title's shelf
-    ltop = tall() ? 95 : START_LOGO_TOP; // the logo's top
+    titleY = tall() ? 248 : 150; // the title's shelf
   // a little darker in the middle so the small text stays readable over the shelves
   const shade = ctx.createRadialGradient(W / 2, titleY, 40, W / 2, titleY, 300);
   shade.addColorStop(0, "rgba(26, 18, 12, 0.4)");
@@ -5702,14 +5712,10 @@ function drawStartScreen() {
     fillScreen();
   }
 
+  if (intro && introTime < INTRO_TITLE_AT) drawSplash();
+
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
   ctx.shadowBlur = 6;
-  const lx = tx;
-  if (intro) drawIntroLogo(lx, ltop);
-  else {
-    drawFullLogo(lx, ltop, START_LOGO_H);
-    drawPresents(lx, ltop);
-  }
   // the title fades in just before its books start hopping
   // (and isn't drawn at all before then: see the buttons, below)
   ctx.globalAlpha = intro ? Math.min(1, titleTime / TITLE_FADE_MS) : 1;
@@ -5729,24 +5735,38 @@ function drawStartScreen() {
   // (who you're playing as is on the character card, and the best score is up by the profile)
   ctx.fillStyle = PAPER;
   ctx.font = "13px Georgia, serif";
-  if (!tall()) ctx.fillText("Tab or ← → to choose · Enter or Space to select", tx, 302); // (no room under the buttons on a phone)
+  if (!tall())
+    // (no room under the buttons on a phone)
+    ctx.fillText(padUI() ? "Stick or D-pad to choose · A to select" : "Tab or ← → to choose · Enter or Space to select", tx, 302);
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
 }
 
-// The opening sequence's logo: it drops in from above, lands with a little bounce, and a soft
-// gold glow bursts out behind it. (x, top): where it ends up, as for drawFullLogo.
-function drawIntroLogo(x, top) {
-  const h = START_LOGO_H,
+// The studio card at the start of the opening sequence, on black: the library's logo drops into
+// the middle, lands with a little bounce and a soft gold glow bursting out behind it, "presents"
+// fades in under it, then it all drifts a touch closer while it holds, and fades away.
+function drawSplash() {
+  const h = SPLASH_LOGO_H,
     plateH = FULL_LOGO_PLATE(h), // the logo's white plate
+    x = W / 2,
+    top = (H - plateH) / 2 - 16, // (a little above the middle, to leave room for "presents")
     cy = top + plateH / 2;
-  const p = Math.min(1, introTime / INTRO_LOGO_MS);
+  const p = Math.min(1, introTime / SPLASH_DROP_MS);
   if (p <= 0) return;
+  const fade = 1 - Math.min(1, Math.max(0, (introTime - SPLASH_OUT_AT) / SPLASH_OUT_MS));
+  if (fade <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = fade;
+  // the slow drift closer, from when it lands to when it's gone
+  const z = 1 + Math.max(0, introTime - SPLASH_DROP_MS) * 0.000015;
+  ctx.translate(x, cy);
+  ctx.scale(z, z);
+  ctx.translate(-x, -cy);
   // the glow, once it lands (at about 70% of the drop)
-  const g = (introTime - INTRO_LOGO_MS * 0.7) / 900;
+  const g = (introTime - SPLASH_DROP_MS * 0.7) / 1000;
   if (g > 0 && g < 1) {
-    const r = 60 + g * 120; // (wider than the icon was, to suit the full logo)
+    const r = 100 + g * 220;
     const glow = ctx.createRadialGradient(x, cy, 0, x, cy, r);
     glow.addColorStop(0, `rgba(212, 166, 74, ${0.55 * (1 - g)})`);
     glow.addColorStop(1, "rgba(212, 166, 74, 0)");
@@ -5763,13 +5783,21 @@ function drawIntroLogo(x, top) {
     dy = -(1 - q * q) * (top + plateH + 20); // speeding up as it falls
   } else dy = -Math.sin(((p - 0.7) / 0.3) * Math.PI) * 8;
   ctx.save();
-  ctx.globalAlpha = Math.min(1, p * 3);
+  ctx.globalAlpha *= Math.min(1, p * 3);
   ctx.translate(0, dy);
   drawFullLogo(x, top, h);
   ctx.restore();
-  // "presents" fades in once the logo has landed
-  const pr = (introTime - INTRO_PRESENTS_AT) / INTRO_PRESENTS_MS;
-  if (pr > 0) drawPresents(x, top, Math.min(1, pr));
+  // "presents" fades in under it once it has landed
+  const pr = (introTime - SPLASH_PRESENTS_AT) / SPLASH_PRESENTS_MS;
+  if (pr > 0) {
+    ctx.globalAlpha *= Math.min(1, pr);
+    ctx.font = "italic 20px Georgia, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = PAPER;
+    ctx.fillText("presents", x, top + plateH + 30);
+  }
+  ctx.restore();
 }
 
 // Little pictures for the How to play screen, each centered on (x, y).
@@ -6036,6 +6064,9 @@ canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   if (e.pointerType === "mouse" && e.button !== 0) return; // …and only the left button plays
+  // A browser that also turns the controller's A button into a mouse click (Edge on Xbox can)
+  // would do everything twice: the click is ignored, as the controller has already done it.
+  if (e.pointerType === "mouse" && performance.now() - pad.lastPress < 150) return;
   if (intro && state === "ready") return skipIntro(); // a tap skips the opening sequence
   if (state === "book") return bookTap(e); // a tap turns the page
   const [cx, cy] = toCanvas(e);
@@ -6141,4 +6172,86 @@ applyLayout(wantedLayout()); // pick the starting layout for this screen
 // Auto-pause when the tab is hidden
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) pause();
+});
+
+// ---------- Game controller ----------
+// An Xbox controller (or any other the browser knows the standard layout of), through the
+// browser's Gamepad API. It works by pressing the same keys the keyboard does, so everything
+// that answers the keyboard answers the controller too:
+//   A                      jump (hold for higher) · menus: choose · picture books: next page
+//   B                      duck (hold) · menus: back · picture books: previous page
+//   left stick / D-pad ↑ ↓ jump / duck · menus: move between buttons (← → too)
+//   Start                  pause and resume · menus: choose
+//   View                   sound on and off
+// (How to play's Controls cards show these while a controller is plugged in: see HOWTO_PAGES.)
+const PAD_ON = 0.5, // how far the stick has to tip to count as pressed…
+  PAD_OFF = 0.35, // …and how far back to let go (a gap, so it doesn't flicker at the edge)
+  PAD_REPEAT_DELAY = 400, // holding a direction on a menu keeps moving: after this long…
+  PAD_REPEAT_MS = 150; // …once every this long
+const pad = {
+  polling: false,
+  held: {}, // each control that's down: { code: the key it pressed, next: when it repeats }
+  lastPress: -1e9, // when a button was last pressed (see pointerdown, below)
+};
+// Edge on Xbox drives a mouse pointer with the controller unless the page asks for the controller
+// itself. (Only some versions have this; elsewhere it does nothing.)
+if ("gamepadInputEmulation" in navigator) {
+  try {
+    navigator.gamepadInputEmulation = "gamepad";
+  } catch {}
+}
+function padKey(type, code, repeat = false) {
+  document.dispatchEvent(new KeyboardEvent(type, { code, key: code, repeat, bubbles: true, cancelable: true }));
+}
+// The key a control presses, which depends on where you are when you press it.
+function padCode(control) {
+  const playing = state === "running" || state === "countdown";
+  if (control === "a") return "Space";
+  if (control === "b") return playing ? "ArrowDown" : state === "book" ? "ArrowLeft" : "Escape";
+  if (control === "start") return playing || state === "paused" ? "KeyP" : "Enter";
+  if (control === "view") return "KeyM";
+  return { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" }[control];
+}
+function pollPad() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const now = performance.now();
+  // what's down, on any controller plugged in
+  const down = {};
+  const btn = (p, i) => p.buttons[i] && p.buttons[i].pressed;
+  const stick = (dir, v) => v > (pad.held[dir] ? PAD_OFF : PAD_ON); // (easier to keep held than to press)
+  for (const p of pads) {
+    const x = p.axes[0] || 0,
+      y = p.axes[1] || 0;
+    down.a ||= btn(p, 0);
+    down.b ||= btn(p, 1);
+    down.start ||= btn(p, 9);
+    down.view ||= btn(p, 8);
+    down.up ||= btn(p, 12) || stick("up", -y);
+    down.down ||= btn(p, 13) || stick("down", y);
+    down.left ||= btn(p, 14) || stick("left", -x);
+    down.right ||= btn(p, 15) || stick("right", x);
+  }
+  for (const control of ["a", "b", "start", "view", "up", "down", "left", "right"]) {
+    const h = pad.held[control];
+    if (down[control] && !h) {
+      const code = padCode(control);
+      pad.held[control] = { code, next: now + PAD_REPEAT_DELAY };
+      pad.lastPress = now;
+      padKey("keydown", code);
+    } else if (!down[control] && h) {
+      delete pad.held[control];
+      padKey("keyup", h.code);
+    } else if (h && isMenu() && ["up", "down", "left", "right"].includes(control) && now >= h.next) {
+      h.next = now + PAD_REPEAT_MS;
+      padKey("keydown", h.code, true);
+    }
+  }
+  if (pads.length || Object.keys(pad.held).length) requestAnimationFrame(pollPad);
+  else pad.polling = false; // unplugged: stop until one comes back
+}
+// (browsers only say a controller is there once one of its buttons is pressed on the page)
+window.addEventListener("gamepadconnected", () => {
+  if (pad.polling) return;
+  pad.polling = true;
+  requestAnimationFrame(pollPad);
 });
