@@ -245,6 +245,12 @@ let lastMarkTime = -1e9,
   markCombo = 0;
 
 const sfx = {
+  // menus: a tiny tick as the highlight moves to another button, a soft blip when one is chosen
+  hover: () => tone(1900, 1700, 0.025, "sine", 0.03),
+  select: () => {
+    tone(660, 660, 0.05, "triangle", 0.07);
+    tone(990, 990, 0.07, "triangle", 0.06, 0.04);
+  },
   jump: () => tone(300, 620, 0.14),
   land: () => tone(140, 70, 0.06, "triangle", 0.1),
   duck: () => tone(420, 200, 0.08, "triangle", 0.1),
@@ -539,7 +545,22 @@ for (const ev of ["keydown", "pointerdown"]) {
   });
 }
 
-const MUTE_BTN = { x: 12, y: 12, w: 120, h: 32 };
+// (With a keyboard it's a little wider, to fit a small "M" keycap: the key that does the same.)
+const HAS_KEYS = !(window.matchMedia && window.matchMedia("(hover: none)").matches);
+const MUTE_BTN = { x: 12, y: 12, w: HAS_KEYS ? 140 : 120, h: 32 };
+// A small, quiet keycap (18 square) at (x, y): the key that does what the button beside it does.
+function drawKeycap(x, y, label) {
+  const k = 18;
+  ctx.fillStyle = "rgba(243, 234, 215, 0.1)";
+  roundRect(x, y, k, k, 4);
+  ctx.strokeStyle = "rgba(243, 234, 215, 0.3)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(243, 234, 215, 0.55)";
+  ctx.font = "bold 11px Georgia, serif";
+  ctx.fillText(label, x + k / 2, y + k / 2 + 4);
+}
 // The profile badge in the top-right corner: the chosen character's name and portrait.
 // It shows on every screen; on the start screen, tapping it opens the Characters screen.
 // (Its position, and the score bar's, are set by the layout.)
@@ -1629,7 +1650,7 @@ function drawTumble() {
 
 // ---------- Menus: start screen, pause, how to play, game over ----------
 // Each menu screen has a row of buttons. Pick one with the mouse or a tap, or with
-// ← → and Enter / Space. Esc goes back.
+// ← → (or Tab, Shift+Tab) and Enter / Space. Esc goes back.
 let newBest = false;
 let overTime = 0; // ms since the run ended
 const DEATH_MS = 900; // let the crash play out (pages flying, the book tumbling away) first…
@@ -1637,7 +1658,7 @@ const OVER_FADE_MS = 300; // …then fade the game-over panel in over this long
 let deathMs = DEATH_MS; // (this run's wait: longer after a wipeout, see WIPEOUT.overMs)
 const overGraceMs = () => deathMs + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
-let howtoPage = 0; // How to play: which topic (see HOWTO_PAGES)
+let howtoScreen = 0; // How to play: which screen of cards (see HOWTO_SCREENS)
 // The start screen's buttons, in arrow-key order: the mode switch's two halves, Play and
 // How to play. Play is the one highlighted to begin with.
 const READY_PLAY = 2;
@@ -1701,9 +1722,11 @@ const MENU = {
     ["quit", "Quit"],
   ],
   howto: [
-    ["next", "Next ›"], // ("Done" on the last page)
-    ["back", "Close"],
-  ],
+    ["next", "Next ›"], // ("Done" on the last screen)
+    ["prev", "‹ Back"],
+    ["tips", "All tips"],
+    ["back", "✕"],
+  ], // (placed in makeButtons: Back, All tips and Next at the bottom, ✕ in the top right corner)
   over: [
     ["again", "Play again"],
     ["menu", "Main menu"],
@@ -1711,8 +1734,8 @@ const MENU = {
 };
 // Where each screen's buttons go: a row in the wide layout, a column in the tall one.
 const BUTTON_Y = {
-  wide: { ready: 178, chars: 234, paused: 196, howto: 220, over: 196, levels: 252, cleared: 226 },
-  tall: { ready: 340, chars: 494, paused: 288, howto: 446, over: 330, levels: 486, cleared: 318 },
+  wide: { ready: 178, chars: 234, paused: 196, howto: 266, over: 196, levels: 252, cleared: 226 },
+  tall: { ready: 340, chars: 494, paused: 288, howto: 540, over: 330, levels: 486, cleared: 318 },
 };
 let BUTTONS = {};
 function makeButtons() {
@@ -1756,6 +1779,26 @@ function makeButtons() {
       { id: "howto", label: "How to play", help: true, x: W / 2 - hw / 2, y: 232, w: hw, h: 46 },
     ];
   }
+  // How to play: Back and Next at the bottom, either side of where you are; ✕ in the top right
+  {
+    const y = BUTTON_Y[layout].howto;
+    if (tall()) {
+      const x = W / 2 - 181;
+      BUTTONS.howto = [
+        { id: "next", label: "Next ›", x: x + 162, y, w: 200, h: 54 },
+        { id: "prev", label: "‹ Back", x, y, w: 150, h: 54 },
+        { id: "tips", label: "All tips", tips: true, x: W / 2 - 80, y: y + 62, w: 160, h: 36 },
+        { id: "back", label: "✕", close: true, x: W - 14 - 44, y: 18, w: 44, h: 44 },
+      ];
+    } else {
+      BUTTONS.howto = [
+        { id: "next", label: "Next ›", x: W / 2 + 302 - 110, y, w: 110, h: 36 },
+        { id: "prev", label: "‹ Back", x: W / 2 - 302, y, w: 110, h: 36 },
+        { id: "tips", label: "All tips", tips: true, x: W / 2 - 62, y, w: 124, h: 36 },
+        { id: "back", label: "✕", close: true, x: W - 16 - 34, y: 14, w: 34, h: 34 },
+      ];
+    }
+  }
   if (typeof storyButtons === "function") storyButtons(); // (once deweydash-story.js has loaded)
 }
 // The mode switch's two halves, inside its track (x, y, w, h). (The track itself is drawn with
@@ -1777,6 +1820,18 @@ function setMode(m) {
   safeSet("deweydash-mode", m);
 }
 const isMenu = () => state in BUTTONS;
+// Highlight button i on a menu screen, with a tick if that's a different button.
+function highlight(screen, i) {
+  if (selected[screen] === i) return;
+  selected[screen] = i;
+  sfx.hover();
+}
+// The same for All tips (How to play's list of every tip).
+function focusTip(i) {
+  if (tipsIndex.focus === i) return;
+  tipsIndex.focus = i;
+  sfx.hover();
+}
 // Is the start screen (or a screen opened from it) showing? Then there's no score bar.
 const onStartScreen = () =>
   state === "ready" ||
@@ -1941,6 +1996,8 @@ function pause() {
 function choose(id) {
   if (state === "over" && overTime < overGraceMs()) return; // let the crash and the fade finish
   if (fadeOut !== null) return; // fading to another scene: the buttons are done
+  // the blip for choosing (flipping How to play's screens has its own flick instead)
+  if (!(state === "howto" && (id === "next" || id === "prev") && (id === "prev" || howtoScreen < HOWTO_SCREENS.length - 1))) sfx.select();
   if (id === "mode-story" || id === "mode-endless") {
     setMode(id.slice(5));
     if (!keyNav) selected.ready = READY_PLAY; // (with the keys, stay on the switch: Enter flips it, then on to Play)
@@ -1963,14 +2020,16 @@ function choose(id) {
   } else if (id === "resume") state = "running";
   else if (id === "howto") {
     howtoFrom = state;
-    selected.howto = 0; // Next, so Enter / Space step through the pages
-    howtoPage = 0;
-    topics.open = false;
+    selected.howto = 0; // Next, so Enter / Space step through the screens
+    howtoScreen = -1; // (so the first screen deals in, without the flick sound)
+    tipsIndex.open = false;
+    showHowtoScreen(0);
     state = "howto";
   } else if (id === "next") {
-    if (howtoPage < HOWTO_PAGES.length - 1) howtoPage++;
+    if (howtoScreen < HOWTO_SCREENS.length - 1) showHowtoScreen(howtoScreen + 1);
     else choose("back"); // (Done)
-  }
+  } else if (id === "prev") showHowtoScreen(howtoScreen - 1);
+  else if (id === "tips") openTips();
   else if (id === "back") state = howtoFrom;
   else if (id === "charsBack") state = "ready";
   if (state === "ready" && !keyNav) selected.ready = READY_PLAY; // back on the start screen: Start is highlighted
@@ -2813,6 +2872,7 @@ function draw() {
   ctx.textAlign = "left";
   ctx.fillStyle = muted ? "#9a8f7c" : PAPER;
   ctx.fillText(muted ? "Sound off" : "Sound on", mb.x + 42, mb.y + 21);
+  if (HAS_KEYS) drawKeycap(mb.x + mb.w - 18 - 6, mb.y + (mb.h - 18) / 2, "M"); // (small and quiet, at its right end)
 
   // the profile badge (who you're playing as) only shows during play, not on the start screen
   // and the screens opened from it
@@ -2968,7 +3028,17 @@ function drawButtons() {
     if (b.play) return drawPlayButton(b, on, on ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1);
     if (b.tile != null) return drawLevelTile(b, on); // Story Mode's level list
     if (story && state === "over") b = { ...b, label: b.id === "again" ? "Try again" : "Levels" };
-    if (b.id === "next" && howtoPage === HOWTO_PAGES.length - 1) b = { ...b, label: "Done" };
+    if (b.close) return drawCloseButton(b, on);
+    if (b.tips) return drawTipsButton(b, on);
+    if (state === "howto" && b.id === "prev" && howtoScreen === 0) {
+      // nothing before the first screen: Back is there, but faded
+      ctx.save();
+      ctx.globalAlpha *= 0.35;
+      drawButton(b, false);
+      ctx.restore();
+      return;
+    }
+    if (b.id === "next" && state === "howto" && howtoScreen === HOWTO_SCREENS.length - 1) b = { ...b, label: "Done" };
     drawButton(
       b,
       on,
@@ -3008,7 +3078,7 @@ function drawModeSegment(b, on) {
     ctx.stroke();
   }
   const ink = chosen ? "#2a1a0e" : PAPER;
-  ctx.font = `${chosen ? "bold " : ""}${tall() ? 19 : 17}px Georgia, serif`;
+  ctx.font = `bold ${tall() ? 19 : 17}px Georgia, serif`; // (the same either way: only the colours change)
   const label = b.label,
     iw = tall() ? 22 : 20, // the little picture before the label
     total = iw + 8 + ctx.measureText(label).width,
@@ -3084,7 +3154,7 @@ function drawHelpButton(b, on) {
   ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
   ctx.lineWidth = on ? 2 : 1.5;
   ctx.stroke();
-  ctx.font = `${on ? "bold " : ""}${tall() ? 17 : 15}px Georgia, serif`;
+  ctx.font = `${tall() ? 17 : 15}px Georgia, serif`; // (the same highlighted or not: only the colours change)
   const label = b.label,
     r = tall() ? 13 : 11,
     gap = 8,
@@ -3117,15 +3187,16 @@ const PAUSE_BTN = {
   get y() {
     return MUTE_BTN.y; // (in the top bar, wherever that is)
   },
-  w: 32,
+  w: HAS_KEYS ? 52 : 32, // (with a keyboard, wide enough for a little "P" keycap too)
   h: 32,
 };
 function drawPauseButton() {
   const b = PAUSE_BTN;
   ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
   roundRect(b.x, b.y, b.w, b.h, 8);
-  R(b.x + 10, b.y + 9, 4, 14, PAPER);
-  R(b.x + 18, b.y + 9, 4, 14, PAPER);
+  R(b.x + 9, b.y + 9, 4, 14, PAPER);
+  R(b.x + 17, b.y + 9, 4, 14, PAPER);
+  if (HAS_KEYS) drawKeycap(b.x + b.w - 18 - 6, b.y + (b.h - 18) / 2, "P");
 }
 
 function drawPause() {
@@ -3145,24 +3216,31 @@ function drawPause() {
   hint(
     tall()
       ? "Quit goes back to the start screen"
-      : "← → to choose · Enter or Space to select · Quit goes back to the start screen",
+      : "Tab or ← → to choose · Enter to select · Quit goes back to the start screen",
     py + ph - 14,
   );
 }
 
-// How to play: its own screen, opened from the start screen or the pause screen. One topic per
-// page, with only what that topic needs: Next steps through them, and the Topics list in the top
-// right jumps straight to one. (Keyboard: ← → flip pages, T opens Topics, Esc closes.)
+// How to play: its own screen, opened from the start screen or the pause screen. Each section's
+// tips are cards, two or three to a screen (a section with four or five takes two screens), each
+// card one thing to know, with a little moving picture. The cards deal in one after another when a
+// screen opens. Back / Next (or ← →, or a swipe) flip screens, and the progress bar at the top has
+// one segment per section: tap one to jump straight to it. Esc or ✕ closes.
 // Touch screens are told about taps and swipes, keyboards about keys.
+//
+// A card's picture (`pic`): "run" (the book running, with `items` floating ahead), "jump" (hopping
+// over `over`), "duck" (ducking under `over`, which flies past, or `around`, which it ducks
+// through), "icon" (one big picture, on a navy badge when `badge`), "row" (`count` of `item` in a
+// row) or "power" (a power-up's badge). `keys`: the keys that do it, shown as keycaps on a keyboard.
 const touchUI = window.matchMedia && window.matchMedia("(hover: none)").matches;
 const HOWTO_PAGES = [
   {
-    name: "Objective",
+    name: "Goal",
     tip: "Dash through the library and collect as many pages as you can!",
     rows: () => [
-      { title: "Loose pages", how: "Every one you grab adds to your score.", icon: iconPage },
-      { title: "Bookmarks", how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`, icon: iconBookmarkPick },
-      { title: "Go the distance", how: "The farther you run, the trickier it gets.", icon: iconStar },
+      { title: "Loose pages", how: "Every one you grab adds to your score.", pic: "run", items: iconPage, count: 3 },
+      { title: "Bookmarks", how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`, pic: "icon", icon: iconBookmarkPick },
+      { title: "Go the distance", how: "The farther you run, the trickier it gets.", pic: "run" },
     ],
   },
   {
@@ -3171,54 +3249,54 @@ const HOWTO_PAGES = [
     rows: () =>
       touchUI
         ? [
-            { title: "Jump", how: "Tap. Hold your tap to jump higher.", icon: iconArrowUp },
-            { title: "Duck", how: "Swipe down and hold. Mid-air, it drops you fast.", icon: iconArrowDown },
-            { title: "Pause", how: "The pause button at the top.", icon: iconPauseBars },
-            { title: "Sound", how: "The Sound button at the top left.", icon: iconSound },
+            { title: "Jump", how: "Tap. Hold your tap to jump higher.", pic: "jump", over: "stack" },
+            { title: "Duck", how: "Swipe down and hold. Mid-air, it drops you fast.", pic: "duck", over: iconFlyer },
+            { title: "Pause", how: "The pause button at the top.", pic: "icon", icon: iconPauseBars, badge: true },
+            { title: "Sound", how: "The Sound button at the top left.", pic: "icon", icon: iconSound, badge: true },
           ]
         : [
-            { title: "Jump", how: "Space or ↑. Hold it to jump higher.", icon: iconArrowUp },
-            { title: "Duck", how: "↓ or S, and hold. Mid-air, it drops you fast.", icon: iconArrowDown },
-            { title: "Pause", how: "P or Esc.", icon: iconPauseBars },
-            { title: "Sound", how: "M turns it on and off.", icon: iconSound },
+            { title: "Jump", how: "Space or ↑. Hold it to jump higher.", pic: "jump", over: "stack", keys: ["Space", "↑"] },
+            { title: "Duck", how: "↓ or S, and hold. Mid-air, it drops you fast.", pic: "duck", over: iconFlyer, keys: ["↓", "S"] },
+            { title: "Pause", how: "P or Esc.", pic: "icon", icon: iconPauseBars, badge: true, keys: ["P", "Esc"] },
+            { title: "Sound", how: "M turns it on and off.", pic: "icon", icon: iconSound, badge: true, keys: ["M"] },
           ],
   },
   {
     name: "Hearts",
     tip: "Bumps hurt, but a little book tape fixes everything.",
     rows: () => [
-      { title: `You have ${LIVES} hearts`, how: `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages.`, icon: iconHeart },
-      { title: "Book tape", how: "Shows up when you're hurt: grab it for +1 heart.", icon: iconTape },
+      { title: `You have ${LIVES} hearts`, how: `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages.`, pic: "row", item: iconHeart, count: LIVES },
+      { title: "Book tape", how: "Shows up when you're hurt: grab it for +1 heart.", pic: "run", items: iconTape, count: 1 },
     ],
   },
   {
     name: "Obstacles",
     tip: "Things on the floor and in the way. Jump or duck!",
     rows: () => [
-      { title: "Book stacks", how: "Jump over them. Some come two or three wide.", icon: iconStack },
-      { title: "Wet floors", how: "Jump the sign and the puddles: puddles make you slip.", icon: iconWetFloor },
-      { title: "Book tunnels", how: "Duck in and hold it. Hit it and the run's over!", icon: iconTunnel },
+      { title: "Book stacks", how: "Jump over them. Some come two or three wide.", pic: "jump", over: "stack2" },
+      { title: "Wet floors", how: "Jump the sign and the puddles: puddles make you slip.", pic: "jump", over: "wet" },
+      { title: "Book tunnels", how: "Duck in and hold it. Hit it and the run's over!", pic: "duck", around: "tunnel" },
     ],
   },
   {
     name: "Furniture",
     tip: "Jump on top and run along it. Never run into its side!",
     rows: () => [
-      { title: "Carts, benches & chairs", how: "Hop up. Hitting the side ends your run!", icon: iconCart },
-      { title: "Reading tables", how: "Hop on top, or duck and slide under.", icon: iconTable },
-      { title: "Things on top", how: "Stacks and flying books up there: jump!", icon: iconTopStack },
-      { title: "Bookmarks up high", how: "Jump from the furniture to grab them.", icon: iconPerch },
+      { title: "Carts, benches & chairs", how: "Hop up. Hitting the side ends your run!", pic: "jump", over: "cart" },
+      { title: "Reading tables", how: "Hop on top, or duck and slide under.", pic: "duck", around: "table" },
+      { title: "Things on top", how: "Stacks and flying books up there: jump!", pic: "icon", icon: iconTopStack },
+      { title: "Bookmarks up high", how: "Jump from the furniture to grab them.", pic: "icon", icon: iconPerch },
     ],
   },
   {
     name: "Enemies",
     tip: "Flying books! Duck most of them. Each kind moves its own way.",
     rows: () => [
-      { title: "Flying books", how: "Duck under them, or jump clean over.", icon: iconFlyerOf("plain") },
-      { title: "Orange swoopers", how: "They rise and dive: run under, duck or jump.", icon: iconFlyerOf("swoop") },
-      { title: "Blue darters", how: "Faster than the floor. Duck early!", icon: iconFlyerOf("dart") },
-      { title: "Red chargers", how: "They shake and flash a “!”, then charge!", icon: iconFlyerOf("charge") },
-      { title: "A murder of books", how: "Skimming the floor? Jump! Up high? Duck!", icon: iconFlock },
+      { title: "Flying books", how: "Duck under them, or jump clean over.", pic: "duck", over: iconFlyerOf("plain") },
+      { title: "Orange swoopers", how: "They rise and dive: run under, duck or jump.", pic: "duck", over: iconFlyerOf("swoop"), swoop: true },
+      { title: "Blue darters", how: "Faster than the floor. Duck early!", pic: "duck", over: iconFlyerOf("dart"), fast: true },
+      { title: "Red chargers", how: "They shake and flash a “!”, then charge!", pic: "duck", over: iconFlyerOf("charge"), fast: true },
+      { title: "A murder of books", how: "Skimming the floor? Jump! Up high? Duck!", pic: "icon", icon: iconFlock },
     ],
   },
   {
@@ -3227,15 +3305,38 @@ const HOWTO_PAGES = [
     rows: () => {
       const secs = (type) => POWERS[type].ms / 1000;
       return [
-        { title: "Bookmark magnet", how: `Pages fly to you for ${secs("magnet")} seconds.`, power: "magnet" },
-        { title: "Hardcover", how: `Takes your next bump. Lasts up to ${secs("shield")} seconds.`, power: "shield" },
-        { title: "Speed reading", how: `${secs("speed")} seconds: double pages, flying books bounce off!`, power: "speed" },
+        { title: "Bookmark magnet", how: `Pages fly to you for ${secs("magnet")} seconds.`, pic: "power", power: "magnet" },
+        { title: "Hardcover", how: `Takes your next bump. Lasts up to ${secs("shield")} seconds.`, pic: "power", power: "shield" },
+        { title: "Speed reading", how: `${secs("speed")} seconds: double pages, flying books bounce off!`, pic: "power", power: "speed" },
       ];
     },
   },
 ];
-// The Topics list: open or not, which topic is highlighted, and where things were drawn (for taps).
-const topics = { open: false, focus: 0, pill: null, items: [] };
+// The screens: each section's tips, three to a screen at most (four split 2 + 2, five 3 + 2).
+// (Worked out the first time How to play opens: some of the pictures are defined further down.)
+const HOWTO_SCREENS = [];
+function buildHowtoScreens() {
+  if (HOWTO_SCREENS.length) return;
+  HOWTO_PAGES.forEach((p, page) => {
+    const n = p.rows().length,
+      first = n <= 3 ? n : Math.ceil(n / 2);
+    HOWTO_SCREENS.push({ page, from: 0, to: first });
+    if (first < n) HOWTO_SCREENS.push({ page, from: first, to: n });
+  });
+}
+let howtoDealAt = 0; // when the current screen's cards started dealing in (performance.now())
+let howtoSegs = []; // where the progress bar's segments were drawn (for taps)
+function showHowtoScreen(i) {
+  buildHowtoScreens();
+  i = Math.max(0, Math.min(HOWTO_SCREENS.length - 1, i));
+  if (i !== howtoScreen && howtoScreen >= 0) tone(520, 700, 0.05, "triangle", 0.05); // a soft flick
+  howtoScreen = i;
+  howtoDealAt = performance.now();
+}
+// Jump to the first screen of a section (a tapped progress segment).
+function showHowtoPage(page) {
+  showHowtoScreen(HOWTO_SCREENS.findIndex((s) => s.page === page));
+}
 
 // A line of text split into lines that fit `width` (at the current font).
 function wrapLines(text, width) {
@@ -3268,137 +3369,436 @@ function wrapLines(text, width) {
   return lines;
 }
 
+// Where things go on the How to play screen, in each layout.
+const HOWTO_LAYOUT = {
+  wide: { nameY: 30, tipY: 48, segY: 58, segW: 28, cardsY: 76, cardH: 172, picH: 80 },
+  tall: { nameY: 70, tipY: 96, segY: 132, segW: 34, cardsY: 152, cardH: 120, picH: 100, gap: 10 },
+};
+
 function drawHowTo() {
   dimBehindCard();
-  const pw = tall() ? 420 : 600,
-    px = W / 2 - pw / 2,
-    py = tall() ? 20 : 12,
-    ph = tall() ? 590 : 284;
-  const page = HOWTO_PAGES[howtoPage],
-    n = HOWTO_PAGES.length;
-  drawCard(px, py, pw, ph, null, false); // (no ribbon: the Topics list goes in that corner)
+  ctx.fillStyle = "rgba(10, 6, 4, 0.6)"; // (darker than the other menus: the cards don't cover much)
+  fillScreen();
+  if (tipsIndex.open) return drawTipsIndex();
+  const L = HOWTO_LAYOUT[layout],
+    scr = HOWTO_SCREENS[howtoScreen],
+    page = HOWTO_PAGES[scr.page],
+    rows = page.rows().slice(scr.from, scr.to),
+    now = performance.now();
 
-  // the header: a small "How to play" and the page number, the topic's name, the red rules
-  ctx.textAlign = "left";
-  ctx.fillStyle = INK_SOFT;
-  ctx.font = "italic 12px Georgia, serif";
-  ctx.fillText(`How to play · ${howtoPage + 1} of ${n}`, px + 22, py + 24);
+  // the section: its name and its one line (two on a phone, if it needs them)
   ctx.textAlign = "center";
-  ctx.fillStyle = INK;
-  ctx.font = `bold ${tall() ? 24 : 22}px Georgia, serif`;
-  ctx.fillText(page.name, W / 2, tall() ? py + 58 : py + 34);
-  const rulesY = tall() ? py + 68 : py + 42;
-  cardRules(px, rulesY, pw);
+  ctx.fillStyle = PAPER;
+  ctx.font = `bold ${tall() ? 28 : 22}px Georgia, serif`;
+  ctx.fillText(page.name, W / 2, L.nameY);
+  ctx.fillStyle = "#e8dcc0";
+  ctx.font = `${tall() ? 15 : 12}px Georgia, serif`;
+  const tipLines = wrapLines(page.tip, W - 60);
+  tipLines.forEach((l, i) => ctx.fillText(l, W / 2, L.tipY + i * 19));
 
-  // one line about the topic (two on a phone, if it needs them)
-  ctx.fillStyle = INK;
-  ctx.font = "14px Georgia, serif";
-  const tipLines = wrapLines(page.tip, pw - 48);
-  tipLines.forEach((l, i) => ctx.fillText(l, W / 2, rulesY + 24 + i * 19));
+  // the progress bar: one segment per section (done in gold, this one in cream). Tap to jump.
+  const n = HOWTO_PAGES.length,
+    gap = 5,
+    sx = W / 2 - (n * L.segW + (n - 1) * gap) / 2;
+  howtoSegs = [];
+  for (let i = 0; i < n; i++) {
+    const x = sx + i * (L.segW + gap);
+    ctx.fillStyle = i < scr.page ? GOLD : i === scr.page ? PAPER : "rgba(243, 234, 215, 0.25)";
+    roundRect(x, L.segY, L.segW, tall() ? 5 : 4, 2);
+    howtoSegs.push({ x: x - gap / 2, y: L.segY - 10, w: L.segW + gap, h: 24 }); // (a bigger target than it looks)
+  }
 
-  // the topic's rows: one column, or two when there are four or more on a wide screen
-  const rows = page.rows();
-  const twoCol = !tall() && rows.length >= 4;
-  const top = rulesY + 24 + (tipLines.length - 1) * 19 + (tall() ? 14 : 8); // just under the tip
-  const btnTop = BUTTON_Y[layout].howto;
-  const step = tall() ? Math.min(84, (btnTop - 28 - top) / rows.length) : 41;
+  // the cards: side by side (wide) or stacked (tall), dealt in one after another
   rows.forEach((r, i) => {
-    let cx, ry, room;
+    const k = Math.min(1, Math.max(0, (now - howtoDealAt - i * 90) / 260)),
+      ease = 1 - (1 - k) * (1 - k);
+    if (k <= 0) return;
+    let x, y, w, h;
     if (tall()) {
-      cx = px + 24;
-      ry = top + i * step;
-      room = pw - 24 - 46 - 14;
-    } else if (twoCol) {
-      cx = px + 36 + (i % 2) * 284;
-      ry = top + Math.floor(i / 2) * step;
-      room = 284 - 46 - 26; // (clear of the next column's picture)
+      w = W - 48;
+      h = L.cardH;
+      x = 24;
+      y = L.cardsY + i * (h + L.gap);
     } else {
-      cx = px + 110;
-      ry = top + i * step;
-      room = pw - 110 - 46 - 60;
+      w = rows.length === 3 ? 192 : 240;
+      h = L.cardH;
+      const g = rows.length === 3 ? 14 : 18;
+      x = W / 2 - (rows.length * w + (rows.length - 1) * g) / 2 + i * (w + g);
+      y = L.cardsY;
     }
-    if (r.power) drawPowerIcon(r.power, cx + 14, ry + 16, 19);
-    else {
-      // each picture on a little navy badge, so it shows up on the paper
-      ctx.fillStyle = NAVY;
-      ctx.beginPath();
-      ctx.arc(cx + 14, ry + 16, 19, 0, Math.PI * 2);
-      ctx.fill();
-      r.icon(cx + 14, ry + 16);
-    }
-    // the title and what to do, each a touch smaller if it's too long for its space
-    const fit = (text, size, min, weight) => {
-      ctx.font = `${weight}${size}px Georgia, serif`;
-      const s = Math.max(min, Math.min(size, (size * room) / ctx.measureText(text).width));
-      ctx.font = `${weight}${s}px Georgia, serif`;
-    };
-    ctx.textAlign = "left";
-    ctx.fillStyle = INK;
-    fit(r.title, 15, 12, "bold ");
-    ctx.fillText(r.title, cx + 46, ry + 13);
-    ctx.fillStyle = INK_SOFT;
-    fit(r.how, 13, 11, "");
-    ctx.fillText(r.how, cx + 46, ry + 31);
+    ctx.save();
+    ctx.globalAlpha = ease;
+    ctx.translate(x + w / 2, y + h / 2 + (1 - ease) * 18);
+    if (!tall()) ctx.rotate((i - (rows.length - 1) / 2) * 0.018); // dealt, not lined up with a ruler
+    drawHowtoCard(r, -w / 2, -h / 2, w, h, now);
+    ctx.restore();
   });
 
   drawButtons();
-  hint(
-    tall() ? (touchUI ? "Tap Topics to jump to any page" : "← → flip pages · T for topics") : "← → flip pages · T for topics · Esc to close",
-    py + ph - 12,
-  );
-  drawTopics(px, py, pw);
+  // where you are, and how to flip
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#c9bc9f";
+  ctx.font = `${tall() ? 14 : 12}px Georgia, serif`;
+  // (wide only: on a phone the progress bar shows where you are, and there's no room)
+  if (!tall()) {
+    ctx.font = "11px Georgia, serif";
+    ctx.fillText(
+      `Screen ${howtoScreen + 1} of ${HOWTO_SCREENS.length} · ` +
+        (touchUI ? "swipe to flip · ✕ to close" : "← → to flip · Tab for the buttons · T for all tips · Esc to close"),
+      W / 2,
+      BUTTON_Y.wide.howto + 50,
+    );
+  }
 }
 
-// The Topics list, in the card's top right corner: a little button, and when it's open, the list
-// of every topic (the one you're on in red).
-function drawTopics(px, py, pw) {
-  const pill = { x: px + pw - 22 - 96, y: py + 10, w: 96, h: 26 };
-  topics.pill = pill;
-  ctx.fillStyle = topics.open ? NAVY : "rgba(52, 64, 79, 0.1)";
-  roundRect(pill.x, pill.y, pill.w, pill.h, 13);
-  ctx.strokeStyle = topics.open ? NAVY : "rgba(52, 64, 79, 0.45)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.textAlign = "center";
-  ctx.fillStyle = topics.open ? PAPER : INK;
-  ctx.font = "bold 13px Georgia, serif";
-  ctx.fillText("Topics ▾", pill.x + pill.w / 2, pill.y + 18);
-  topics.items = [];
-  if (!topics.open) return;
-  const iw = 160,
-    ih = tall() ? 34 : 24, // (taller rows on a phone, easier to tap)
-    ix = pill.x + pill.w - iw,
-    iy = pill.y + pill.h + 6;
+// One card: cream paper, the picture, then the title and what to do.
+function drawHowtoCard(r, x, y, w, h, now) {
   ctx.save();
-  ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetY = 4;
-  ctx.fillStyle = "#fbf6ea";
-  roundRect(ix, iy, iw, ih * HOWTO_PAGES.length + 8, 8);
+  ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 5;
+  const paper = ctx.createLinearGradient(0, y, 0, y + h);
+  paper.addColorStop(0, "#f7f0df");
+  paper.addColorStop(1, "#eadfc5");
+  ctx.fillStyle = paper;
+  roundRect(x, y, w, h, 7);
   ctx.restore();
-  ctx.strokeStyle = "rgba(52, 64, 79, 0.35)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  HOWTO_PAGES.forEach((p, i) => {
-    const r = { x: ix + 4, y: iy + 4 + i * ih, w: iw - 8, h: ih };
-    topics.items.push(r);
-    if (i === topics.focus) {
-      ctx.fillStyle = "rgba(215, 163, 94, 0.3)";
-      roundRect(r.x, r.y, r.w, r.h, 5);
+  const L = HOWTO_LAYOUT[layout],
+    pad = 10;
+  let tx, ty, room;
+  if (tall()) {
+    drawHowtoPic(r, x + pad, y + pad, L.picH, L.picH, now);
+    tx = x + pad + L.picH + 14;
+    room = w - (tx - x) - pad;
+    ty = y + 36;
+  } else {
+    drawHowtoPic(r, x + pad, y + pad, w - pad * 2, L.picH, now);
+    tx = x + pad + 2;
+    room = w - pad * 2 - 4;
+    ty = y + pad + L.picH + 22;
+  }
+  // the title (a touch smaller if it's long), then up to three lines of what to do
+  ctx.textAlign = "left";
+  ctx.fillStyle = INK;
+  const ts = tall() ? 20 : 15;
+  ctx.font = `bold ${ts}px Georgia, serif`;
+  const tw = ctx.measureText(r.title).width;
+  if (tw > room) ctx.font = `bold ${Math.max(11, (ts * room) / tw)}px Georgia, serif`;
+  ctx.fillText(r.title, tx, ty);
+  ctx.fillStyle = INK_SOFT;
+  const hs = tall() ? 15 : 12;
+  ctx.font = `${hs}px Georgia, serif`;
+  wrapLines(r.how, room)
+    .slice(0, 3)
+    .forEach((l, i) => ctx.fillText(l, tx, ty + (tall() ? 24 : 17) + i * (hs + 4)));
+}
+
+// A card's little picture, in the box (x, y, w, h): a bit of floor, and the book doing the thing.
+function drawHowtoPic(r, x, y, w, h, now) {
+  ctx.save();
+  ctx.fillStyle = "#efe2c4";
+  roundRect(x, y, w, h, 6);
+  ctx.clip();
+  const floorY = y + h - 12,
+    s = h / 80, // (the pictures are drawn for an 80-tall box, and scaled)
+    cx = x + w / 2;
+  R(x, floorY, w, 12, "#d9c7a0");
+  R(x, floorY - 1, w, 1.5, "#b9a27a");
+  const dewey = CHARACTERS.find((c) => c.name === "Dewey") || CHARACTERS[0];
+  // the book standing (or running) with its feet at (fx, fy), drawn at size k
+  const book = (fx, fy, k, opts = {}) => {
+    ctx.save();
+    ctx.translate(fx, fy);
+    ctx.scale(k, k);
+    if (opts.duck) drawCharacter(dewey, -20, -28, 40, 26, { duck: true });
+    else if (opts.run) {
+      const pose = runPose(now);
+      runTransform(pose, 0, 0);
+      drawCharacter(dewey, -20, -50 - pose.bob, 40, 44, {
+        step: pose.step,
+        bob: pose.bob,
+        lift: pose.lift,
+        flutter: pose.flutter,
+        legs: pose.legs,
+      });
+    } else drawCharacter(dewey, -20, -50, 40, 44);
+    ctx.restore();
+  };
+  // a little picture (one of the icons), centered on (px, py), drawn k times bigger
+  const big = (fn, px, py, k) => {
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.scale(k, k);
+    fn(0, 0);
+    ctx.restore();
+  };
+  const bk = 0.66 * s; // the book's size in the picture
+  const loop = (ms) => (now % ms) / ms; // 0 → 1, over and over
+
+  if (r.pic === "run") {
+    // running on the spot, speed lines behind, things to grab floating ahead
+    const bx = x + w * 0.28;
+    ctx.fillStyle = "rgba(122, 106, 85, 0.45)";
+    for (const [dy, len] of [[-30, 14], [-22, 20], [-14, 11]]) {
+      const off = loop(500) * 6;
+      roundRect(bx - 22 * s - len * s - off, floorY + dy * s, len * s, 2.5 * s, 1.2 * s);
     }
-    ctx.textAlign = "left";
-    ctx.fillStyle = i === howtoPage ? CARD_RED : INK;
-    ctx.font = `${i === howtoPage ? "bold " : ""}14px Georgia, serif`;
-    ctx.fillText(`${i + 1}. ${p.name}`, r.x + 10, r.y + r.h / 2 + 5);
+    book(bx, floorY, bk, { run: true });
+    if (r.items) {
+      const count = r.count || 1;
+      for (let i = 0; i < count; i++) {
+        const ix = x + w * (count === 1 ? 0.66 : 0.56) + i * 24 * s,
+          iy = floorY - 26 * s + Math.sin(now * 0.004 + i) * 2.5 * s;
+        big(r.items, ix, iy, 0.9 * s);
+      }
+    }
+  } else if (r.pic === "jump") {
+    // over the thing, along a dotted arc, again and again
+    let topH; // how tall the thing is
+    const ok = 1.15 * s; // the thing's size
+    if (r.over === "stack" || r.over === "stack2") {
+      const stacks = r.over === "stack2" ? [-15, 15] : [0];
+      for (const dx of stacks)
+        for (let j = 0; j < 3; j++)
+          drawLyingBook({ x: cx + dx * s - 14 * ok + (j % 2) * 2 * ok, y: floorY - (j + 1) * 7 * ok, w: 28 * ok - (j % 2) * 4 * ok, h: 7 * ok, color: SPINES[(j + (dx > 0 ? 3 : 0)) % SPINES.length] });
+      topH = 21 * ok;
+    } else if (r.over === "wet") {
+      oval(cx - 26 * s, floorY + 2 * s, 12 * s, 3 * s, "#7fb7e0");
+      oval(cx + 26 * s, floorY + 2 * s, 14 * s, 3 * s, "#7fb7e0");
+      big(iconWetFloor, cx, floorY - 10 * ok, ok);
+      topH = 22 * ok;
+    } else if (r.over === "cart") {
+      big(iconCart, cx, floorY - 13 * ok, ok);
+      topH = 23 * ok;
+    }
+    const x0 = x + w * 0.14,
+      x1 = x + w * 0.86,
+      peak = floorY - topH - 8 * s; // the arc's top (feet height): just clearing the thing
+    ctx.save();
+    ctx.strokeStyle = "rgba(168, 56, 47, 0.55)";
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4 * s, 4 * s]);
+    ctx.beginPath();
+    ctx.moveTo(x0, floorY);
+    ctx.quadraticCurveTo(cx, 2 * peak - floorY, x1, floorY);
+    ctx.stroke();
+    ctx.restore();
+    const p = loop(1700),
+      bx = x0 + (x1 - x0) * p,
+      by = floorY - 4 * p * (1 - p) * (floorY - peak);
+    book(bx, by, bk);
+  } else if (r.pic === "duck") {
+    if (r.around === "tunnel") {
+      // a bookcase on posts, with a low gap to duck through
+      const top = floorY - 50 * s;
+      R(cx - 34 * s, top, 68 * s, 18 * s, "#5a381c");
+      for (let i = 0; i < 9; i++) R(cx - 31 * s + i * 7 * s, top + 2 * s, 5 * s, 13 * s, SPINES[i % SPINES.length]);
+      R(cx - 34 * s, top + 18 * s, 68 * s, 4 * s, "#a87a48");
+      book(cx, floorY, bk, { duck: true });
+      R(cx - 34 * s, top + 22 * s, 4 * s, floorY - top - 22 * s, "#c9a77a");
+      R(cx + 30 * s, top + 22 * s, 4 * s, floorY - top - 22 * s, "#c9a77a");
+    } else if (r.around === "table") {
+      // a low reading table, sliding underneath it
+      const top = floorY - 34 * s;
+      book(cx, floorY, bk, { duck: true });
+      R(cx - 38 * s, top, 76 * s, 6 * s, "#6b4423");
+      R(cx - 38 * s, top, 76 * s, 1.5 * s, "rgba(255, 255, 255, 0.3)");
+      R(cx - 34 * s, top + 6 * s, 4 * s, 28 * s, "#c9a77a");
+      R(cx + 30 * s, top + 6 * s, 4 * s, 28 * s, "#c9a77a");
+    } else {
+      // ducking while a flying book goes over, right to left
+      book(cx, floorY, bk, { duck: true });
+      const p = loop(r.fast ? 1100 : 1800),
+        fx = x + w + 30 * s - (w + 60 * s) * p,
+        fy = floorY - 40 * s + (r.swoop ? Math.sin(p * Math.PI * 2) * 8 * s : 0);
+      big(r.over, fx, fy, 0.85 * s);
+    }
+    // a little "duck!" arrow (where there's room for it)
+    if (w >= 140) {
+      ctx.strokeStyle = "rgba(168, 56, 47, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      const ax = x + 14 * s,
+        ay = floorY - 34 * s;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax, ay + 16 * s);
+      ctx.moveTo(ax - 5 * s, ay + 11 * s);
+      ctx.lineTo(ax, ay + 16 * s);
+      ctx.lineTo(ax + 5 * s, ay + 11 * s);
+      ctx.stroke();
+    }
+  } else if (r.pic === "icon") {
+    const py = y + (h - 12) / 2;
+    if (r.badge) {
+      ctx.fillStyle = NAVY;
+      ctx.beginPath();
+      ctx.arc(cx, py, 24 * s, 0, Math.PI * 2);
+      ctx.fill();
+      big(r.icon, cx, py, 1.25 * s);
+    } else big(r.icon, cx, py + Math.sin(now * 0.003) * 2 * s, 1.7 * s);
+  } else if (r.pic === "row") {
+    const n = r.count || 1,
+      step = 30 * s;
+    for (let i = 0; i < n; i++) big(r.item, cx - ((n - 1) * step) / 2 + i * step, y + (h - 12) / 2 + Math.sin(now * 0.004 + i * 0.8) * 2 * s, 1.3 * s);
+  } else if (r.pic === "power") {
+    drawPowerIcon(r.power, cx, y + (h - 12) / 2, 22 * s);
+  }
+
+  // the keys that do it (keyboards only), as keycaps in the top right corner
+  if (r.keys && !touchUI) {
+    ctx.font = `bold ${11 * s}px Georgia, serif`;
+    let kx = x + w - 6 * s;
+    for (let i = r.keys.length - 1; i >= 0; i--) {
+      const label = r.keys[i],
+        kw = Math.max(18 * s, ctx.measureText(label).width + 10 * s),
+        kh = 18 * s,
+        ky = y + 6 * s;
+      kx -= kw;
+      ctx.fillStyle = "#b9a888";
+      roundRect(kx, ky + 2 * s, kw, kh, 4 * s);
+      ctx.fillStyle = "#fffaf0";
+      roundRect(kx, ky, kw, kh, 4 * s);
+      ctx.textAlign = "center";
+      ctx.fillStyle = INK;
+      ctx.fillText(label, kx + kw / 2, ky + kh / 2 + 4 * s);
+      if (i > 0) {
+        ctx.font = `italic ${10 * s}px Georgia, serif`;
+        ctx.fillStyle = INK_SOFT;
+        kx -= 16 * s;
+        ctx.fillText("or", kx + 8 * s, ky + kh / 2 + 4 * s);
+        ctx.font = `bold ${11 * s}px Georgia, serif`;
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// All tips: every section and its tips on one card, for a quick look. Tap a tip (or pick it with
+// the arrow keys and Enter) to jump to its screen; Esc, T or ✕ go back to the cards.
+const tipsIndex = { open: false, focus: 0, items: [], card: null, close: null };
+function openTips() {
+  buildHowtoScreens();
+  tipsIndex.open = true;
+  // start on the first tip of the screen you were looking at
+  const first = tipsItems().findIndex((t) => t.screen === howtoScreen);
+  tipsIndex.focus = Math.max(0, first);
+}
+function closeTips() {
+  tipsIndex.open = false;
+}
+function pickTip(i) {
+  sfx.select();
+  const t = tipsItems()[i];
+  tipsIndex.open = false;
+  if (t) showHowtoScreen(t.screen);
+}
+// Every tip, in order: its section, its title, and which screen it's on.
+function tipsItems() {
+  const list = [];
+  HOWTO_SCREENS.forEach((scr, screen) => {
+    HOWTO_PAGES[scr.page]
+      .rows()
+      .slice(scr.from, scr.to)
+      .forEach((r) => list.push({ page: scr.page, title: r.title, screen }));
   });
+  return list;
 }
-function openTopics() {
-  topics.open = true;
-  topics.focus = howtoPage;
+function drawTipsIndex() {
+  const t = tall(),
+    px = t ? 20 : 40,
+    py = t ? 24 : 12,
+    pw = W - px * 2,
+    ph = t ? 590 : 296;
+  drawCard(px, py, pw, ph, "All tips", false);
+  tipsIndex.card = { x: px, y: py, w: pw, h: ph };
+  // ✕, back to the cards
+  const cs = t ? 40 : 30;
+  tipsIndex.close = { x: px + pw - cs - 10, y: py + 10, w: cs, h: cs };
+  drawCloseButton(tipsIndex.close, false);
+
+  // the sections in a grid (four across on a wide screen, two on a phone), each with its tips
+  const items = tipsItems(),
+    cols = t ? 2 : 4,
+    colW = (pw - 32) / cols,
+    step = t ? 24 : 16, // one tip's line (taller on a phone, easier to tap)
+    head = t ? 24 : 18; // the section's name
+  tipsIndex.items = [];
+  let rowY = py + (t ? 70 : 64);
+  for (let first = 0; first < HOWTO_PAGES.length; first += cols) {
+    let tallest = 0;
+    for (let c = 0; c < cols && first + c < HOWTO_PAGES.length; c++) {
+      const page = first + c,
+        x = px + 16 + c * colW,
+        mine = items.map((it, i) => ({ ...it, i })).filter((it) => it.page === page);
+      tallest = Math.max(tallest, mine.length);
+      ctx.textAlign = "left";
+      ctx.fillStyle = CARD_RED;
+      ctx.font = `bold ${t ? 16 : 13}px Georgia, serif`;
+      ctx.fillText(HOWTO_PAGES[page].name, x + 6, rowY);
+      mine.forEach((it, j) => {
+        const r = { x: x, y: rowY + 6 + j * step, w: colW - 8, h: step };
+        tipsIndex.items[it.i] = r;
+        const here = it.screen === howtoScreen,
+          on = it.i === tipsIndex.focus;
+        if (on) {
+          ctx.fillStyle = "rgba(215, 163, 94, 0.35)";
+          roundRect(r.x, r.y, r.w, r.h, 5);
+        }
+        ctx.fillStyle = here ? CARD_RED : INK;
+        ctx.font = `${here ? "bold " : ""}${t ? 14 : 12}px Georgia, serif`; // (highlighting doesn't change it)
+        let label = it.title;
+        while (ctx.measureText(label).width > r.w - 14 && label.length > 4) label = label.slice(0, -2).trimEnd() + "…";
+        ctx.fillText(label, r.x + 6, r.y + r.h / 2 + (t ? 5 : 4));
+      });
+    }
+    rowY += head + tallest * step + (t ? 18 : 12);
+  }
+  hint(touchUI ? "Tap a tip to jump to it" : "Arrow keys to choose · Enter to open · Esc to go back", py + ph - 12);
 }
-function pickTopic(i) {
-  howtoPage = i;
-  topics.open = false;
+
+// The All tips button: three lines (a list), then the label. Quiet like the start screen's
+// How to play button.
+function drawTipsButton(b, on) {
+  ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : "rgba(20, 14, 10, 0.7)";
+  roundRect(b.x, b.y, b.w, b.h, b.h / 2);
+  ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
+  ctx.lineWidth = on ? 2 : 1.5;
+  ctx.stroke();
+  ctx.font = `${tall() ? 16 : 14}px Georgia, serif`; // (the same highlighted or not)
+  const iw = 14,
+    gap = 8,
+    total = iw + gap + ctx.measureText(b.label).width,
+    cy = b.y + b.h / 2,
+    ix = b.x + b.w / 2 - total / 2;
+  for (let i = -1; i <= 1; i++) R(ix, cy + i * 5 - 1, iw, 2, GOLD);
+  ctx.textAlign = "left";
+  ctx.fillStyle = on ? "#fff" : PAPER;
+  ctx.fillText(b.label, ix + iw + gap, cy + 5);
+}
+
+// The ✕ that closes How to play: a round dark button in the corner.
+function drawCloseButton(b, on) {
+  const r = b.w / 2,
+    cx = b.x + r,
+    cy = b.y + r;
+  ctx.fillStyle = on ? "rgba(215, 163, 94, 0.45)" : "rgba(20, 14, 10, 0.7)";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
+  ctx.lineWidth = on ? 2 : 1.5;
+  ctx.stroke();
+  const a = r * 0.36;
+  ctx.strokeStyle = PAPER;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - a, cy - a);
+  ctx.lineTo(cx + a, cy + a);
+  ctx.moveTo(cx + a, cy - a);
+  ctx.lineTo(cx - a, cy + a);
+  ctx.stroke();
 }
 
 // Little pictures for the Controls and Objective pages, each centered on (x, y).
@@ -3505,7 +3905,7 @@ function drawGameOver() {
   hint(
     tall()
       ? story ? "Levels goes back to the list of levels" : "Main menu goes back to the start screen"
-      : "← → to choose · Enter or Space to select · Esc for the menu",
+      : "Tab or ← → to choose · Enter to select · Esc for the menu",
     py + ph - 14,
   );
   ctx.restore();
@@ -5272,7 +5672,7 @@ function drawStartScreen() {
   // (who you're playing as is on the character card, and the best score is up by the profile)
   ctx.fillStyle = PAPER;
   ctx.font = "13px Georgia, serif";
-  if (!tall()) ctx.fillText("← → to choose · Enter or Space to select", tx, 302); // (no room under the buttons on a phone)
+  if (!tall()) ctx.fillText("Tab or ← → to choose · Enter or Space to select", tx, 302); // (no room under the buttons on a phone)
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
@@ -5454,28 +5854,29 @@ document.addEventListener("keydown", (e) => {
       (e.code === "Tab" && e.shiftKey);
     if (state === "howto") {
       const k = e.code;
-      if (topics.open) {
+      if (tipsIndex.open) {
+        // All tips: arrows move through the tips, Enter opens one, Esc / T / M as usual
         e.preventDefault();
-        const n = HOWTO_PAGES.length;
-        if (k === "ArrowUp" || k === "KeyW" || (k === "Tab" && e.shiftKey)) topics.focus = (topics.focus + n - 1) % n;
-        else if (k === "ArrowDown" || k === "KeyS" || k === "Tab") topics.focus = (topics.focus + 1) % n;
-        else if ((k === "Enter" || k === "Space") && !e.repeat) pickTopic(topics.focus);
-        else if (k === "Escape" || k === "KeyT") topics.open = false;
+        const n = tipsItems().length;
+        if (["ArrowUp", "ArrowLeft", "KeyW", "KeyA"].includes(k) || (k === "Tab" && e.shiftKey)) focusTip((tipsIndex.focus + n - 1) % n);
+        else if (["ArrowDown", "ArrowRight", "KeyS", "KeyD", "Tab"].includes(k)) focusTip((tipsIndex.focus + 1) % n);
+        else if ((k === "Enter" || k === "Space") && !e.repeat) pickTip(tipsIndex.focus);
+        else if (k === "Escape" || k === "KeyT") closeTips();
         else if (k === "KeyM") toggleMute();
         return;
       }
-      if (k === "KeyT") return openTopics();
+      if (k === "KeyT") return openTips();
       if (k === "ArrowLeft" || k === "KeyA") {
         e.preventDefault();
-        howtoPage = Math.max(0, howtoPage - 1);
+        showHowtoScreen(howtoScreen - 1);
         return;
       }
       if (k === "ArrowRight" || k === "KeyD") {
         e.preventDefault();
-        howtoPage = Math.min(HOWTO_PAGES.length - 1, howtoPage + 1);
+        showHowtoScreen(howtoScreen + 1);
         return;
       }
-      // (↑ ↓ and Tab move between Next and Close, below)
+      // (↑ ↓ and Tab move between Next, Back and ✕, below)
     }
     // on the Characters screen the arrows flip through the characters
     if (state === "chars" && moveKeys.includes(e.code)) {
@@ -5487,8 +5888,7 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       keyNav = true;
       const step = back ? -1 : 1;
-      selected[state] =
-        (selected[state] + step + buttons.length) % buttons.length;
+      highlight(state, (selected[state] + step + buttons.length) % buttons.length);
     } else if ((e.code === "Enter" || e.code === "Space") && !e.repeat) {
       e.preventDefault();
       choose(buttons[selected[state]].id);
@@ -5585,14 +5985,19 @@ canvas.addEventListener("pointerdown", (e) => {
   if (inside(cx, cy, MUTE_BTN)) return toggleMute();
   if (isMenu()) {
     keyNav = false;
+    if (state === "howto" && tipsIndex.open) {
+      // All tips: a tip jumps to its screen; ✕, or a tap off the card, goes back to the cards
+      const t = tipsIndex.items.findIndex((r) => r && inside(cx, cy, r));
+      if (t >= 0) pickTip(t);
+      else if (inside(cx, cy, tipsIndex.close) || !inside(cx, cy, tipsIndex.card)) closeTips();
+      return;
+    }
     if (state === "howto") {
-      if (topics.open) {
-        const t = topics.items.findIndex((r) => inside(cx, cy, r));
-        if (t >= 0) pickTopic(t);
-        else topics.open = false; // a tap anywhere else just closes the list
-        return;
-      }
-      if (topics.pill && inside(cx, cy, topics.pill)) return openTopics();
+      // a progress segment jumps to its section
+      const seg = howtoSegs.findIndex((r) => inside(cx, cy, r));
+      if (seg >= 0) return showHowtoPage(seg);
+      // anywhere else (not a button) might be the start of a swipe
+      if (!BUTTONS.howto.some((b) => inside(cx, cy, b))) howtoSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
     }
     if (state === "chars") {
       const c = CHARACTERS.findIndex((_, i) => inside(cx, cy, cardRect(i)));
@@ -5635,14 +6040,14 @@ canvas.addEventListener("pointermove", (e) => {
   if (!isMenu()) return;
   keyNav = false;
   const [cx, cy] = toCanvas(e);
-  if (state === "howto" && topics.open) {
-    // hovering the Topics list highlights a topic
-    const t = topics.items.findIndex((r) => inside(cx, cy, r));
-    if (t >= 0) topics.focus = t;
+  if (state === "howto" && tipsIndex.open) {
+    // hovering All tips highlights a tip
+    const t = tipsIndex.items.findIndex((r) => r && inside(cx, cy, r));
+    if (t >= 0) focusTip(t);
     return;
   }
   const i = BUTTONS[state].findIndex((b) => inside(cx, cy, b));
-  if (i >= 0) selected[state] = i;
+  if (i >= 0) highlight(state, i);
   else if (state === "ready") selected.ready = READY_PLAY; // off the buttons: back to Start
 });
 // The mouse leaving the game also hands the start screen's highlight back to Start.
@@ -5653,7 +6058,18 @@ function startDuck() {
   if (!duckHeld && state === "running") sfx.duck();
   duckHeld = true;
 }
+// How to play: a swipe left or right flips the screen (it starts off the buttons: see pointerdown).
+let howtoSwipe = null;
 function pointerRelease(e) {
+  if (howtoSwipe && e.pointerId === howtoSwipe.id) {
+    const sw = howtoSwipe;
+    howtoSwipe = null;
+    const rect = canvas.getBoundingClientRect(),
+      dx = ((e.clientX - sw.x) / rect.width) * W, // (in game units)
+      dy = ((e.clientY - sw.y) / rect.height) * canvas.height;
+    if (state === "howto" && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) showHowtoScreen(howtoScreen + (dx < 0 ? 1 : -1));
+    return;
+  }
   if (gesture) return endGesture(e);
   if (e.pointerType === "mouse") releaseJump(); // a held mouse click jumps higher too
 }

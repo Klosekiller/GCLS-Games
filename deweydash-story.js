@@ -335,7 +335,7 @@ function drawLevels() {
   ctx.font = "italic 14px Georgia, serif";
   ctx.fillText("Level 1 · Hughes Main Library", W / 2, py + (tall() ? 84 : 78));
   drawButtons();
-  if (!tall()) hint("← → to choose · Enter to play · Esc to go back", py + ph - 6);
+  if (!tall()) hint("Tab or ← → to choose · Enter to play · Esc to go back", py + ph - 6);
 }
 // A five-pointed star centered on (cx, cy).
 function starShape(cx, cy, r, color) {
