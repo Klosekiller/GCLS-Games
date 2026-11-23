@@ -1,4 +1,4 @@
-// Dewey Dash: Story Mode, "Dewey's Due Date".
+// Dewey Dash: Story Mode. (The game's name is the story's: Dewey dashing to get his pages back.)
 //
 // Loaded after deweydash.js (see data-scripts in game.html), and built on it: its drawing helpers,
 // scenes, player and run. deweydash.js calls into this file through a few hooks (storyChoose,
@@ -479,7 +479,7 @@ function drawLevels() {
   ctx.textAlign = "center";
   ctx.fillStyle = PAPER;
   ctx.font = `bold italic ${L.tall ? 26 : 21}px Georgia, serif`;
-  ctx.fillText("Dewey's Due Date", W / 2, L.titleY);
+  ctx.fillText("Dewey Dash", W / 2, L.titleY); // (the story's title, like the name on a book's cover)
   const bk = B[B.length - 1];
   drawRingButton(bk, false);
   if (focus.back) {
