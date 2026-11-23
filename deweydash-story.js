@@ -655,13 +655,13 @@ function drawLevels() {
   // the story's name, and Back
   ctx.textAlign = "center";
   ctx.fillStyle = PAPER;
-  ctx.font = `bold italic ${L.tall ? 26 : 21}px Georgia, serif`;
+  ctx.font = `bold italic ${L.tall ? 26 : 21}px Fraunces, Georgia, serif`;
   ctx.fillText("Dewey Dash", W / 2, L.titleY); // (the story's title, like the name on a book's cover)
   const bk = B[B.length - 1];
   drawRingButton(bk, false);
   if (focus.back) focusRing(bk.x, bk.y, bk.w, bk.h, bk.h / 2, PAPER);
   ctx.fillStyle = PAPER;
-  ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
+  ctx.font = `bold ${L.tall ? 16 : 14}px Fraunces, Georgia, serif`;
   ctx.fillText("‹ Back", bk.x + bk.w / 2, bk.y + bk.h / 2 + 5);
 
   // the book: its cover peeking out around the pages, then the pages
@@ -702,7 +702,7 @@ function drawLevels() {
   if (!L.tall) {
     ctx.textAlign = "center";
     ctx.fillStyle = "#c9bc9f";
-    ctx.font = "12px Georgia, serif";
+    ctx.font = "12px Fraunces, Georgia, serif";
     ctx.fillText(
       padUI()
         ? "◀ ▶ chapters · ▲ ▼ levels · A to play · B to go back"
@@ -723,11 +723,11 @@ function drawChapterTitlePage(box, isTall) {
   let y = box.y + (isTall ? 30 : 24);
   ctx.textAlign = "center";
   ctx.fillStyle = CARD_RED;
-  ctx.font = "bold 11px Georgia, serif";
+  ctx.font = "bold 11px Fraunces, Georgia, serif";
   ctx.fillText(c === CHAPTER_COUNT ? "THE LAST CHAPTER" : `CHAPTER ${c}`, cx, y);
   y += isTall ? 27 : 24;
   ctx.fillStyle = open ? INK : INK_SOFT;
-  ctx.font = `bold ${isTall ? 23 : 20}px Georgia, serif`;
+  ctx.font = `bold ${isTall ? 23 : 20}px Fraunces, Georgia, serif`;
   ctx.fillText(open ? ch.place : "???", cx, y);
   // two red rules, like a book's chapter heading
   y += 9;
@@ -768,7 +768,7 @@ function drawChapterTitlePage(box, isTall) {
     }
     ctx.textAlign = "center";
     ctx.fillStyle = "rgba(90, 70, 50, 0.55)";
-    ctx.font = "bold 46px Georgia, serif";
+    ctx.font = "bold 46px Fraunces, Georgia, serif";
     ctx.fillText("?", cx, frame.y + frame.h / 2 + 16);
   }
   ctx.restore();
@@ -778,14 +778,14 @@ function drawChapterTitlePage(box, isTall) {
   y = frame.y + frame.h + (isTall ? 22 : 19);
   ctx.textAlign = "center";
   ctx.fillStyle = INK_SOFT;
-  ctx.font = "italic 13px Georgia, serif";
+  ctx.font = "italic 13px Fraunces, Georgia, serif";
   const teaser = open ? ch.teaser : ch ? `Finish Chapter ${c - 1} to get here.` : "Dewey hasn't found the way here yet.";
   ctx.fillText(teaser, cx, y);
   if (!open) return;
   // the chapter's stars
   const [got, of] = chapterStars(c),
     text = `${got} of ${of} stars`;
-  ctx.font = "bold 13px Georgia, serif";
+  ctx.font = "bold 13px Fraunces, Georgia, serif";
   const tw = ctx.measureText(text).width;
   y += isTall ? 22 : 0;
   const sy = isTall ? y : box.y + box.h - 14;
@@ -799,7 +799,7 @@ function drawChapterContents(L, B, focus) {
     cx = r.x + r.w / 2;
   ctx.textAlign = "center";
   ctx.fillStyle = CARD_RED;
-  ctx.font = "bold 11px Georgia, serif";
+  ctx.font = "bold 11px Fraunces, Georgia, serif";
   ctx.fillText("CONTENTS", cx, r.y + (L.tall ? 30 : 24));
   const rows = B.filter((b) => b.row != null);
   if (!rows.length) {
@@ -807,7 +807,7 @@ function drawChapterContents(L, B, focus) {
     padlock(cx, r.y + r.h / 2 - 16, 1.3, "#a89c8c");
     ctx.textAlign = "center";
     ctx.fillStyle = INK_SOFT;
-    ctx.font = "italic 14px Georgia, serif";
+    ctx.font = "italic 14px Fraunces, Georgia, serif";
     ctx.fillText("This chapter is still being written.", cx, r.y + r.h / 2 + 22);
     ctx.fillText("Check back soon!", cx, r.y + r.h / 2 + 42);
     return;
@@ -840,11 +840,11 @@ function drawContentsLine(b, on) {
     capY = b.y + b.h / 2 - 5,
     nameY = b.y + b.h / 2 + 12;
   ctx.textAlign = "left";
-  ctx.font = "bold 10px Georgia, serif";
+  ctx.font = "bold 10px Fraunces, Georgia, serif";
   ctx.fillStyle = fresh ? "#8a3a2a" : locked ? "#a89c8c" : INK_SOFT;
   const cap = `LEVEL ${lv.num}${fresh ? " · NEW" : ""}`;
   ctx.fillText(cap, tx, capY);
-  ctx.font = "bold 15px Georgia, serif";
+  ctx.font = "bold 15px Fraunces, Georgia, serif";
   ctx.fillStyle = locked ? "#a89c8c" : INK;
   ctx.fillText(lv.name, tx, nameY);
   const nameEnd = tx + ctx.measureText(lv.name).width;
@@ -864,10 +864,10 @@ function drawContentsLine(b, on) {
     ctx.stroke();
     poly(ON_ORANGE, px + 14, py + ph / 2 - 6, px + 24, py + ph / 2, px + 14, py + ph / 2 + 6);
     ctx.fillStyle = ON_ORANGE;
-    ctx.font = "bold 14px Georgia, serif";
+    ctx.font = "bold 14px Fraunces, Georgia, serif";
     ctx.fillText("Play", px + 28, py + ph / 2 + 5);
     // (its stars move up beside the caption, then its bookmarks)
-    ctx.font = "bold 10px Georgia, serif";
+    ctx.font = "bold 10px Fraunces, Georgia, serif";
     let sx = tx + ctx.measureText(cap).width + 10;
     if (stars) {
       for (let k = 0; k < 3; k++) starShape(sx + k * 11, capY - 4, 4.5, k < stars ? "#c8962f" : "rgba(58, 42, 30, 0.2)");
@@ -878,7 +878,7 @@ function drawContentsLine(b, on) {
   }
   // the bookmarks found here (the best run), after the caption
   if (lv.bookmarks && !locked) {
-    ctx.font = "bold 10px Georgia, serif";
+    ctx.font = "bold 10px Fraunces, Georgia, serif";
     bookmarkMarks(tx + ctx.measureText(cap).width + 8, capY - 9, progress.bookmarks[lv.id] || 0, lv.bookmarks.length);
   }
   // the dotted leader out to the stars (or the padlock), like a contents page
@@ -907,7 +907,7 @@ function drawChapterShelf(L, B, focus) {
     if (open) {
       ctx.textAlign = "center";
       ctx.fillStyle = PAPER;
-      ctx.font = `bold ${L.tall ? 15 : 13}px Georgia, serif`;
+      ctx.font = `bold ${L.tall ? 15 : 13}px Fraunces, Georgia, serif`;
       ctx.fillText(String(c), b.x + b.w / 2, y + h / 2 + 5);
     } else if (last) starShape(b.x + b.w / 2, y + h / 2, 6, GOLD);
     else padlock(b.x + b.w / 2, y + h / 2 - 1, 0.55, "#a89c8c");
@@ -953,7 +953,7 @@ function drawStoryProgress(x, sy, w) {
   const named = w >= 300;
   ctx.textAlign = "left";
   ctx.fillStyle = GOLD;
-  ctx.font = "bold 16px Georgia, serif";
+  ctx.font = "bold 16px Fraunces, Georgia, serif";
   if (named) ctx.fillText(levelShortName(story.level), x + 100, sy + 22); // (chapter-level, as "1-2")
   const marks = story.level.bookmarks ? story.level.bookmarks.length : 0,
     bx = x + (named ? 146 : 100),
@@ -1066,7 +1066,7 @@ function drawLevelBanner() {
   ctx.globalAlpha = a;
   const y = tall() ? WORLD_Y - 14 : WORLD_Y + 76; // (under the score bar, above the countdown's numbers)
   const top = `${chapterLevelName(story.level)} · ${story.level.place}`.toUpperCase();
-  ctx.font = "bold 13px Georgia, serif";
+  ctx.font = "bold 13px Fraunces, Georgia, serif";
   const bw = Math.min(W - 16, Math.max(340, ctx.measureText(top).width + 36)); // (wide enough for the longer chapter names)
   ctx.fillStyle = "rgba(20, 14, 10, 0.72)";
   roundRect(W / 2 - bw / 2, y - 22, bw, 52, 10);
@@ -1074,7 +1074,7 @@ function drawLevelBanner() {
   ctx.fillStyle = GOLD;
   ctx.fillText(top, W / 2, y - 3);
   ctx.fillStyle = PAPER;
-  ctx.font = "bold 19px Georgia, serif";
+  ctx.font = "bold 19px Fraunces, Georgia, serif";
   ctx.fillText(story.level.name, W / 2, y + 20);
   ctx.restore();
 }
@@ -1278,7 +1278,7 @@ function drawStoryTip() {
   if (!tall()) {
     ctx.textAlign = "center";
     ctx.fillStyle = "#c9bc9f";
-    ctx.font = "11px Georgia, serif";
+    ctx.font = "11px Fraunces, Georgia, serif";
     ctx.fillText(hintFor("Enter when you're ready", "A when you're ready", "Tap the button when you're ready"), W / 2, BUTTON_Y.wide.tip + 56);
   }
 }
@@ -1430,7 +1430,7 @@ function drawBird(o) {
     const cs = chargeState(o);
     if (cs.winding) {
       shake = Math.sin(runTime * 0.09) * 2;
-      label("!", cx, o.y - 8, 18, "#c0392b", "Georgia, serif");
+      label("!", cx, o.y - 8, 18, "#c0392b", "Fraunces, Georgia, serif");
     }
   }
   const [body, wing, head] = o.charge
@@ -1781,7 +1781,7 @@ function sceneKidsComputers(x, w) {
   R(x + 40, CEIL + 16, 240, 40, "#f6d64e");
   R(x + 40, CEIL + 16, 240, 4, "#2f6db5");
   R(x + 40, CEIL + 52, 240, 4, "#2f6db5");
-  label("One World, Many Stories", x + 160, CEIL + 42, 15, "#b8322a", "Georgia, serif");
+  label("One World, Many Stories", x + 160, CEIL + 42, 15, "#b8322a", "Fraunces, Georgia, serif");
   drawPuzzleMural(x + 410, CEIL + 10, 380, 92);
   carpet(x, w, "#b4aea3", "#9b958a");
   // the row of computers, each with blue headphones
@@ -1884,7 +1884,7 @@ function scenePAL(x, w) {
   // the alphabet along the top of the wall, with polka dots
   const abc = "abcdefghijklmnopqrstuvwxyz";
   for (let i = 0, lx = x + 186; lx < x + w - 10; i++, lx += 26)
-    label(abc[i % 26], lx, CEIL + 34 + (i % 3) * 3, 22, COLORFUL[i % COLORFUL.length], "Georgia, serif");
+    label(abc[i % 26], lx, CEIL + 34 + (i % 3) * 3, 22, COLORFUL[i % COLORFUL.length], "Fraunces, Georgia, serif");
   for (let i = 0; i < 18; i++) oval(x + 180 + hash(i, 3) * (w - 200), CEIL + 52 + hash(3, i) * 30, 5, 5, COLORFUL[(i + 2) % COLORFUL.length]);
   // posters and fruit decals
   for (const [px, c] of [[x + 230, "#4caa6a"], [x + 470, "#5b8de0"]]) {
@@ -1941,7 +1941,7 @@ function sceneFriendsShop(x, w) {
   R(x, CEIL, w, FLOOR - CEIL, "#4b5058");
   // the sign
   R(x + 200, CEIL + 8, 260, 30, "#f4efe6");
-  label("THE FRIENDS SHOP", x + 345, CEIL + 29, 15, "#3a2a1e", "Georgia, serif");
+  label("THE FRIENDS SHOP", x + 345, CEIL + 29, 15, "#3a2a1e", "Fraunces, Georgia, serif");
   R(x + 212, CEIL + 14, 18, 16, "#d6498c");
   R(x + 219, CEIL + 14, 4, 16, "#f2c14e");
   R(x + 210, CEIL + 18, 22, 3, "#f2c14e");
@@ -2174,7 +2174,7 @@ function sceneRotunda(x, w) {
   R(rx, top + 40, rw, 4, "rgba(0, 0, 0, 0.12)");
   // the sign
   label("HUGHES MAIN", rx + rw / 2 + 74, top + 62, 11, "#ffffff");
-  label("Library", rx + rw / 2, top + 100, 48, "#ffffff", "Georgia, serif");
+  label("Library", rx + rw / 2, top + 100, 48, "#ffffff", "Fraunces, Georgia, serif");
   label("GREENVILLE COUNTY LIBRARY SYSTEM", rx + rw / 2 - 6, top + 114, 9, "#ffffff");
   // the glass, and the colonnade in front of it
   const gy = top + 128;
@@ -2298,7 +2298,7 @@ function drawBookmobile(bx, groundY, t, opts) {
   poly("#9fd0ea", bx + L - 34, top + 32, bx + L - 6, top + 44, bx + L - 6, top + 70, bx + L - 34, top + 70); // windshield
   R(bx, top + bodyH - 36, L, 5, "#c92a2f");
   R(bx, top + bodyH - 31, L, 14, "#2f7d84");
-  label("BOOKMOBILE", bx + 112, top + 26, 20, "#2f7d84", "Georgia, serif");
+  label("BOOKMOBILE", bx + 112, top + 26, 20, "#2f7d84", "Fraunces, Georgia, serif");
   // windows full of books
   // (the books' colours go by which window, not where it is on the screen, so they hold
   // still while the Bookmobile moves)
@@ -2411,7 +2411,7 @@ function comicBurst(cx, cy, r, word, color) {
   ctx.save();
   ctx.translate(cx, cy + 9);
   ctx.rotate(-0.12);
-  ctx.font = `bold ${r * 0.62}px Georgia, serif`;
+  ctx.font = `bold ${r * 0.62}px Fraunces, Georgia, serif`;
   ctx.textAlign = "center";
   ctx.lineWidth = 5;
   ctx.lineJoin = "round";
@@ -2498,7 +2498,7 @@ function countyMap(t) {
     if (i % 2 === 0) drawPage(mx + a + 6, my + b - 22 + Math.sin(t * 0.003 + i) * 2, 9, 12, Math.sin(t * 0.002 + i) * 0.3);
   });
   starShape(mx, my, 11, "#c92a2f");
-  label("Hughes Main", mx, my + 26, 11, "#5a4630", "Georgia, serif");
+  label("Hughes Main", mx, my + 26, 11, "#5a4630", "Fraunces, Georgia, serif");
 }
 
 // ---------- The Bookmobile's route map ----------
@@ -2650,16 +2650,16 @@ function drawRouteMap(t) {
     if (c) {
       oval(a, b, 6, 6, GOLD);
       oval(a, b, 2.5, 2.5, "#fff");
-      label(CHAPTERS[c].place.replace(/ Library$/, ""), a, b + 15, 8, "#5a4630", "Georgia, serif");
+      label(CHAPTERS[c].place.replace(/ Library$/, ""), a, b + 15, 8, "#5a4630", "Fraunces, Georgia, serif");
     } else {
       oval(a, b, 5, 5, "#a39a88");
-      label("?", a, b + 3, 7, "#fff", "Georgia, serif");
+      label("?", a, b + 3, 7, "#fff", "Fraunces, Georgia, serif");
     }
   }
   starShape(0, 0, 9, CARD_RED); // Hughes Main, its name on a little paper tag
   ctx.fillStyle = "rgba(255, 250, 240, 0.92)";
   roundRect(-27, 11, 54, 12, 3);
-  label("Hughes Main", 0, 20, 8, "#5a4630", "Georgia, serif");
+  label("Hughes Main", 0, 20, 8, "#5a4630", "Fraunces, Georgia, serif");
 
   // the road ahead, dotted, and the way already driven, in gold
   ctx.setLineDash([3, 5]);
@@ -2705,7 +2705,7 @@ function drawRouteMap(t) {
     ctx.lineWidth = 1.2;
     roundRectPath(-9, -34, 20, 15, 3);
     ctx.stroke();
-    label("?", 1, -22.5, 11, CARD_RED, "Georgia, serif");
+    label("?", 1, -22.5, 11, CARD_RED, "Fraunces, Georgia, serif");
     ctx.restore();
   }
   if (arrived) {
@@ -2741,11 +2741,11 @@ function drawRouteCard(c, t) {
   // the heading (a little smaller than other cards' so it clears the ribbon on this narrow card)
   ctx.textAlign = "center";
   ctx.fillStyle = INK;
-  ctx.font = "bold 21px Georgia, serif";
+  ctx.font = "bold 21px Fraunces, Georgia, serif";
   ctx.fillText(`Chapter ${route.from} complete!`, cx - 14, c.y + 34);
   cardRules(c.x, c.y + 46, c.w);
   ctx.fillStyle = INK_SOFT;
-  ctx.font = `italic ${big ? 15 : 13}px Georgia, serif`;
+  ctx.font = `italic ${big ? 15 : 13}px Fraunces, Georgia, serif`;
   ctx.fillText(here ? here.place : "", cx, c.y + 66);
   const lines = arrived
     ? next
@@ -2754,7 +2754,7 @@ function drawRouteCard(c, t) {
     : ["Dewey hops aboard the Bookmobile.", "Off to find more of his pages!"];
   ctx.fillStyle = INK;
   lines.forEach((line, i) => {
-    ctx.font = i === 0 && arrived ? "bold 16px Georgia, serif" : "14px Georgia, serif";
+    ctx.font = i === 0 && arrived ? "bold 16px Fraunces, Georgia, serif" : "14px Fraunces, Georgia, serif";
     ctx.fillText(line, cx, c.y + 92 + i * 21);
   });
   // Continue, once it's there: the card's main action
@@ -2774,7 +2774,7 @@ function drawRouteCard(c, t) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.fillStyle = ON_ORANGE;
-    ctx.font = "bold 18px Georgia, serif";
+    ctx.font = "bold 18px Fraunces, Georgia, serif";
     ctx.fillText("Continue ›", cx, bty + bh / 2 + 6);
     ctx.restore();
   }
@@ -2782,7 +2782,7 @@ function drawRouteCard(c, t) {
   // (like hint, but centred on the card, which sits off to one side on a wide screen)
   ctx.textAlign = "center";
   ctx.fillStyle = INK_SOFT;
-  ctx.font = "12px Georgia, serif";
+  ctx.font = "12px Fraunces, Georgia, serif";
   ctx.fillText(
     arrived ? hintFor("Enter to continue", "A to continue", "Tap to continue") : hintFor("Enter to skip", "A to skip", "Tap to skip"),
     cx,
@@ -2872,7 +2872,7 @@ const BOOKS = {
         scenePAL(0, 900);
         for (let i = 0; i < 5; i++) drawPage(642 - i * 2, FLOOR - 12 - i * 4, 22, 14, 0.05 * i);
         drawDewey(600, FLOOR, 1.5, { wear: 1, wave: t });
-        label("?", 640, 170 + Math.sin(t * 0.005) * 3, 30, "#c92a2f", "Georgia, serif");
+        label("?", 640, 170 + Math.sin(t * 0.005) * 3, 30, "#c92a2f", "Fraunces, Georgia, serif");
       },
     },
     {
@@ -2884,7 +2884,7 @@ const BOOKS = {
         drawPage(104, FLOOR - 6, 16, 6, 0.1); // one caught under the door
         flutterPages(150, FLOOR - 40, 3, 30, t, 11);
         drawDewey(300, FLOOR, 1.3, { wear: 1 }, 0, true);
-        label("!", 290, 186 + Math.sin(t * 0.01) * 2, 34, "#c92a2f", "Georgia, serif");
+        label("!", 290, 186 + Math.sin(t * 0.01) * 2, 34, "#c92a2f", "Fraunces, Georgia, serif");
       },
     },
     {
@@ -3108,7 +3108,7 @@ function bookButton(b, text) {
   ctx.stroke();
   ctx.textAlign = "center";
   ctx.fillStyle = PAPER;
-  ctx.font = `bold ${tall() ? 17 : 15}px Georgia, serif`;
+  ctx.font = `bold ${tall() ? 17 : 15}px Fraunces, Georgia, serif`;
   ctx.fillText(text, b.x + b.w / 2, b.y + b.h / 2 + 5);
 }
 function drawBookPage(pg, L, t) {
@@ -3136,7 +3136,7 @@ function drawBookPage(pg, L, t) {
   const tx = L.text;
   const size = tall() ? 18 : 17,
     lineH = size * 1.45;
-  ctx.font = `${size}px Georgia, serif`;
+  ctx.font = `${size}px Fraunces, Georgia, serif`;
   const lines = wrapLines(pg.text, tx.w);
   let y = tx.y + Math.max(0, (tx.h - lines.length * lineH) / 2) + size;
   ctx.textAlign = "left";
@@ -3147,7 +3147,7 @@ function drawBookPage(pg, L, t) {
   }
   ctx.textAlign = "center";
   ctx.fillStyle = INK_SOFT;
-  ctx.font = "italic 12px Georgia, serif";
+  ctx.font = "italic 12px Fraunces, Georgia, serif";
   const last = book.i === book.pages.length - 1,
     end = book.intoLevel ? "begin" : "finish";
   const hintText = touchUI

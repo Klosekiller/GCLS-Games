@@ -96,7 +96,8 @@
     </div>
   </template>
 
-  <template id="game-deweydash" data-title="Dewey Dash" data-width="800" data-height="320" data-scripts="deweydash-story.js">
+  <template id="game-deweydash" data-title="Dewey Dash" data-width="800" data-height="320" data-scripts="deweydash-story.js"
+            data-font="Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;1,9..144,400;1,9..144,700">
     <!-- no instructions here: they're all on the game's How to play screen -->
   </template>
 
@@ -153,6 +154,22 @@
       canvas.height = +d.height;
       if (d.label) canvas.setAttribute("aria-label", d.label);
       document.body.appendChild(tpl.content.cloneNode(true));
+
+      // a game's own web font, if it has one (data-font: a Google Fonts css2 family spec)
+      if (d.font) {
+        const css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.href = "https://fonts.googleapis.com/css2?family=" + d.font + "&display=swap";
+        // a canvas doesn't fetch a web font by itself: once the stylesheet is in, ask for each
+        // style (the game draws in its fallback until they arrive)
+        css.onload = () => {
+          if (!document.fonts || !document.fonts.load) return;
+          const family = d.font.split(":")[0].replace(/\+/g, " ");
+          for (const style of ["16px", "bold 16px", "italic 16px", "bold italic 16px"])
+            document.fonts.load(style + ' "' + family + '"').catch(() => {});
+        };
+        document.head.appendChild(css);
+      }
 
       // the game's script, then any others it lists in data-scripts (in that order)
       for (const src of [id + ".js", ...(d.scripts ? d.scripts.split(" ") : [])]) {

@@ -1,6 +1,9 @@
 // ---------- Setup ----------
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+
+// The game's typeface is Fraunces (game.html loads it from Google Fonts: see data-font on this
+// game's template), with Georgia as the stand-in until it arrives, or if it can't.
 let W = canvas.width, // these change with the layout (see Layout below)
   H = canvas.height;
 
@@ -764,7 +767,7 @@ function drawKeycap(x, y, label) {
   ctx.stroke();
   ctx.textAlign = "center";
   ctx.fillStyle = "rgba(243, 234, 215, 0.55)";
-  ctx.font = "bold 11px Georgia, serif";
+  ctx.font = "bold 11px Fraunces, Georgia, serif";
   ctx.fillText(label, x + k / 2, y + k / 2 + 4);
 }
 // The profile badge in the top-right corner: the chosen character's name and portrait.
@@ -2615,7 +2618,7 @@ function drawSoundKeyHint() {
     return;
   }
   drawSpeaker(b.x + 13, cy, muted, muted ? grey : GOLD);
-  ctx.font = "14px Georgia, serif";
+  ctx.font = "14px Fraunces, Georgia, serif";
   ctx.textAlign = "left";
   ctx.fillStyle = muted ? grey : PAPER;
   ctx.fillText(muted ? "Sound off" : "Sound on", b.x + 42, cy + 5);
@@ -2644,7 +2647,7 @@ function drawGearButton(b, on) {
   const label = gearLabelled() && b.w > b.h; // (and only if its button was made wide enough)
   drawGear(label ? b.x + 21 : b.x + b.w / 2, cy, label ? 8.5 : b.h * 0.26, GOLD);
   if (label) {
-    ctx.font = "14px Georgia, serif";
+    ctx.font = "14px Fraunces, Georgia, serif";
     ctx.textAlign = "left";
     ctx.fillStyle = PAPER;
     ctx.fillText("Settings", b.x + 38, cy + 5);
@@ -2717,10 +2720,10 @@ function drawSettings() {
         cy = b.y + b.h / 2;
       ctx.textAlign = "left";
       ctx.fillStyle = INK;
-      ctx.font = `bold ${big ? 18 : 16}px Georgia, serif`;
+      ctx.font = `bold ${big ? 18 : 16}px Fraunces, Georgia, serif`;
       ctx.fillText(name, L.x + 28, cy - 2);
       ctx.fillStyle = INK_SOFT;
-      ctx.font = `${big ? 13 : 12}px Georgia, serif`;
+      ctx.font = `${big ? 13 : 12}px Fraunces, Georgia, serif`;
       ctx.fillText(about, L.x + 28, cy + (big ? 16 : 13));
       drawSwitch(b, settingShown(b.toggle), on);
     } else if (b.id === "set-reset") drawResetButton(b, on);
@@ -2731,7 +2734,7 @@ function drawSettings() {
     const r = L.reset;
     ctx.textAlign = "center";
     ctx.fillStyle = INK_SOFT;
-    ctx.font = `italic ${big ? 14 : 13}px Georgia, serif`;
+    ctx.font = `italic ${big ? 14 : 13}px Fraunces, Georgia, serif`;
     ctx.fillText("Reset progress is in Settings on the start screen.", W / 2, r.y + r.h / 2 + 5);
   }
 }
@@ -2744,14 +2747,14 @@ function drawSoundHeading(L, big) {
     right = L.x + L.w - 28;
   ctx.textAlign = "left";
   ctx.fillStyle = INK_SOFT;
-  ctx.font = `bold ${big ? 13 : 12}px Georgia, serif`;
+  ctx.font = `bold ${big ? 13 : 12}px Fraunces, Georgia, serif`;
   ctx.fillText("SOUND", left, y);
   const key = padUI() ? "View" : HAS_KEYS && !tall() ? "M" : ""; // (none on a phone)
   if (key) {
     const text = "turns all sound on or off";
-    ctx.font = `${big ? 13 : 12}px Georgia, serif`;
+    ctx.font = `${big ? 13 : 12}px Fraunces, Georgia, serif`;
     const tw = ctx.measureText(text).width;
-    ctx.font = "bold 11px Georgia, serif";
+    ctx.font = "bold 11px Fraunces, Georgia, serif";
     const kw = Math.max(20, ctx.measureText(key).width + 12),
       kx = right - tw - 8 - kw,
       ky = y - 14;
@@ -2765,7 +2768,7 @@ function drawSoundHeading(L, big) {
     ctx.fillText(key, kx + kw / 2, ky + 13);
     ctx.textAlign = "left";
     ctx.fillStyle = INK_SOFT;
-    ctx.font = `${big ? 13 : 12}px Georgia, serif`;
+    ctx.font = `${big ? 13 : 12}px Fraunces, Georgia, serif`;
     ctx.fillText(text, right - tw, y);
   }
   ctx.fillStyle = "rgba(58, 42, 30, 0.18)";
@@ -2783,7 +2786,7 @@ function drawSwitch(b, value, on) {
   roundRect(b.x, b.y, b.w, b.h, r);
   ctx.fillStyle = "#fffaf0";
   roundRect(value ? b.x + b.w - 3 - k : b.x + 3, b.y + 3, k, k, k / 2);
-  ctx.font = `bold ${tall() ? 15 : 13}px Georgia, serif`;
+  ctx.font = `bold ${tall() ? 15 : 13}px Fraunces, Georgia, serif`;
   ctx.textAlign = "center";
   ctx.fillStyle = value ? "#fffaf0" : INK;
   const tx = value ? b.x + (b.w - k - 3) / 2 : b.x + 3 + k + (b.w - k - 3) / 2;
@@ -2800,7 +2803,7 @@ function drawResetButton(b, on) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.textAlign = "center";
-  ctx.font = "bold 14px Georgia, serif";
+  ctx.font = "bold 14px Fraunces, Georgia, serif";
   ctx.fillStyle = armed ? "#fffaf0" : CARD_RED;
   ctx.fillText(
     done ? "Progress reset ✓" : armed ? "Press again to erase best, stars & bookmarks" : "Reset progress",
@@ -2980,7 +2983,7 @@ function countNumber(text, cy, scale, alpha) {
   ctx.scale(scale, scale);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "bold 72px Georgia, serif";
+  ctx.font = "bold 72px Fraunces, Georgia, serif";
   ctx.lineWidth = 8;
   ctx.lineJoin = "round";
   ctx.strokeStyle = "rgba(20, 14, 10, 0.85)";
@@ -3338,7 +3341,7 @@ function sceneKids(x, w) {
     CEIL + 120,
     80,
     "rgba(70, 85, 130, 0.25)",
-    "Georgia, serif",
+    "Fraunces, Georgia, serif",
   );
 
   // red columns
@@ -3741,7 +3744,7 @@ function sceneBookDrop(x, w) {
       CEIL + 50 + (i % 3) * 22,
       20,
       COLORFUL[i % COLORFUL.length],
-      "Georgia, serif",
+      "Fraunces, Georgia, serif",
     );
   }
 
@@ -3859,9 +3862,9 @@ function drawTallFloor() {
     ctx.fillStyle = "rgba(20, 14, 10, 0.6)";
     roundRect(W / 2 - 170, FLOOR + 96, 340, 64, 12);
     ctx.fillStyle = PAPER;
-    ctx.font = "bold 17px Georgia, serif";
+    ctx.font = "bold 17px Fraunces, Georgia, serif";
     ctx.fillText("Tap or swipe up to jump", W / 2, FLOOR + 122);
-    ctx.font = "15px Georgia, serif";
+    ctx.font = "15px Fraunces, Georgia, serif";
     ctx.fillText("Swipe down & hold to duck", W / 2, FLOOR + 146);
     ctx.globalAlpha = 1;
   }
@@ -3937,7 +3940,7 @@ function draw() {
   }
   // each page's "+1": small, no box, drifting up and fading out. Gold with a dark outline, so it
   // reads against the pale shelves and the dark walls alike.
-  ctx.font = "bold 15px Georgia, serif";
+  ctx.font = "bold 15px Fraunces, Georgia, serif";
   ctx.textAlign = "center";
   ctx.lineJoin = "round";
   ctx.lineWidth = 3;
@@ -3951,12 +3954,12 @@ function draw() {
   ctx.lineJoin = "miter";
   for (const p of popups) {
     ctx.globalAlpha = Math.min(1, Math.max(0, p.life / 700));
-    ctx.font = "bold 16px Georgia, serif";
+    ctx.font = "bold 16px Fraunces, Georgia, serif";
     const tw = ctx.measureText(p.text).width;
     const px = Math.min(Math.max(p.x, tw / 2 + 10), W - tw / 2 - 10); // keep it on screen
     ctx.fillStyle = "rgba(20, 14, 10, 0.75)";
     roundRect(px - tw / 2 - 6, p.y - 16, tw + 12, 22, 6);
-    label(p.text, px, p.y, 16, "#fff", "Georgia, serif");
+    label(p.text, px, p.y, 16, "#fff", "Fraunces, Georgia, serif");
   }
   ctx.globalAlpha = 1;
   ctx.restore(); // end of the shaking part
@@ -4006,7 +4009,7 @@ function draw() {
 
   // HUD: the score bar. Story Mode's is full width (its progress bar); Endless's is just pages and
   // best, so it's only as wide as those. It keeps its right end by the profile (centred on a phone).
-  ctx.font = "bold 16px Georgia, serif";
+  ctx.font = "bold 16px Fraunces, Georgia, serif";
   const room = scoreBarRoom(),
     sw = story ? Math.min(SCORE_W, room.w) : 108 + ctx.measureText("Best " + best).width + 14,
     sx = tall() ? room.x + room.w / 2 - sw / 2 : room.x + room.w - sw, // (wide: up against the hearts)
@@ -4098,7 +4101,7 @@ function drawCard(x, y, w, h, title, ribbon = true) {
   if (!title) return;
   ctx.textAlign = "center";
   ctx.fillStyle = INK;
-  ctx.font = "bold 26px Georgia, serif";
+  ctx.font = "bold 26px Fraunces, Georgia, serif";
   ctx.fillText(title, x + w / 2, y + 36);
   cardRules(x, y + 48, w);
 }
@@ -4163,7 +4166,7 @@ function drawButton(b, on, scale = 1) {
   if (on) focusRing(x, y, w, h, 10);
   const size = tall() ? 20 : 18, // (a touch bigger on a phone)
     cy = b.y + b.h / 2;
-  ctx.font = `bold ${size}px Georgia, serif`;
+  ctx.font = `bold ${size}px Fraunces, Georgia, serif`;
   if (STARTS_PLAY.has(b.id)) {
     // ▶ and the label, centred together
     const tri = size * 0.6,
@@ -4259,7 +4262,7 @@ function drawModeSegment(b, on) {
     ctx.stroke();
   }
   const ink = chosen ? "#2a1a0e" : PAPER;
-  ctx.font = `bold ${tall() ? 19 : 17}px Georgia, serif`; // (the same either way: only the colours change)
+  ctx.font = `bold ${tall() ? 19 : 17}px Fraunces, Georgia, serif`; // (the same either way: only the colours change)
   const label = b.label,
     iw = tall() ? 22 : 20, // the little picture before the label
     total = iw + 8 + ctx.measureText(label).width,
@@ -4365,7 +4368,7 @@ function drawLockedPops() {
       y = p.y - 14 - 34 * (1 - (1 - k) * (1 - k)); // rises quickly, then eases
     ctx.save();
     ctx.globalAlpha *= k < 0.12 ? k / 0.12 : 1 - Math.max(0, (k - 0.45) / 0.55); // in fast, then fade
-    ctx.font = `bold ${tall() ? 16 : 14}px Georgia, serif`;
+    ctx.font = `bold ${tall() ? 16 : 14}px Fraunces, Georgia, serif`;
     const text = "Locked in test mode",
       w = ctx.measureText(text).width + 22,
       h = tall() ? 28 : 24,
@@ -4421,7 +4424,7 @@ function drawStartButton(b, on, scale) {
   if (on) focusRing(x, y, w, h, h / 2);
   const size = tall() ? 28 : 22,
     ink = endless ? PAPER : ON_ORANGE;
-  ctx.font = `bold ${size}px Georgia, serif`;
+  ctx.font = `bold ${size}px Fraunces, Georgia, serif`;
   const iw = Math.round(size * 1.05), // the icon
     total = iw + 12 + ctx.measureText(b.label).width,
     cy = b.y + b.h / 2,
@@ -4471,7 +4474,7 @@ function drawHelpButton(b, on) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
   if (on) focusRing(b.x, b.y, b.w, b.h, b.h / 2);
-  ctx.font = `bold ${tall() ? 17 : 15}px Georgia, serif`;
+  ctx.font = `bold ${tall() ? 17 : 15}px Fraunces, Georgia, serif`;
   const label = b.label,
     r = tall() ? 13 : 11,
     gap = 8,
@@ -4494,7 +4497,7 @@ function drawHelpButton(b, on) {
 function hint(text, y) {
   ctx.textAlign = "center";
   ctx.fillStyle = INK_SOFT;
-  ctx.font = "12px Georgia, serif";
+  ctx.font = "12px Fraunces, Georgia, serif";
   ctx.fillText(text, W / 2, y);
 }
 
@@ -4581,12 +4584,12 @@ function drawStatRow(cx, y, items) {
     } else {
       ctx.textAlign = "center";
       ctx.fillStyle = INK;
-      ctx.font = `bold ${String(v).length > 5 ? (big ? 22 : 20) : big ? 28 : 26}px Georgia, serif`;
+      ctx.font = `bold ${String(v).length > 5 ? (big ? 22 : 20) : big ? 28 : 26}px Fraunces, Georgia, serif`;
       ctx.fillText(String(v), x, y);
     }
     ctx.textAlign = "center";
     ctx.fillStyle = INK_SOFT;
-    ctx.font = `${big ? 13 : 12}px Georgia, serif`;
+    ctx.font = `${big ? 13 : 12}px Fraunces, Georgia, serif`;
     ctx.fillText(label, x, y + 17);
     if (i > 0) {
       ctx.fillStyle = "rgba(168, 56, 47, 0.3)";
@@ -4598,14 +4601,14 @@ function drawStatRow(cx, y, items) {
 function cardSub(text, y) {
   ctx.textAlign = "center";
   ctx.fillStyle = INK_SOFT;
-  ctx.font = `italic ${tall() ? 15 : 13}px Georgia, serif`;
+  ctx.font = `italic ${tall() ? 15 : 13}px Fraunces, Georgia, serif`;
   ctx.fillText(text, W / 2, y);
 }
 // One more line, under the numbers.
 function cardLine(text, y, red = false) {
   ctx.textAlign = "center";
   ctx.fillStyle = red ? CARD_RED : INK_SOFT;
-  ctx.font = `bold ${tall() ? 15 : 14}px Georgia, serif`;
+  ctx.font = `bold ${tall() ? 15 : 14}px Fraunces, Georgia, serif`;
   ctx.fillText(text, W / 2, y);
 }
 // A mid-run card's frame (where it goes in this layout).
@@ -4696,7 +4699,7 @@ function drawPause() {
     roundRect(kx, ky, 20, 20, 4);
     ctx.textAlign = "center";
     ctx.fillStyle = INK;
-    ctx.font = "bold 11px Georgia, serif";
+    ctx.font = "bold 11px Fraunces, Georgia, serif";
     ctx.fillText("P", kx + 10, ky + 14);
   }
   drawHelpButton(B[1], on("howto"));
@@ -4708,7 +4711,7 @@ function drawPause() {
   ctx.fillRect(W / 2 - c.w * 0.3, L.ruleY, c.w * 0.6, 1);
   if (on("quit")) focusRing(q.x, q.y, q.w, q.h, 8, INK, 2);
   const quitText = story ? "Back to the chapters" : "Quit to the main menu";
-  ctx.font = `bold ${big ? 16 : 14}px Georgia, serif`;
+  ctx.font = `bold ${big ? 16 : 14}px Fraunces, Georgia, serif`;
   const qw = ctx.measureText(quitText).width,
     qx = q.x + q.w / 2 - (14 + 8 + qw) / 2,
     qy = q.y + q.h / 2;
@@ -5190,10 +5193,10 @@ function drawHowTo() {
   // where you are, and how to flip
   ctx.textAlign = "center";
   ctx.fillStyle = "#c9bc9f";
-  ctx.font = `${tall() ? 14 : 12}px Georgia, serif`;
+  ctx.font = `${tall() ? 14 : 12}px Fraunces, Georgia, serif`;
   // (wide only: on a phone the progress bar shows where you are, and there's no room)
   if (!tall()) {
-    ctx.font = "11px Georgia, serif";
+    ctx.font = "11px Fraunces, Georgia, serif";
     ctx.fillText(
       `Screen ${howtoScreen + 1} of ${HOWTO_SCREENS.length} · ` +
         (padUI()
@@ -5212,10 +5215,10 @@ function drawHowtoHeading(name, line) {
   const L = HOWTO_LAYOUT[layout];
   ctx.textAlign = "center";
   ctx.fillStyle = PAPER;
-  ctx.font = `bold ${tall() ? 28 : 22}px Georgia, serif`;
+  ctx.font = `bold ${tall() ? 28 : 22}px Fraunces, Georgia, serif`;
   ctx.fillText(name, W / 2, L.nameY);
   ctx.fillStyle = "#e8dcc0";
-  ctx.font = `${tall() ? 15 : 12}px Georgia, serif`;
+  ctx.font = `${tall() ? 15 : 12}px Fraunces, Georgia, serif`;
   wrapLines(line, W - 60).forEach((l, i) =>
     ctx.fillText(l, W / 2, L.tipY + i * 19),
   );
@@ -5280,14 +5283,14 @@ function drawHowtoCard(r, x, y, w, h, now) {
   ctx.textAlign = "left";
   ctx.fillStyle = INK;
   const ts = tall() ? 20 : 15;
-  ctx.font = `bold ${ts}px Georgia, serif`;
+  ctx.font = `bold ${ts}px Fraunces, Georgia, serif`;
   const tw = ctx.measureText(r.title).width;
   if (tw > room)
-    ctx.font = `bold ${Math.max(11, (ts * room) / tw)}px Georgia, serif`;
+    ctx.font = `bold ${Math.max(11, (ts * room) / tw)}px Fraunces, Georgia, serif`;
   ctx.fillText(r.title, tx, ty);
   ctx.fillStyle = INK_SOFT;
   const hs = tall() ? 15 : 12;
-  ctx.font = `${hs}px Georgia, serif`;
+  ctx.font = `${hs}px Fraunces, Georgia, serif`;
   wrapLines(r.how, room)
     .slice(0, 3)
     .forEach((l, i) =>
@@ -5546,7 +5549,7 @@ function drawHowtoPic(r, x, y, w, h, now) {
   // the keys that do it (keyboards and controllers only), as keycaps in the top right corner;
   // a controller's A and B buttons are round, in their own colors
   if (r.keys && (!touchUI || padUI())) {
-    ctx.font = `bold ${11 * s}px Georgia, serif`;
+    ctx.font = `bold ${11 * s}px Fraunces, Georgia, serif`;
     let kx = x + w - 6 * s;
     for (let i = r.keys.length - 1; i >= 0; i--) {
       const label = r.keys[i],
@@ -5578,11 +5581,11 @@ function drawHowtoPic(r, x, y, w, h, now) {
         ctx.fillText(label, kx + kw / 2, ky + kh / 2 + 4 * s);
       }
       if (i > 0) {
-        ctx.font = `italic ${10 * s}px Georgia, serif`;
+        ctx.font = `italic ${10 * s}px Fraunces, Georgia, serif`;
         ctx.fillStyle = INK_SOFT;
         kx -= 16 * s;
         ctx.fillText("or", kx + 8 * s, ky + kh / 2 + 4 * s);
-        ctx.font = `bold ${11 * s}px Georgia, serif`;
+        ctx.font = `bold ${11 * s}px Fraunces, Georgia, serif`;
       }
     }
   }
@@ -5658,7 +5661,7 @@ function drawTipsIndex() {
     const cy = r.y + r.h / 2 + (t ? 6 : 5);
     ctx.textAlign = "left";
     ctx.fillStyle = here ? CARD_RED : INK;
-    ctx.font = `bold ${t ? 18 : 15}px Georgia, serif`;
+    ctx.font = `bold ${t ? 18 : 15}px Fraunces, Georgia, serif`;
     ctx.fillText(it.title, r.x + 12, cy);
     ctx.textAlign = "right";
     ctx.fillStyle = here ? CARD_RED : INK_SOFT;
@@ -5683,7 +5686,7 @@ function drawTipsButton(b, on) {
   if (on) focusRing(b.x, b.y, b.w, b.h, b.h / 2);
   const iw = 14,
     gap = 8;
-  ctx.font = `bold ${tall() ? 17 : 15}px Georgia, serif`;
+  ctx.font = `bold ${tall() ? 17 : 15}px Fraunces, Georgia, serif`;
   const total = iw + gap + ctx.measureText(b.label).width,
     cy = b.y + b.h / 2,
     ix = b.x + b.w / 2 - total / 2;
@@ -5765,7 +5768,7 @@ function iconPauseBars(x, y) {
 function iconHelp(x, y) {
   ctx.save();
   ctx.fillStyle = PAPER;
-  ctx.font = "bold 24px Georgia, serif";
+  ctx.font = "bold 24px Fraunces, Georgia, serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("?", x, y + 1);
@@ -5824,7 +5827,7 @@ function drawGameOver() {
     ctx.lineWidth = 1;
     ctx.strokeRect(-98, -18, 196, 36);
     ctx.fillStyle = CARD_RED;
-    ctx.font = "bold 30px Georgia, serif";
+    ctx.font = "bold 30px Fraunces, Georgia, serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("OVERDUE", 0, 2);
@@ -5898,7 +5901,7 @@ function drawProfile() {
   const r = b.h / 2 - 3;
   ctx.textAlign = "left";
   ctx.fillStyle = PAPER;
-  ctx.font = `bold ${b.h > 32 ? 17 : 15}px Georgia, serif`;
+  ctx.font = `bold ${b.h > 32 ? 17 : 15}px Fraunces, Georgia, serif`;
   ctx.fillText(CHARACTERS[charIndex].name, b.x + 12, b.y + b.h / 2 + 5);
   drawAvatar(b.x + b.w - r - 6, b.y + b.h / 2, r);
 }
@@ -5909,7 +5912,7 @@ function drawBestBadge() {
   if (best <= 0) return;
   const lead = "Best: ",
     rest = `${best} pages`;
-  ctx.font = "bold 14px Georgia, serif";
+  ctx.font = "bold 14px Fraunces, Georgia, serif";
   const leadW = ctx.measureText(lead).width,
     w = leadW + ctx.measureText(rest).width + 24,
     x = PROFILE.x + PROFILE.w - w, // (right-aligned with the profile badge's spot)
@@ -6357,7 +6360,7 @@ function drawTunnel(o) {
   const px = x + w / 2;
   R(px - 30, bottom - 9, 60, 8, "#c9a24a");
   ctx.fillStyle = "#3a2a10";
-  ctx.font = "bold 6px Georgia, serif";
+  ctx.font = "bold 6px Fraunces, Georgia, serif";
   ctx.textAlign = "center";
   ctx.fillText("READING NOOK", px, bottom - 3);
 }
@@ -6612,7 +6615,7 @@ function drawFlyingBook(o, shadow = true, trails = true) {
     ctx.arc(cx, by, 8, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = CHARGE_COLOR;
-    ctx.font = "bold 13px Georgia, serif";
+    ctx.font = "bold 13px Fraunces, Georgia, serif";
     ctx.textAlign = "center";
     ctx.fillText("!", cx, by + 5);
   }
@@ -6776,7 +6779,7 @@ function drawPowerHUD() {
   drawPowerIcon(power.type, x + 14, y + h / 2, 9);
   ctx.textAlign = "left";
   ctx.fillStyle = PAPER;
-  ctx.font = "bold 12px Georgia, serif";
+  ctx.font = "bold 12px Fraunces, Georgia, serif";
   ctx.fillText(def.name, x + 28, y + 12);
   // the time left, as a bar that runs down
   const bw = w - 38,
@@ -7250,7 +7253,7 @@ const CHARACTERS = [
     deco(px, py, pw, ph) {
       titleBand(GOLD)(px, py, pw, ph);
       ctx.fillStyle = GOLD;
-      ctx.font = "bold 11px Georgia, serif";
+      ctx.font = "bold 11px Fraunces, Georgia, serif";
       ctx.textAlign = "left";
       ctx.fillText("?", px + 11, py + ph - 16);
     },
@@ -7403,7 +7406,7 @@ function drawCharacters() {
   drawCard(px, py, pw, ph);
   ctx.textAlign = "center";
   ctx.fillStyle = INK;
-  ctx.font = "bold 22px Georgia, serif";
+  ctx.font = "bold 22px Fraunces, Georgia, serif";
   ctx.fillText("Choose your book", W / 2, py + 30);
   cardRules(px, py + 38, pw);
 
@@ -7441,11 +7444,11 @@ function drawCharacters() {
     ctx.restore();
     ctx.textAlign = "center";
     ctx.fillStyle = on ? CARD_RED : INK;
-    ctx.font = "bold 17px Georgia, serif";
+    ctx.font = "bold 17px Fraunces, Georgia, serif";
     const ty = r.y + lift + (tall() ? 140 : 124); // name, then the two blurb lines
     ctx.fillText(c.name, r.x + r.w / 2, ty);
     ctx.fillStyle = INK_SOFT;
-    ctx.font = "12px Georgia, serif";
+    ctx.font = "12px Fraunces, Georgia, serif";
     ctx.fillText(c.blurb[0], r.x + r.w / 2, ty + 17);
     ctx.fillText(c.blurb[1], r.x + r.w / 2, ty + 31);
   });
@@ -7580,7 +7583,7 @@ function drawTitle(cx, shelfY) {
     gap = 3,
     booksW = TITLE_BOOKS.length * bw + (TITLE_BOOKS.length - 1) * gap,
     space = 26; // between the books and "Dash" (its speed lines go here)
-  ctx.font = "bold italic 56px Georgia, serif";
+  ctx.font = "bold italic 56px Fraunces, Georgia, serif";
   const dashW = ctx.measureText("Dash").width;
   // On a phone, centre everything you see, Dewey's spot on the shelf to the left included.
   const deweyRoom = tall() ? 40 : 0;
@@ -7620,7 +7623,7 @@ function drawTitle(cx, shelfY) {
     ctx.fillRect(-bw / 2 + 3, -b.h + 6, bw - 6, 2);
     ctx.fillRect(-bw / 2 + 3, -9, bw - 6, 2);
     ctx.fillStyle = PAPER;
-    ctx.font = "bold 26px Georgia, serif";
+    ctx.font = "bold 26px Fraunces, Georgia, serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(letter, 0, -b.h / 2 + 1);
@@ -7662,7 +7665,7 @@ function drawTitle(cx, shelfY) {
     }
     ctx.restore();
   }
-  ctx.font = "bold italic 56px Georgia, serif";
+  ctx.font = "bold italic 56px Fraunces, Georgia, serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.lineWidth = 6;
@@ -7749,7 +7752,7 @@ function drawStartScreen() {
   ctx.textAlign = "center";
   // (who you're playing as is on the character card, and the best score is up by the profile)
   ctx.fillStyle = PAPER;
-  ctx.font = "13px Georgia, serif";
+  ctx.font = "13px Fraunces, Georgia, serif";
   if (!tall())
     // (no room under the buttons on a phone)
     ctx.fillText(
@@ -7813,7 +7816,7 @@ function drawSplash() {
   const pr = (introTime - SPLASH_PRESENTS_AT) / SPLASH_PRESENTS_MS;
   if (pr > 0) {
     ctx.globalAlpha *= Math.min(1, pr);
-    ctx.font = "italic 20px Georgia, serif";
+    ctx.font = "italic 20px Fraunces, Georgia, serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = PAPER;
