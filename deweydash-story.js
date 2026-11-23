@@ -18,7 +18,7 @@
 // the site), with made-up art in place of anyone else's artwork, branding or real people.
 
 // ---------- Saved progress ----------
-const STORY_KEY = "deweydash-story"; // { unlocked: the furthest level you can play, stars: { "1-A": 3, … } }
+const STORY_KEY = "deweydash-story"; // { unlocked, stars: { "1-A": 3, … }, bookmarks: { "1-A": 2, … } }
 // (stars are kept under each level's id, which never changes, whatever the level is called on screen)
 const progress = (() => {
   try {
@@ -26,9 +26,10 @@ const progress = (() => {
     return {
       unlocked: Math.max(0, p.unlocked | 0),
       stars: p.stars && typeof p.stars === "object" ? p.stars : {},
+      bookmarks: p.bookmarks && typeof p.bookmarks === "object" ? p.bookmarks : {}, // the most found in each level
     };
   } catch {
-    return { unlocked: 0, stars: {} };
+    return { unlocked: 0, stars: {}, bookmarks: {} };
   }
 })();
 function saveProgress() {
@@ -39,7 +40,21 @@ function saveProgress() {
 // Each level is a run through a fixed series of scenes, start to finish ([draw, width] each; the
 // scenery scrolls at BG_PARALLAX of the floor's speed, so 1000 px of scene is about 11 seconds).
 // `features`: the hazards it has, and how many ms in each one starts (see FEATURES in deweydash.js).
-// `chances`: how often some of them turn up, if not the usual. `goal`: what happens at the end,
+// `chances`: how often some of them turn up, if not the usual. `powerUps: false`: none in this level.
+// `pages`: how many pages there are to find in the whole level, if it's a set number. `lastPage`: one
+// of them is kept back for the very end: on the floor in the clear stretch before the goal, a freebie.
+// `opening`: the first few things, in order (each a `kind` as pickNext names them), with the gap
+// after each in jump lengths (`gapAfter`), before it goes on as usual (see storyOpening).
+// `tips`: things to explain the first time they come up (see STORY_TIPS): the run stops for a pop-up
+// about it, then counts down again so you can get ready. `briefing`: a pop-up going over the level's
+// goals before its countdown (STORY_TIPS.goals).
+// `bookmarks`: the bookmarks to find (collectables, not pages), each in some `scenes`, at a `spot`
+// that's never easy: "high" (over a stack, only a full, well-timed jump reaches it) or "couch" (the
+// top of a couch bounce). See storyBookmark.
+// `furniture`: which pieces turn up where (see storyFurniture): zones, each a run of `scenes` (by
+// index), the `kinds` of furniture there, how often (`chance`), how many (`min`, `max`), and any
+// pieces it must have (`need`: { kind: how many }) or can have at most (`limit`: { kind: how many }).
+// `toys`: the `scenes` where some of the book stacks are toys instead, and how often (see storyToy). `goal`: what happens at the end,
 // once the library stops scrolling and the book runs on to it: "stop" (stops there), "enter" (goes
 // in through a door) or "hop" (jumps aboard). `intro` / `outro`: picture books (see BOOKS).
 // `id`: the level's name inside the game (for saved stars: never change it). `chapter` and `num`:
@@ -53,16 +68,39 @@ const LEVELS = [
     name: "Down the Long Aisle",
     place: "Hughes Main Library",
     scenes: [
-      [sceneAisleStacks, 1000],
-      [sceneAisleWall, 900],
+      [sceneAisleStacks, 2000], // (the stacks: twice as long as the other scenes, for getting the hang of jumping)
+      [sceneAisleWall, 1800],
       [scenePictureBooks, 1000],
       [sceneKids, 1000],
       [sceneKidsDesk, 1000],
       [sceneKidsComputers, 1000],
       [scenePAL, 900],
     ],
-    features: { double: 16000, flyer: 26000 }, // flying books once he reaches the children's wing
-    chances: { flyer: 0.28 },
+    features: { double: 16000 }, // only book stacks to jump (single, then two or three wide)
+    powerUps: false,
+    pages: 10, // only ten pages to find in the whole level (see storyPageAllowance)
+    lastPage: true, // …the last of them a freebie, on the floor in the clear stretch at the very end (see storyLastPage)
+    tips: ["stack", "duck", "couch"], // pop-ups about the first book stack, the loaded table and the first couch, just before you meet them (see storyWatchTips)
+    // how it starts (a tutorial): one book stack, then lots of room; then a table piled high with
+    // books, to duck under; then room again, and on as usual (see storyOpening)
+    opening: [
+      { kind: "stack", gapAfter: 4 },
+      { kind: "platform:loadedTable", gapAfter: 2.5 },
+    ],
+    briefing: true, // before the countdown, a pop-up going over the level's goals (STORY_TIPS.goals)
+    // three bookmarks to find, none of them easy: high over a stack in the stacks, at the top of a
+    // couch bounce in the children's wing, and high over a stack near the end
+    bookmarks: [
+      { scenes: [0, 1], spot: "high" },
+      { scenes: [2, 3, 4, 5], spot: "couch" },
+      { scenes: [4, 5], spot: "high" },
+    ],
+    // the stacks have a book cart or two; the children's wing has its reading chairs and couches
+    furniture: [
+      { scenes: [0, 1], kinds: ["cart", "table"], min: 2, max: 4, chance: 0.25, need: { cart: 1 }, limit: { cart: 2 } }, // (a cart or two, and reading tables)
+      { scenes: [2, 3, 4, 5], kinds: ["chair", "couch", "table"], chance: 0.25, need: { couch: 2 } }, // (at least two couches to bounce on)
+    ],
+    toys: { scenes: [2, 3, 4, 5], chance: 0.45 }, // in the children's wing, some of the stacks are toys
     goal: "stop",
     intro: "prologue",
   },
@@ -126,8 +164,11 @@ function leaveStory() {
   storyCharSaved = null;
 }
 
-// Called with the screen black: set up level i and start its countdown.
-function beginLevel(i) {
+// The pop-ups seen this visit, by level ("1-A:goals", "1-A:stack", …): trying a level again skips them.
+const tipsSeen = new Set();
+// Called with the screen black: set up level i and start its countdown. (again: trying it again,
+// straight from its results or game over: the pop-ups already seen are skipped.)
+function beginLevel(i, again = false) {
   book = null;
   reset();
   const level = LEVELS[i];
@@ -140,12 +181,131 @@ function beginLevel(i) {
     finishing: null, // the run on to the goal at the end: { t, hopped, arrivedAt }
     hidden: false, // gone in through the door / aboard the Bookmobile
     result: null,
+    // this run's furniture zones: how many pieces each should have (between min and max), and has so far
+    furniture: (level.furniture || []).map((z) => ({
+      ...z,
+      target: z.max != null ? (z.min || 0) + Math.floor(Math.random() * (z.max - (z.min || 0) + 1)) : Infinity,
+      count: 0,
+      got: {}, // how many of each kind so far (for `need`)
+    })),
+    couchPages: 0, // pages put on couches' trails (a level with a set number of pages: see storyPageAllowance)
+    bookmarksPlaced: (level.bookmarks || []).map(() => false), // which of its bookmarks are out (see storyBookmark)
+    tipsShown: {}, // the level's tips shown so far (see storyWatchTips)
+    openingOut: 0, // how many of the level's `opening` are out so far (see storyOpening)
+    resumed: false, // counting down again after a tip (so the level's title doesn't show again)
+    bookmarksFound: 0,
+    markFlights: [], // bookmarks just found, on their way up to their slots in the top bar (see storyBookmarkFlight)
   };
   useDewey();
   distance = 0; // (the scenery starts at the first scene)
   state = "countdown";
   countTime = 0;
   countShown = 0;
+  if (level.opening) upcoming = level.opening[0].kind; // (the first thing to come: see storyOpening)
+  const seen = (name) => again && tipsSeen.has(level.id + ":" + name);
+  for (const name of level.tips || []) if (seen(name)) story.tipsShown[name] = true;
+  if (level.briefing && !seen("goals")) {
+    // first a look at the scene (as the iris opens, and a moment more), then the level's goals
+    // (Let's go! starts the countdown)
+    state = "preview";
+    story.previewT = 0;
+  }
+}
+// The look at the scene before a level's goals (state "preview"): about a second once the iris is
+// open, then the goals pop up.
+const PREVIEW_MS = 1600; // (from when the level is set up: the iris takes the first ~0.6 s, then a second's look)
+function updateStoryPreview(dt) {
+  story.previewT += dt; // (the run's own clock doesn't start until after the countdown)
+  if (story.previewT >= PREVIEW_MS) openStoryTip("goals");
+}
+// A level's scripted opening (`opening`), asked by pickNext (in deweydash.js) as each thing goes
+// out: the next thing in the opening, or null once it's all out. (The first is set up by beginLevel.)
+function storyOpening() {
+  const list = story.level.opening;
+  if (!list || story.openingOut >= list.length) return null;
+  story.openingGap = list[story.openingOut].gapAfter; // (the gap after the one that just went out)
+  story.openingOut++;
+  return story.openingOut < list.length ? list[story.openingOut].kind : null;
+}
+// The gap after the thing that just went out, if it was part of the opening (in jump lengths), or null.
+function storyOpeningGap() {
+  const g = story.openingGap;
+  story.openingGap = null;
+  return g ?? null;
+}
+// Which scene the next thing to come will be in (by the time it reaches the book), and how far into it.
+function sceneAhead() {
+  const at = (distance + W + 10 - PLAYER_X) * BG_PARALLAX + PLAYER_X;
+  let x = 0;
+  const scenes = story.level.scenes;
+  for (let i = 0; i < scenes.length; i++) {
+    const w = scenes[i][1];
+    if (at < x + w) return { index: i, into: (at - x) / w };
+    x += w;
+  }
+  return { index: scenes.length - 1, into: 1 };
+}
+// Story Mode's furniture (asked by pickNext, in deweydash.js): the piece to put next, if the scene
+// coming up has a furniture zone that wants one, or null. A zone short of its minimum (or of a piece
+// it needs) gets one for sure late in its last scene; until then, pieces it still needs come first.
+function storyFurniture() {
+  if (!story.furniture.length) return null;
+  const s = sceneAhead(),
+    z = story.furniture.find((f) => f.scenes.includes(s.index));
+  if (!z || z.count >= z.target) return null;
+  const late = s.index === z.scenes[z.scenes.length - 1] && s.into > 0.4,
+    needs = Object.keys(z.need || {}).filter((k) => (z.got[k] || 0) < z.need[k]);
+  if ((late && (z.count < (z.min || 0) || needs.length)) || Math.random() < z.chance) {
+    z.count++;
+    const open = z.kinds.filter((k) => !z.limit || z.limit[k] == null || (z.got[k] || 0) < z.limit[k]); // (any at its limit are out)
+    if (!open.length) return null;
+    const kind = needs.length && (late || Math.random() < 0.6) ? needs[0] : open[(Math.random() * open.length) | 0];
+    z.got[kind] = (z.got[kind] || 0) + 1;
+    return kind;
+  }
+  return null;
+}
+// A level with a set number of pages (`pages`) hands them out as it goes. The couches the level
+// needs come first: each gets COUCH_TRAIL (a page at the top of its bounce), and that many are kept
+// back for every one still to come. Everything else (extra couches too) shares the rest, spread over
+// the level (never more, so far, than its share of the way through), so they aren't all gone in the
+// first few seconds. Returns how many pages the thing being placed may have (Infinity in other levels).
+const COUCH_TRAIL = 1; // (Story Mode places single pages, not sets: see withPageAllowance)
+function storyPageAllowance(couch) {
+  const cap = story.level.pages;
+  story.neededCouch = false;
+  if (cap == null) return Infinity;
+  const zone = story.furniture.find((z) => z.need && z.need.couch),
+    needed = zone ? zone.need.couch : 0,
+    got = zone ? zone.got.couch || 0 : 0, // (couches so far, this one included: counted when it was picked)
+    toCome = Math.max(0, needed - got), // (needed couches still to come, besides this one)
+    free = cap - story.pagesThere - COUCH_TRAIL * toCome - (story.level.lastPage && !story.lastPageOut ? 1 : 0); // (and the last page, kept back)
+  if (couch && got <= needed) {
+    story.neededCouch = true; // (its trail comes out of the pages kept back for couches)
+    return Math.max(0, Math.min(COUCH_TRAIL, free));
+  }
+  const s = sceneAhead(),
+    widths = story.level.scenes.map(([, w]) => w),
+    before = widths.slice(0, s.index).reduce((a, b) => a + b, 0),
+    progress = (before + s.into * widths[s.index]) / widths.reduce((a, b) => a + b, 0),
+    share = cap - COUCH_TRAIL * needed - (story.level.lastPage ? 1 : 0), // (everything else's pages)
+    placed = story.pagesThere - story.couchPages,
+    // spread evenly, from just inside the start to the last stretch where things still turn up
+    // (nothing new comes near the very end): the next one's turn comes a fair share further each time
+    nextAt = 0.05 + (placed * 0.73) / Math.max(1, share - 1);
+  if (progress < nextAt) return 0;
+  return Math.max(0, Math.min(free, 1, couch ? COUCH_TRAIL : Infinity));
+}
+// Should one of the level's bookmarks go at this spot ("high" or "couch")? If one of them is meant
+// for this kind of spot in the scene coming up, and isn't out yet, yes (and now it is).
+function storyBookmark(spot) {
+  const list = story.level.bookmarks;
+  if (!list) return false;
+  const s = sceneAhead().index;
+  const i = list.findIndex((b, k) => !story.bookmarksPlaced[k] && b.spot === spot && b.scenes.includes(s));
+  if (i < 0) return false;
+  story.bookmarksPlaced[i] = true;
+  return true;
 }
 // How far through the level the book is, 0 … 1.
 function storyProgress() {
@@ -207,8 +367,9 @@ function levelCleared() {
   const found = story.pagesThere ? Math.min(1, pages / story.pagesThere) : 1;
   const stars = 1 + (found >= 0.5) + (found >= 0.8); // finishing is a star; half the pages, two; most of them, three
   const before = progress.stars[id] || 0;
-  story.result = { stars, found, newBest: stars > before };
+  story.result = { stars, found, newBest: stars > before, bookmarks: story.bookmarksFound };
   progress.stars[id] = Math.max(stars, before);
+  progress.bookmarks[id] = Math.max(story.bookmarksFound, progress.bookmarks[id] || 0);
   progress.unlocked = Math.max(progress.unlocked, Math.min(story.index + 1, LEVELS.length - 1));
   saveProgress();
   state = "cleared";
@@ -259,6 +420,14 @@ function storyChoose(id) {
       }
       return true;
     }
+  }
+  if (state === "tip" && id === "tipgo") {
+    // got it: count down again, so there's a moment to get ready
+    state = "countdown";
+    countTime = COUNT_START_MS - 250;
+    countShown = 0;
+    story.resumed = story.tip !== "goals"; // (after the goals, it's the level's real start: its title shows)
+    return true;
   }
   if (state === "cleared") {
     if (clearedTime < CLEARED_GRACE_MS) return true;
@@ -315,7 +484,7 @@ function pickLevel(i) {
 function playLevel(i, withIntro) {
   const lv = LEVELS[i];
   if (withIntro && lv.intro) fadeTo(() => openBook([lv.intro], () => beginLevel(i)));
-  else fadeTo(() => beginLevel(i));
+  else fadeTo(() => beginLevel(i, !withIntro)); // (straight back in: trying again, so no pop-ups seen already)
 }
 // Continue from a level's results: its outro and the next level's intro, then the next level.
 // The end of a chapter: its outro, then the Bookmobile's drive on the route map to the next
@@ -689,13 +858,20 @@ function drawContentsLine(b, on) {
     ctx.fillStyle = ON_ORANGE;
     ctx.font = "bold 14px Georgia, serif";
     ctx.fillText("Play", px + 28, py + ph / 2 + 5);
-    // (its stars move up beside the caption)
+    // (its stars move up beside the caption, then its bookmarks)
+    ctx.font = "bold 10px Georgia, serif";
+    let sx = tx + ctx.measureText(cap).width + 10;
     if (stars) {
-      ctx.font = "bold 10px Georgia, serif";
-      const sx = tx + ctx.measureText(cap).width + 10;
       for (let k = 0; k < 3; k++) starShape(sx + k * 11, capY - 4, 4.5, k < stars ? "#c8962f" : "rgba(58, 42, 30, 0.2)");
+      sx += 40;
     }
+    if (lv.bookmarks) bookmarkMarks(sx - 2, capY - 9, progress.bookmarks[lv.id] || 0, lv.bookmarks.length);
     return;
+  }
+  // the bookmarks found here (the best run), after the caption
+  if (lv.bookmarks && !locked) {
+    ctx.font = "bold 10px Georgia, serif";
+    bookmarkMarks(tx + ctx.measureText(cap).width + 8, capY - 9, progress.bookmarks[lv.id] || 0, lv.bookmarks.length);
   }
   // the dotted leader out to the stars (or the padlock), like a contents page
   const endX = locked ? right - 14 : right - 40;
@@ -768,8 +944,9 @@ function drawStoryProgress(x, sy) {
   ctx.fillStyle = GOLD;
   ctx.font = "bold 16px Georgia, serif";
   ctx.fillText(levelShortName(story.level), x + 100, sy + 22); // (chapter-level, as "1-2")
-  const bx = x + 146,
-    bw = 186,
+  const marks = story.level.bookmarks ? story.level.bookmarks.length : 0,
+    bx = x + 146,
+    bw = marks ? 186 - marks * 10 - 8 : 186, // (room at the end for the bookmark slots)
     by = sy + 12;
   ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
   roundRect(bx, by, bw, 8, 4);
@@ -778,17 +955,100 @@ function drawStoryProgress(x, sy) {
   // a little flag at the finish
   R(bx + bw + 3, by - 5, 2, 15, PAPER);
   poly(RIBBON_RED, bx + bw + 5, by - 5, bx + bw + 15, by - 1, bx + bw + 5, by + 3);
+  // the level's bookmarks: a slot for each, filled in as they're found (once each has flown up to it)
+  if (marks) {
+    const flying = story.markFlights.filter((f) => !f.landed).length;
+    bookmarkMarks(bx + bw + 24, by - 6, story.bookmarksFound - flying, marks, 1.25, "rgba(243, 234, 215, 0.28)");
+    drawMarkFlights(bx + bw + 24, by - 6);
+  }
+}
+// A bookmark just found flies up to its slot in the top bar: it lifts off with a gold glow, arcs up
+// across the screen shrinking and twirling, trailing sparkles, and lands in its slot with a burst of
+// sparkles and a chime. (Timed by the clock, so it carries on whatever the game's doing.)
+const MARK_FLIGHT_MS = 950;
+function storyBookmarkFlight(b) {
+  story.markFlights.push({
+    x: b.x + b.w / 2,
+    y: b.y + b.h / 2 + WORLD_Y + camY, // (where it was caught, on the screen)
+    slot: story.bookmarksFound - 1,
+    color: b.color,
+    start: performance.now(),
+    landed: false,
+  });
+}
+// (sx, sy): the first slot's top left, as bookmarkMarks draws them (at size 1.25)
+function drawMarkFlights(sx, sy) {
+  const now = performance.now(),
+    k = 1.25;
+  story.markFlights = story.markFlights.filter((f) => now - f.start < MARK_FLIGHT_MS + 500);
+  for (const f of story.markFlights) {
+    const tx = sx + f.slot * 8 * k + 2.5 * k, // the slot's middle
+      ty = sy + 5 * k,
+      p = Math.min(1, (now - f.start) / MARK_FLIGHT_MS),
+      e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p),
+      cx = (f.x + tx) / 2,
+      cy = Math.min(f.y, ty) - 70, // (an arc, up and over)
+      at = (q) => {
+        const r = 1 - q;
+        return [r * r * f.x + 2 * r * q * cx + q * q * tx, r * r * f.y + 2 * r * q * cy + q * q * ty];
+      };
+    if (p < 1) {
+      // the trail of sparkles behind it
+      for (let i = 1; i <= 6; i++) {
+        const q = e - i * 0.05;
+        if (q <= 0) continue;
+        const [qx, qy] = at(q),
+          tw = Math.sin(now * 0.03 + i * 1.7) * 0.5 + 0.5;
+        sparkle(qx, qy, (5 - i * 0.6) * (0.6 + tw * 0.4), i % 2 ? GOLD : "#fff6c8");
+      }
+      // the bookmark itself, glowing, shrinking to the slot's size and twirling a little
+      const [x, y] = at(e),
+        size = 1 - e * 0.55,
+        glow = ctx.createRadialGradient(x, y, 0, x, y, 26 * size);
+      glow.addColorStop(0, "rgba(255, 228, 140, 0.75)");
+      glow.addColorStop(1, "rgba(255, 228, 140, 0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(x - 26, y - 26, 52, 52);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.sin(p * Math.PI * 2) * 0.35);
+      ctx.scale(size, size);
+      drawBookmark(-7, -13, 14, 26, f.color);
+      ctx.restore();
+      continue;
+    }
+    if (!f.landed) {
+      f.landed = true;
+      [1568, 2093, 2637].forEach((fr, i) => tone(fr, fr, 0.14, "sine", 0.06, i * 0.06)); // a bright little chime
+    }
+    // landed: a burst of sparkles around its slot, spreading and fading
+    const q = Math.min(1, (now - f.start - MARK_FLIGHT_MS) / 500);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + q;
+      sparkle(tx + Math.cos(a) * (4 + q * 14), ty + Math.sin(a) * (4 + q * 14), 3.5 * (1 - q), i % 2 ? GOLD : "#fff6c8");
+    }
+  }
+}
+// A row of little ribbon bookmarks, `found` of them in red and the rest faint, from (x, y), at size s.
+function bookmarkMarks(x, y, found, total, s = 1, faint = "rgba(58, 42, 30, 0.2)") {
+  for (let i = 0; i < total; i++) {
+    const rx = x + i * 8 * s;
+    poly(i < found ? RIBBON_RED : faint, rx, y, rx + 5 * s, y, rx + 5 * s, y + 10 * s, rx + 2.5 * s, y + 7 * s, rx, y + 10 * s);
+  }
 }
 // The level's title as it begins, and its results when it's cleared.
 function drawStoryOverlay() {
-  if (state === "countdown" || (state === "running" && runTime < 1400)) drawLevelBanner();
+  if (!story.resumed && (state === "preview" || state === "countdown" || (state === "running" && runTime < 1400))) drawLevelBanner();
   if (state === "cleared") drawCleared();
+  if (state === "tip") drawStoryTip();
 }
 function drawLevelBanner() {
   const a =
-    state === "countdown"
-      ? Math.min(1, Math.max(0, (countTime - COUNT_START_MS + 300) / 300))
-      : 1 - runTime / 1400;
+    state === "preview"
+      ? Math.min(1, Math.max(0, (story.previewT - 700) / 300)) // (once the iris is open)
+      : state === "countdown"
+        ? Math.min(1, Math.max(0, (countTime - COUNT_START_MS + 300) / 300))
+        : 1 - runTime / 1400;
   if (a <= 0) return;
   ctx.save();
   ctx.globalAlpha = a;
@@ -806,41 +1066,44 @@ function drawLevelBanner() {
   ctx.fillText(story.level.name, W / 2, y + 20);
   ctx.restore();
 }
+// How faded-in the results card is (the run behind is dimmed to match: see draw in deweydash.js).
+const clearedFade = () => Math.min(1, clearedTime / 300);
+// A level's results, by the card standards (see drawStatRow in deweydash.js): the heading, the
+// story line, the stars (this card's centrepiece) landing one at a time, the numbers, the best,
+// the buttons and the hint.
 function drawCleared() {
   const r = story.result,
-    k = Math.min(1, clearedTime / 300);
+    k = clearedFade(),
+    big = tall();
   ctx.save();
   ctx.globalAlpha = k;
   ctx.translate(0, (1 - k) * 12);
-  dimBehindCard();
-  const pw = tall() ? 400 : 520,
-    ph = tall() ? 470 : 266,
-    px = W / 2 - pw / 2,
-    py = tall() ? 86 : 22;
-  drawCard(px, py, pw, ph, `${levelName(story.level)} complete!`);
-  ctx.textAlign = "center";
-  ctx.fillStyle = INK_SOFT;
-  ctx.font = "italic 14px Georgia, serif";
-  ctx.fillText(`Chapter ${story.level.chapter} · ${story.level.name}`, W / 2, py + 72);
+  // (the run behind was dimmed before the top bar was drawn)
+  const c = big ? midrunCard() : { x: W / 2 - 240, y: MIDRUN_CARD.wide.y, w: 480, h: MIDRUN_CARD.wide.h }; // (wide enough for three buttons)
+  drawCard(c.x, c.y, c.w, c.h, `${levelName(story.level)} complete!`);
+  cardSub(storyLine(story.level), c.y + (big ? 72 : 65));
   // the stars land one at a time
-  const sy = py + (tall() ? 118 : 108);
+  const sy = c.y + (big ? 112 : 90),
+    sr = big ? 22 : 16,
+    sgap = big ? 58 : 44;
   for (let i = 0; i < 3; i++) {
     const t = clearedTime - 420 - i * 240,
       on = i < r.stars;
     const pop = !on || t <= 0 ? 1 : t < 200 ? 1 + Math.sin((t / 200) * Math.PI) * 0.35 : 1;
-    starShape(W / 2 + (i - 1) * 58, sy, 22 * pop, on && t > 0 ? GOLD : "rgba(58, 42, 30, 0.14)");
+    starShape(W / 2 + (i - 1) * sgap, sy, sr * pop, on && t > 0 ? GOLD : "rgba(58, 42, 30, 0.14)");
   }
-  ctx.fillStyle = INK;
-  ctx.font = "bold 17px Georgia, serif";
-  ctx.fillText(`Pages found: ${pages} of ${story.pagesThere}`, W / 2, sy + (tall() ? 58 : 48));
-  ctx.fillStyle = r.newBest ? CARD_RED : INK_SOFT;
-  ctx.font = "bold 14px Georgia, serif";
-  ctx.fillText(
-    r.newBest ? "★ New best! ★" : `Best: ${"★".repeat(progress.stars[story.level.id])}`,
-    W / 2,
-    sy + (tall() ? 82 : 70),
-  );
+  const marks = story.level.bookmarks ? story.level.bookmarks.length : 0;
+  drawStatRow(W / 2, c.y + (big ? 176 : 128), [
+    [`${pages} of ${story.pagesThere}`, "pages found"],
+    ...(marks ? [[`${story.bookmarksFound} of ${marks}`, "bookmarks"]] : []),
+    ["hearts", lives === 1 ? "heart left" : "hearts left"],
+  ]);
+  cardLine(r.newBest ? "★ New best! ★" : `Best: ${"★".repeat(progress.stars[story.level.id])}`, c.y + (big ? 216 : 166), r.newBest);
   if (clearedTime >= CLEARED_GRACE_MS * 0.6) drawButtons();
+  hint(
+    hintFor("Tab or ← → to choose · Enter to select · Esc for the chapters", "◀ ▶ to choose · A to select · B for the chapters", "Tap Continue for the next level"),
+    c.y + c.h - (big ? 14 : 10),
+  );
   ctx.restore();
 }
 
@@ -873,8 +1136,258 @@ function drawStoryBackground() {
   R(0, FLOOR, W, 2, "rgba(0, 0, 0, 0.3)");
 }
 
+// ---------- Tips (a level explaining something new, just before you meet it) ----------
+// Each is drawn just like a screen of How to play: a name and a line on the dark, then its tip
+// card(s) (see drawHowtoCards), and the button below. `ahead`: how far in front of the book the
+// thing is when the run stops; `is`: what to look for.
+// (the keys for jumping, as keycaps on a card: a controller's A, or Space and ↑)
+const jumpKeys = () => (padUI() ? ["A", "↑"] : ["Space", "↑"]);
+const STORY_TIPS = {
+  stack: {
+    name: "Book stack ahead!",
+    line: "Books piled up on the floor, right in your path.",
+    cards: () => [
+      {
+        title: "Book stacks",
+        how: hintFor("Press Space or ↑ to jump over them. Hold it to jump higher.", "Press A to jump over them. Hold it to jump higher.", "Tap to jump over them. Hold your tap to jump higher."),
+        pic: "jump",
+        over: "stack",
+        keys: jumpKeys(),
+      },
+    ],
+    ahead: 260,
+    is: (o) => o.type === "stack" && !o.toy && o.y + o.h >= FLOOR - 1, // (a stack of books on the floor)
+  },
+  duck: {
+    name: "Duck under it!",
+    line: "A table piled high with books: too tall to jump over.",
+    cards: () => [
+      {
+        title: "Duck",
+        how: hintFor("Press ↓ or S and hold it to slide under the table.", "Pull ↓ or press B, and hold it to slide under the table.", "Swipe down and hold to slide under the table."),
+        pic: "duck",
+        around: "table",
+        keys: padUI() ? ["B", "↓"] : ["↓", "S"],
+      },
+    ],
+    ahead: 260,
+    is: (o) => o.type === "platform" && o.loaded,
+  },
+  couch: {
+    name: "Couch ahead!",
+    line: "Springy cushions: bounce off them for a super-high jump.",
+    cards: () => [
+      {
+        title: "Bounce!",
+        how: hintFor("Land on it, then press Space again to bounce sky-high.", "Land on it, then press A again to bounce sky-high.", "Land on it, then tap again to bounce sky-high."),
+        pic: "bounce",
+        keys: jumpKeys(),
+      },
+    ],
+    ahead: 260,
+    is: (o) => o.type === "platform" && o.kind === "couch",
+  },
+  // (not watched for: shown as a level with `briefing` starts, before its countdown)
+  goals: {
+    name: "Your goals",
+    line: () => storyLine(story.level),
+    cards: () => {
+      const lv = story.level,
+        n = lv.pages,
+        marks = lv.bookmarks ? lv.bookmarks.length : 0;
+      return [
+        {
+          title: n != null ? `Find ${n} pages` : "Find Dewey's pages",
+          how: n != null ? `Reach the end for ★, ${Math.ceil(n * 0.5)} pages for ★★, ${Math.ceil(n * 0.8)} for ★★★.` : "The more you find, the more stars you earn.",
+          pic: "run",
+          items: iconPage,
+          count: 1,
+        },
+        marks && {
+          title: `${marks} hidden bookmark${marks === 1 ? "" : "s"}`,
+          how: "Tucked away in hard-to-reach spots. Can you find them all?",
+          pic: "icon",
+          icon: iconBookmarkPick,
+        },
+        {
+          title: "Reach the end",
+          how: `Each bump costs a heart. Lose all ${LIVES} and you'll try again.`,
+          pic: "row",
+          item: iconHeart,
+          count: LIVES,
+        },
+      ].filter(Boolean);
+    },
+  },
+};
+// The level's last page (`lastPage`): once nothing new is coming (the clear stretch before the goal),
+// one page on the floor, just ahead, where running straight on collects it. Called every frame.
+function storyLastPage() {
+  if (!story.level.lastPage || story.lastPageOut || !storyNearEnd() || story.finishing) return;
+  story.lastPageOut = true;
+  addPickup(W + 60, FLOOR - 34);
+}
+// Called every frame of a run: if something the level explains is just ahead for the first time, stop
+// for its tip (the tip screen; Got it counts down again).
+function storyWatchTips() {
+  storyLastPage(); // (and the level's last page, once the end is near)
+  const tips = story.level.tips;
+  if (!tips || state !== "running") return;
+  for (const name of tips) {
+    if (story.tipsShown[name]) continue;
+    const t = STORY_TIPS[name],
+      o = obstacles.find((ob) => t.is(ob) && ob.x > player.x + player.w);
+    if (o && o.x - (player.x + player.w) <= t.ahead) {
+      story.tipsShown[name] = true;
+      openStoryTip(name);
+      sfx.select();
+      return;
+    }
+  }
+}
+function openStoryTip(name) {
+  tipsSeen.add(story.level.id + ":" + name); // (trying again skips it)
+  story.tip = name;
+  story.tipAt = performance.now(); // (its cards deal in)
+  duckHeld = false;
+  state = "tip";
+  selected.tip = 0;
+}
+// A tip, drawn like a screen of How to play: its name and line, its card(s), the button, the hint.
+function drawStoryTip() {
+  const t = STORY_TIPS[story.tip];
+  BUTTONS.tip[0].label = story.tip === "goals" ? "Let's go!" : "Got it";
+  dimBehindCard();
+  ctx.fillStyle = "rgba(10, 6, 4, 0.6)"; // (as dark as How to play)
+  fillScreen();
+  drawHowtoHeading(t.name, typeof t.line === "function" ? t.line() : t.line);
+  drawHowtoCards(t.cards(), story.tipAt, performance.now());
+  drawButtons();
+  if (!tall()) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#c9bc9f";
+    ctx.font = "11px Georgia, serif";
+    ctx.fillText(hintFor("Enter when you're ready", "A when you're ready", "Tap the button when you're ready"), W / 2, BUTTON_Y.wide.tip + 56);
+  }
+}
+
+// ---------- Toys (the children's wing) ----------
+// In a level's `toys` scenes, some of the book stacks are toys instead: a tower of building
+// bricks (sometimes two side by side, like a double stack), a teddy bear or a stuffed bunny. They
+// work just like stacks (a "stack" obstacle, jumped over, with pages over them); only the look is
+// different (see drawToy). spawnObstacle, in deweydash.js, asks storyToy first.
+const TOY_COLORS = ["#d94b4b", "#3f74d1", "#f2c14e", "#4caf50", "#f39c4a"];
+const BRICK_W = 30,
+  BRICK_H = 13;
+// The toy to put in place of the next stack (if the scene coming up has toys), or null.
+function storyToy() {
+  const t = story.level.toys;
+  if (!t || !t.scenes.includes(sceneAhead().index) || Math.random() >= t.chance) return null;
+  return ["blocks", "blocks", "bear", "bunny"][(Math.random() * 4) | 0];
+}
+function spawnToy(kind) {
+  const x = W + 10,
+    color = TOY_COLORS[(Math.random() * TOY_COLORS.length) | 0];
+  let o;
+  if (kind === "blocks") {
+    // one tower of 2–4 bricks, or two (the second a brick shorter), each brick a different colour
+    const towers = has("double") && Math.random() < 0.35 ? 2 : 1,
+      n = 2 + ((Math.random() * 3) | 0),
+      bricks = [];
+    let c = (Math.random() * TOY_COLORS.length) | 0;
+    for (let t = 0; t < towers; t++)
+      for (let i = 0; i < n - t; i++)
+        bricks.push({ dx: t * (BRICK_W + 3) + (i % 2 ? 2 : 0), dy: (i + 1) * BRICK_H, color: TOY_COLORS[c++ % TOY_COLORS.length] });
+    const h = n * BRICK_H + 3; // (+ the studs on top)
+    o = { x, y: FLOOR - h, w: towers * BRICK_W + (towers - 1) * 3 + 2, h, bricks };
+  } else if (kind === "bear") o = { x, y: FLOOR - 44, w: 42, h: 44 };
+  else o = { x, y: FLOOR - 50, w: 34, h: 50 };
+  Object.assign(o, { type: "stack", toy: kind, books: [], color, seed: Math.random() * 1000 });
+  obstacles.push(o);
+  return o;
+}
+function drawToy(o) {
+  const { x, w } = o;
+  oval(x + w / 2, FLOOR - 1, w * 0.6, 3.5, "rgba(0, 0, 0, 0.25)"); // shadow
+  if (o.toy === "blocks") {
+    for (const b of o.bricks) {
+      const bx = x + b.dx,
+        by = FLOOR - b.dy;
+      R(bx, by, BRICK_W, BRICK_H, b.color);
+      R(bx, by, BRICK_W, 2, "rgba(255, 255, 255, 0.3)");
+      R(bx, by + BRICK_H - 2, BRICK_W, 2, "rgba(0, 0, 0, 0.22)");
+      R(bx + BRICK_W - 3, by, 3, BRICK_H, "rgba(0, 0, 0, 0.12)");
+      // the studs on top
+      for (let k = 0; k < 3; k++) {
+        R(bx + 4 + k * 9, by - 3, 6, 3, b.color);
+        R(bx + 4 + k * 9, by - 3, 6, 1, "rgba(255, 255, 255, 0.35)");
+      }
+    }
+    return;
+  }
+  const by = FLOOR,
+    cx = x + w / 2;
+  if (o.toy === "bear") {
+    // a teddy bear sitting on the floor: legs out front, round tummy, round head, a bow tie
+    const fur = "#a8733f",
+      light = "#d6a873";
+    oval(cx - 12, by - 7, 9, 7, fur); // feet
+    oval(cx + 12, by - 7, 9, 7, fur);
+    oval(cx - 12, by - 7, 5, 4, light);
+    oval(cx + 12, by - 7, 5, 4, light);
+    oval(cx, by - 18, 15, 14, fur); // body
+    oval(cx, by - 16, 9, 9, light); // tummy
+    oval(cx - 15, by - 21, 5, 8, fur); // arms
+    oval(cx + 15, by - 21, 5, 8, fur);
+    oval(cx - 11, by - 41, 6, 6, fur); // ears
+    oval(cx + 11, by - 41, 6, 6, fur);
+    oval(cx - 11, by - 41, 3, 3, light);
+    oval(cx + 11, by - 41, 3, 3, light);
+    oval(cx, by - 33, 12, 11, fur); // head
+    oval(cx, by - 30, 6, 4.5, light); // muzzle
+    oval(cx, by - 32, 2.2, 1.6, "#2b1a10"); // nose
+    oval(cx - 5, by - 36, 1.8, 1.8, "#1a1512"); // eyes
+    oval(cx + 5, by - 36, 1.8, 1.8, "#1a1512");
+    poly(o.color, cx - 7, by - 26, cx, by - 23.5, cx - 7, by - 21); // bow tie
+    poly(o.color, cx + 7, by - 26, cx, by - 23.5, cx + 7, by - 21);
+    oval(cx, by - 23.5, 1.8, 1.8, o.color);
+    return;
+  }
+  // a stuffed bunny: tall floppy ears, a round body, a cotton tail peeking out
+  const fur = "#eadfd3",
+    pink = "#f2a7b8";
+  oval(cx + 13, by - 12, 5, 5, "#ffffff"); // tail
+  oval(cx - 9, by - 6, 8, 5, fur); // feet
+  oval(cx + 9, by - 6, 8, 5, fur);
+  oval(cx, by - 16, 13, 13, fur); // body
+  oval(cx, by - 14, 7, 8, "#f7f1ea"); // tummy
+  ctx.save(); // the ears, one standing, one flopped over
+  ctx.translate(cx - 5, by - 38);
+  ctx.rotate(-0.15);
+  oval(0, -6, 4.5, 11, fur);
+  oval(0, -6, 2.2, 8, pink);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(cx + 6, by - 37);
+  ctx.rotate(0.9);
+  oval(0, -6, 4.5, 11, fur);
+  oval(0, -6, 2.2, 8, pink);
+  ctx.restore();
+  oval(cx, by - 32, 10, 9, fur); // head
+  oval(cx - 4, by - 33, 1.6, 1.6, "#1a1512"); // eyes
+  oval(cx + 4, by - 33, 1.6, 1.6, "#1a1512");
+  oval(cx, by - 29.5, 1.8, 1.3, pink); // nose
+  oval(cx - 6, by - 29, 2.2, 1.4, "rgba(242, 167, 184, 0.6)"); // cheeks
+  oval(cx + 6, by - 29, 2.2, 1.4, "rgba(242, 167, 184, 0.6)");
+  R(cx - 6, by - 24, 12, 3, o.color); // a ribbon round the neck
+}
+
 // Outdoors, the hazards are what you'd find on a library lawn.
 function storyDrawObstacle(o) {
+  if (o.toy) {
+    drawToy(o); // (the children's wing's toys, in place of book stacks)
+    return true;
+  }
   if (!story.level.outdoor) return false;
   if (o.type === "stack") drawHedge(o);
   else if (o.type === "flyer") drawBird(o);
@@ -2046,7 +2559,7 @@ function routeAt(a, b, u) {
 }
 // The map's panel, how far it's zoomed in (it's centred on the drive), and the card.
 function routeLayout() {
-  if (tall()) return { panel: { x: 14, y: 14, w: W - 28, h: 418 }, k: 2.2, card: { x: 22, y: 446, w: W - 44, h: 178 } };
+  if (tall()) return { panel: { x: 14, y: 14, w: W - 28, h: 378 }, k: 2.2, card: { x: 22, y: 404, w: W - 44, h: 226 } };
   return { panel: { x: 16, y: 16, w: 430, h: 288 }, k: 1.7, card: { x: 462, y: 40, w: 318, h: 238 } };
 }
 function drawRoute() {
@@ -2203,31 +2716,42 @@ function drawRouteMap(t) {
   drawBookmobile(-BM_LEN / 2, 0, t, { moving: u > 0 && u < 1 });
   ctx.restore();
 }
-// The card beside the map (under it, on a phone): the chapter done, then where Dewey's headed.
+// The card beside the map (under it, on a phone), by the card standards: the chapter done (its
+// heading and rule, the ribbon), the library it was, where Dewey's headed, Continue once it's
+// there, and the hint (how to skip, then how to go on).
 function drawRouteCard(c, t) {
   const arrived = t >= ROUTE_DONE_AT,
-    next = CHAPTERS[route.to];
-  drawCard(c.x, c.y, c.w, c.h, `Chapter ${route.from} complete!`, false);
+    next = CHAPTERS[route.to],
+    here = CHAPTERS[route.from],
+    big = tall(),
+    cx = c.x + c.w / 2;
+  drawCard(c.x, c.y, c.w, c.h);
+  // the heading (a little smaller than other cards' so it clears the ribbon on this narrow card)
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK;
+  ctx.font = "bold 21px Georgia, serif";
+  ctx.fillText(`Chapter ${route.from} complete!`, cx - 14, c.y + 34);
+  cardRules(c.x, c.y + 46, c.w);
+  ctx.fillStyle = INK_SOFT;
+  ctx.font = `italic ${big ? 15 : 13}px Georgia, serif`;
+  ctx.fillText(here ? here.place : "", cx, c.y + 66);
   const lines = arrived
     ? next
       ? [`Next stop: ${next.place}!`, `Chapter ${route.to} begins...`]
       : ["Where to next?", `Chapter ${route.to} is still being written.`, "Check back soon!"]
     : ["Dewey hops aboard the Bookmobile.", "Off to find more of his pages!"];
-  ctx.textAlign = "center";
   ctx.fillStyle = INK;
-  const top = c.y + (tall() ? 80 : 84);
   lines.forEach((line, i) => {
-    ctx.font = i === 0 && arrived ? "bold 17px Georgia, serif" : "15px Georgia, serif";
-    ctx.fillText(line, c.x + c.w / 2, top + i * 24);
+    ctx.font = i === 0 && arrived ? "bold 16px Georgia, serif" : "14px Georgia, serif";
+    ctx.fillText(line, cx, c.y + 92 + i * 21);
   });
-  // Continue, once it's there (before that, how to skip)
-  const by = c.y + c.h - (tall() ? 46 : 52);
+  // Continue, once it's there: the card's main action
   if (arrived) {
     const k = Math.min(1, (t - ROUTE_DONE_AT) / ROUTE_READY_MS),
       bw = 160,
       bh = 42,
-      bx = c.x + c.w / 2 - bw / 2,
-      bty = by - 4;
+      bx = cx - bw / 2,
+      bty = c.y + c.h - 76;
     ctx.save();
     ctx.globalAlpha = k;
     ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
@@ -2239,13 +2763,19 @@ function drawRouteCard(c, t) {
     ctx.stroke();
     ctx.fillStyle = ON_ORANGE;
     ctx.font = "bold 18px Georgia, serif";
-    ctx.fillText("Continue ›", c.x + c.w / 2, bty + bh / 2 + 6);
+    ctx.fillText("Continue ›", cx, bty + bh / 2 + 6);
     ctx.restore();
-  } else {
-    ctx.fillStyle = INK_SOFT;
-    ctx.font = "italic 12px Georgia, serif";
-    ctx.fillText(padUI() ? "Press A to skip" : touchUI ? "Tap to skip" : "Press Enter to skip", c.x + c.w / 2, by + 22);
   }
+  // the hint, at the very bottom: how to skip the drive, then how to go on
+  // (like hint, but centred on the card, which sits off to one side on a wide screen)
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK_SOFT;
+  ctx.font = "12px Georgia, serif";
+  ctx.fillText(
+    arrived ? hintFor("Enter to continue", "A to continue", "Tap to continue") : hintFor("Enter to skip", "A to skip", "Tap to skip"),
+    cx,
+    c.y + c.h - 12,
+  );
 }
 
 // ---------- The picture books ----------

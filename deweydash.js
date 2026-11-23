@@ -10,6 +10,16 @@ const GRAVITY = 0.0025,
   JUMP_CUT = 0.45, // multiply upward velocity by this when jump is released early
   GROUND_Y = 240; // player's top y when standing
 const FLOOR = GROUND_Y + 44; // y of the floor line
+// A jump from a couch is a bounce: higher than a normal jump, floatier, with a lean back on the way
+// up and a front flip at the top (see jump and drawPlayer). The view follows it up (see camY).
+const COUCH_GRAVITY = GRAVITY * 0.72, // floatier while bouncing: more time in the air
+  COUCH_RISE = 1.5, // how far up it goes, as a share of a normal jump's height
+  // The view following a bounce up: the room shifts down to keep the book's top at least this far
+  // down the room (clear of the top bar), and eases back as it comes down.
+  CAM_TOP = { wide: 66, tall: -4 },
+  CAM_EASE = 0.022, // how quickly the view catches up (per ms)
+  COUCH_FLIP_MS = 420, // the front flip
+  COUCH_FLIP_AT = -0.22; // it starts when the book's rising slower than this (just before it starts down)
 const CEIL = 64; // y where ceiling meets wall
 // The run goes at one steady speed for now. To have it speed up over a run again,
 // lower START_SPEED and set SPEED_RAMP above 0 (it used to be 0.35 → 0.95, ramp 0.000008).
@@ -98,7 +108,9 @@ const PLATFORMS = {
   bench: { w: 220, h: 44 }, // a padded reading bench
   chair: { w: 190, h: 50 }, // a big comfy reading chair (you run along the seat)
   table: { w: 180, h: FLOOR - GROUND_Y }, // a low reading table: run along the top, or duck and slide underneath
+  couch: { w: 240, h: 46 }, // a long, low couch (Story Mode's children's wing): run along the cushions
 };
+const ENDLESS_FURNITURE = ["cart", "bench", "chair", "table"]; // (Story Mode levels say which pieces they have)
 const TABLE_SLAB = 14; // the tabletop's thickness: the only solid part of the table (it's open underneath)
 // Book tunnels: a long wall of books hanging from the ceiling with a low gap at the floor. Too
 // tall to jump: duck in and keep ducking until you're out the other side. It's a solid bookshelf,
@@ -121,6 +133,8 @@ const MIN_GAP = {
   duck: { jump: 0.45, duck: 0.45, high: 0.45 }, // coming out from ducking, then…
   high: { jump: 0.6, duck: 0.7, high: 0.6 }, // running off the end of furniture, then…
   wet: { jump: 1.4, duck: 0.95, high: 1.4 }, // after puddles (room to dry off if you slipped)
+  // after a couch: a bounce off it flies far past its end, so the floor beyond stays clear to land on
+  bounce: { jump: 2.2, duck: 2.2, high: 2.2 },
 };
 // Each gap is quick (right on top of each other), normal, or a breather. Quick ones get more
 // common the longer you last.
@@ -222,6 +236,7 @@ let wipeout = null; // speed reading into a puddle: { t, x, groundY, slammed } (
 // or on Story Mode's own screens.
 let story = null;
 let standingOn = null; // the piece of furniture the book is standing on, if any
+let camY = 0; // the view following a couch bounce up: how far down the room is shifted (0: not at all)
 let lostPages = []; // pages knocked loose by a bump, flying off: { x, y, vx, vy, rot, spin, life }
 let pageLoss = null; // { amount, life }: the page counter flashes red and shows "−3"
 let repairWait = REPAIR_FIRST_MS; // ms of being hurt until the next roll of tape can appear
@@ -252,6 +267,12 @@ const sfx = {
     tone(990, 990, 0.07, "triangle", 0.06, 0.04);
   },
   jump: () => tone(300, 620, 0.14),
+  // a springy boing off a couch's cushions
+  bounce: () => {
+    tone(150, 520, 0.26, "sine", 0.13);
+    tone(300, 980, 0.2, "triangle", 0.05, 0.03);
+    tone(520, 760, 0.12, "sine", 0.04, 0.16);
+  },
   land: () => tone(140, 70, 0.06, "triangle", 0.1),
   duck: () => tone(420, 200, 0.08, "triangle", 0.1),
   page: () => {
@@ -575,6 +596,8 @@ function reset() {
   player.vy = 0;
   player.onGround = true;
   player.ducking = false;
+  player.bounce = null; // (no couch bounce carried into a new run)
+  camY = 0;
   duckHeld = false;
   obstacles = [];
   pickups = [];
@@ -622,11 +645,33 @@ function jump() {
   }
   if (player.onGround) {
     jumpCount++;
-    player.vy = JUMP_VELOCITY;
     player.onGround = false;
+    if (standingOn && standingOn.kind === "couch") {
+      // a bounce off the cushions: higher (as high as there's room for), floatier, with a flip
+      const rise = ((JUMP_VELOCITY * JUMP_VELOCITY) / (2 * GRAVITY)) * COUCH_RISE; // (the view follows it up)
+      player.vy = -Math.sqrt(2 * COUCH_GRAVITY * rise);
+      player.bounce = { t: 0, flipAt: 0 };
+      standingOn.squishAt = runTime; // the cushions squish down under it
+      burst(player.x + player.w / 2, player.y + player.h, 8, "#3fa2a8");
+      sfx.bounce();
+      return;
+    }
+    player.vy = JUMP_VELOCITY;
+    player.bounce = null;
     burst(player.x + player.w / 2, player.y + player.h, 6, PAPER);
     sfx.jump();
   }
+}
+// How far the book is turned by a couch bounce: leaning back on the way up, then a front flip
+// (a full turn forward) just before it starts down. 0 when it isn't bouncing.
+function bounceSpin() {
+  const b = player.bounce;
+  if (!b) return 0;
+  const lean = -0.32 * Math.min(1, b.t / 160);
+  if (!b.flipAt) return lean;
+  const p = Math.min(1, (b.t - b.flipAt) / COUCH_FLIP_MS),
+    e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
+  return lean * (1 - e) + Math.PI * 2 * e;
 }
 
 function releaseJump() {
@@ -635,7 +680,11 @@ function releaseJump() {
 
 function updatePlayer(dt) {
   // Holding duck in the air pulls you down faster so you can drop under a flying book.
-  const gravity = duckHeld && !player.onGround ? GRAVITY * 2.5 : GRAVITY;
+  const gravity = duckHeld && !player.onGround ? GRAVITY * 2.5 : player.bounce ? COUCH_GRAVITY : GRAVITY;
+  if (player.bounce) {
+    player.bounce.t += dt;
+    if (!player.bounce.flipAt && player.vy > COUCH_FLIP_AT) player.bounce.flipAt = player.bounce.t; // time to flip
+  }
   const prevBottom = player.y + player.h;
   player.vy += gravity * dt;
   player.y += player.vy * dt;
@@ -655,6 +704,7 @@ function updatePlayer(dt) {
     if (!player.onGround) {
       burst(player.x + player.w / 2, support + player.h, 4, PAPER);
       sfx.land();
+      player.bounce = null; // (landed: the bounce, and its flip, are over)
     }
     player.y = support;
     player.vy = 0;
@@ -665,6 +715,11 @@ function updatePlayer(dt) {
   }
   player.ducking = duckHeld && player.onGround;
   updateAccessories(dt);
+  // the view follows a couch bounce up (just far enough to keep the book clear of the top bar),
+  // and eases back down once it's coming down
+  const camWant = player.bounce ? Math.max(0, CAM_TOP[layout] - player.y) : 0;
+  camY += (camWant - camY) * Math.min(1, dt * CAM_EASE);
+  if (camY < 0.3) camY = 0;
 
   // every few steps, a little puff of dust kicks up behind the back foot
   if (player.onGround && !player.ducking) {
@@ -725,6 +780,9 @@ function makeStack(x, stackW, targetH, base = FLOOR) {
 }
 
 function spawnObstacle() {
+  // (in a Story Mode level's children's wing, it might be a toy instead: see storyToy)
+  const toy = story && typeof storyToy === "function" ? storyToy() : null;
+  if (toy) return spawnToy(toy);
   const count =
     has("double") && Math.random() < 0.35
       ? 2 + (Math.random() < 0.3)
@@ -819,14 +877,15 @@ function updateObstacles(dt) {
       len, // how far it reaches past where it starts
       moves; // the ways you might be getting past it (see MIN_GAP)
     if (upcoming === "wet") {
-      len = spawnWetFloor();
+      len = withPageAllowance(false, spawnWetFloor);
       moves = ["wet"];
-    } else if (upcoming === "platform") {
-      const p = spawnPlatform();
+    } else if (upcoming.startsWith("platform")) {
+      const piece = upcoming.split(":")[1]; // (a particular piece, or any)
+      const p = withPageAllowance(piece === "couch", () => spawnPlatform(piece));
       len = p.w;
-      moves = p.jumpy ? ["high", "jump"] : ["high"]; // (jumping something up there can carry you off the end)
+      moves = piece === "couch" ? ["bounce"] : p.jumpy ? ["high", "jump"] : ["high"]; // (jumping something up there can carry you off the end; a bounce off a couch carries you a long way)
     } else if (upcoming === "tunnel") {
-      len = spawnTunnel();
+      len = withPageAllowance(false, spawnTunnel);
       moves = ["duck"];
     } else if (upcoming.startsWith("flock")) {
       const kind = upcoming.slice(6); // "low", "high" or "split"
@@ -839,12 +898,21 @@ function updateObstacles(dt) {
     }
     upcoming = pickNext();
     nextSpawn = len + gapBefore(moves, nextMoves(upcoming), speed * airTime);
+    // (a level's scripted opening sets its own gaps, in jump lengths: see storyOpening)
+    const openingGap = story && typeof storyOpeningGap === "function" ? storyOpeningGap() : null;
+    if (openingGap != null) nextSpawn = len + speed * airTime * openingGap;
     if (o) spawnPickups(o, airTime); // (after the gap is set: a row of pages can go in it)
   }
 }
 
 // ---------- Spacing ----------
 function pickNext() {
+  // (a Story Mode level can start with a set order of things: see storyOpening)
+  const scripted = story && typeof storyOpening === "function" ? storyOpening() : null;
+  if (scripted) return scripted;
+  // (a Story Mode level can put particular furniture in particular scenes: see storyFurniture)
+  const piece = story && typeof storyFurniture === "function" ? storyFurniture() : null;
+  if (piece) return "platform:" + piece;
   if (has("wet") && Math.random() < chance("wet", WET_CHANCE)) return "wet";
   if (has("platform") && Math.random() < chance("platform", PLATFORM_CHANCE)) return "platform";
   if (has("tunnel") && Math.random() < chance("tunnel", TUNNEL_CHANCE)) return "tunnel";
@@ -857,7 +925,7 @@ function pickNext() {
 // which sometimes needs a jump.)
 function nextMoves(kind) {
   if (kind === "flyer") return has("swoop") ? ["duck", "jump"] : ["duck"];
-  if (kind === "platform") return ["high"];
+  if (kind.startsWith("platform")) return ["high"];
   if (kind === "tunnel" || kind === "flock-high" || kind === "flock-split") return ["duck"];
   return ["jump"];
 }
@@ -919,14 +987,17 @@ function gapBefore(prevMoves, upMoves, jumpLen) {
 // Sometimes there's more up there: a flying book skimming along the top or a stack of books
 // sitting on it (jump them), or a bookmark floating high above to jump for. The low table can be
 // ducked under too (pages there as well). Returns { w, jumpy } (jumpy: something up there to jump).
-function spawnPlatform() {
-  const kinds = Object.keys(PLATFORMS);
-  const kind = kinds[(Math.random() * kinds.length) | 0];
+function spawnPlatform(kind = ENDLESS_FURNITURE[(Math.random() * ENDLESS_FURNITURE.length) | 0]) {
+  if (kind === "loadedTable") return spawnLoadedTable();
   const { w, h } = PLATFORMS[kind];
   const o = { type: "platform", kind, x: W + 10, y: FLOOR - h, w, h, books: [], seed: Math.random() * 1000 };
   obstacles.push(o);
+  if (kind === "couch") {
+    couchPages(o);
+    return { w, jumpy: false };
+  }
   const r = Math.random();
-  const skim = r < SKIM_CHANCE,
+  const skim = (!story || has("flyer")) && r < SKIM_CHANCE, // (only where there are flying books)
     topStack = !skim && r < SKIM_CHANCE + TOP_STACK_CHANCE,
     perch = !skim && !topStack && r < SKIM_CHANCE + TOP_STACK_CHANCE + PERCH_CHANCE;
   if (topStack) {
@@ -964,15 +1035,7 @@ function spawnPlatform() {
     // a bookmark floating high above the top (you have to jump from up there to reach it),
     // with pages leading up to it
     const cx = o.x + w * 0.6;
-    pickups.push({
-      kind: "bookmark",
-      x: cx - 7,
-      y: o.y - 140,
-      w: 14,
-      h: 26,
-      color: MARK_COLORS[(Math.random() * MARK_COLORS.length) | 0],
-      phase: Math.random() * Math.PI * 2,
-    });
+    addBookmark(cx, o.y - 140);
     for (let cx2 = o.x + 30; cx2 < cx - 30; cx2 += PAGE_GAP) addPickup(cx2, o.y - 34);
   } else {
     for (let cx = o.x + 30; cx < o.x + w - 20; cx += PAGE_GAP) addPickup(cx, o.y - 34);
@@ -980,6 +1043,47 @@ function spawnPlatform() {
   if (kind === "table")
     for (let cx = o.x + 34; cx < o.x + w - 24; cx += PAGE_GAP) addPickup(cx, FLOOR - 34); // under the table too
   return { w, jumpy: skim || topStack };
+}
+
+// A reading table piled high with books, all along its top and taller than any jump reaches: you
+// can't get over it or onto it, so you have to duck and slide under. (Story Mode's lesson in
+// ducking.) A page waits underneath. Returns { w, jumpy }.
+function spawnLoadedTable() {
+  const { w, h } = PLATFORMS.table;
+  const o = { type: "platform", kind: "table", loaded: true, x: W + 10, y: FLOOR - h, w, h, books: [], seed: Math.random() * 1000 };
+  obstacles.push(o);
+  for (let sx = o.x + 2; sx < o.x + w - 8; sx += 30) {
+    const s = makeStack(sx, 28, 128 + Math.random() * 22, o.y); // (well past the top of a jump from the floor)
+    obstacles.push({ type: "stack", onTable: true, x: sx, y: o.y - s.h, w: 28, h: s.h, books: s.books });
+  }
+  addPickup(o.x + w / 2, FLOOR - 34); // under the table
+  return { w, jumpy: false };
+}
+
+// A couch's pages: a couple on the seat leading in, then a trail along the path of a bounce
+// (worked out from the bounce itself and the run's speed, from a bounce near the start of the
+// couch): up, over the top, and down. Half the time there's a bookmark at the very top.
+function couchPages(o) {
+  const g = COUCH_GRAVITY,
+    rise = ((JUMP_VELOCITY * JUMP_VELOCITY) / (2 * GRAVITY)) * COUCH_RISE,
+    v = Math.sqrt(2 * g * rise),
+    up = v / g, // ms to the top
+    takeoff = o.x + 46, // where the middle of the book is when it bounces
+    mid = o.y - player.h / 2; // the middle of the book, standing on the seat
+  const few = story && story.level.pages != null, // (a level with only a few pages to find: just three, up, top and down)
+    marked = story && storyBookmark("couch"); // (one of the level's bookmarks, at the top of the bounce)
+  if (!few) {
+    addPickup(o.x + 18, o.y - 34);
+    addPickup(o.x + 18 + PAGE_GAP, o.y - 34);
+  }
+  for (const k of marked ? [0.6, 1] : few ? [0.6, 1, 1.4] : [0.42, 0.75, 1, 1.25, 1.58]) {
+    const t = up * k,
+      cx = takeoff + speed * t,
+      cy = mid - (v * t - 0.5 * g * t * t); // the middle of the book, t ms after the bounce
+    if (k === 1 && marked) addStoryBookmark(cx, cy - 13); // (and its page on the way up)
+    else if (k === 1 && Math.random() < 0.5) addBookmark(cx, cy - 13);
+    else addPickup(cx, cy - 13);
+  }
 }
 
 // A book tunnel, with a row of pages along the floor inside. Returns its length.
@@ -1205,8 +1309,43 @@ function hits(o) {
 
 // ---------- Pages to collect (and the rare bookmark) ----------
 // `cx` is the item's center, `y` the top of where a bookmark would hang.
+// How many more pages the thing being placed may have (a Story Mode level with a set number of
+// pages hands them out: see storyPageAllowance). Infinity: as many as it likes.
+let pageAllowance = Infinity;
+// Story Mode is after single pages, not sets: while something's being placed, the spots it would
+// put pages in are gathered here instead, and then just one page goes in the best of them.
+let pageSpots = null;
+// Place what comes with something (for furniture, couch: true): with an allowance from the level,
+// and in Story Mode, one page only, at its best spot: the highest (the top of a jump's arc, the top
+// of a couch's bounce), or the middle of a row.
+function withPageAllowance(couch, place) {
+  pageAllowance = story && typeof storyPageAllowance === "function" ? storyPageAllowance(couch) : Infinity;
+  pageSpots = story ? [] : null;
+  try {
+    return place();
+  } finally {
+    const spots = pageSpots;
+    pageSpots = null;
+    if (spots && spots.length) {
+      const top = Math.min(...spots.map((p) => p.y)),
+        best = spots.filter((p) => p.y <= top + 1),
+        pick = best[(best.length - 1) >> 1],
+        before = story.pagesThere;
+      if (pick.bookmark) addBookmark(pick.cx, pick.y);
+      else addPickup(pick.cx, pick.y);
+      if (couch && story.neededCouch) story.couchPages += story.pagesThere - before; // (from the pages kept back for couches: see storyPageAllowance)
+    }
+    pageAllowance = Infinity;
+  }
+}
 function addPickup(cx, y) {
-  const bookmark = Math.random() < BOOKMARK_CHANCE;
+  if (pageSpots) return void pageSpots.push({ cx, y }); // (Story Mode: just a spot, for now: see withPageAllowance)
+  // (a level with a set number of pages: never past it, within what this thing's allowed, and no
+  // bookmarks, which are worth BOOKMARK_PAGES)
+  const capped = story && story.level.pages != null;
+  if (pageAllowance <= 0 || (capped && story.pagesThere >= story.level.pages)) return;
+  pageAllowance--;
+  const bookmark = !story && Math.random() < BOOKMARK_CHANCE; // (Story Mode's bookmarks are collectables, placed by its levels)
   if (story) story.pagesThere += bookmark ? BOOKMARK_PAGES : 1; // (the pages there were to find, for a level's stars)
   if (bookmark) {
     pickups.push({
@@ -1230,8 +1369,53 @@ function addPickup(cx, y) {
   }
 }
 
+// A bookmark (worth BOOKMARK_PAGES), centred on cx, its top at y.
+function addBookmark(cx, y) {
+  if (story) return addPickup(cx, y); // (Story Mode: a page here; its bookmarks are collectables: see storyBookmark)
+  if (story && story.level.pages != null) return addPickup(cx, y); // (a level with a set number of pages has a page here instead)
+  if (story) story.pagesThere += BOOKMARK_PAGES; // (counts toward the pages there were to find)
+  pickups.push({
+    kind: "bookmark",
+    x: cx - 7,
+    y,
+    w: 14,
+    h: 26,
+    color: MARK_COLORS[(Math.random() * MARK_COLORS.length) | 0],
+    phase: Math.random() * Math.PI * 2,
+  });
+}
+
+// One of a Story Mode level's bookmarks to find (see storyBookmark): centred on cx, its top at y.
+function addStoryBookmark(cx, y) {
+  pickups.push({
+    kind: "bookmark",
+    collectable: true,
+    x: cx - 7,
+    y,
+    w: 14,
+    h: 26,
+    color: RIBBON_RED, // (red, like the slots in the top bar it flies up to)
+    phase: Math.random() * Math.PI * 2,
+  });
+}
+
 function spawnPickups(o, airTime) {
-  const r = Math.random();
+  return withPageAllowance(false, () => placePickups(o, airTime));
+}
+function placePickups(o, airTime) {
+  // (a level that introduces the book stack with a tip: its first stack is just a stack, nothing to grab)
+  if (o.type === "stack" && !o.toy && story && story.level.tips && story.level.tips.includes("stack") && !story.firstStackOut) {
+    story.firstStackOut = true;
+    return;
+  }
+  if (o.type === "stack" && story && storyBookmark("high")) {
+    // one of the level's bookmarks, so high over the stack that only a full jump (held all the way,
+    // and timed to be right over it) reaches it; no page here
+    addStoryBookmark(o.x + o.w / 2, GROUND_Y - 170);
+    return;
+  }
+  // (a level with a set number of pages, when it can have one here, always does: its pacing spreads them)
+  const r = story && story.level.pages != null && pageAllowance > 0 ? Math.random() * 0.7 : Math.random();
   if (o.type === "flyer") {
     if (o.swoop || o.dart || o.charge) return; // nothing under the tricky ones, so nobody gets lured in
     // A pair tucked right under the flying book, a reward for ducking.
@@ -1244,7 +1428,11 @@ function spawnPickups(o, airTime) {
     repairWait <= 0 &&
     !pickups.some((b) => b.kind === "repair");
   const powerUp =
-    !tape && !power && powerWait <= 0 && !pickups.some((b) => b.kind === "power");
+    !tape &&
+    !power &&
+    powerWait <= 0 &&
+    !pickups.some((b) => b.kind === "power") &&
+    !(story && story.level.powerUps === false); // (some Story Mode levels have none)
   if (tape || powerUp || r < 0.4) {
     // An arc over the stack that traces a full jump. The side items sit where the
     // player is a quarter of the jump away from the peak, so this works at any speed.
@@ -1322,6 +1510,13 @@ function updatePickups(dt) {
       heal(b);
     } else if (b.kind === "power") {
       startPower(b);
+    } else if (b.collectable && story) {
+      // one of a Story Mode level's bookmarks to find (they're collected, not counted as pages)
+      story.bookmarksFound++;
+      sfx.bookmark();
+      burst(b.x + b.w / 2, b.y + b.h / 2, 16, b.color);
+      storyBookmarkFlight(b); // (it flies up to its slot in the top bar)
+      popups.push({ x: b.x + b.w / 2, y: b.y, text: `Bookmark found! ${story.bookmarksFound} of ${story.level.bookmarks.length}`, life: 1300 });
     } else {
       pages += BOOKMARK_PAGES * mult;
       sfx.bookmark();
@@ -1470,6 +1665,7 @@ function update(dt) {
   runDist += speed * dt;
   distance += speed * dt;
   if (story) storyCheckEnd(); // reached the end of the level's library?
+  if (story) storyWatchTips(); // (something new just ahead that the level explains: see storyWatchTips)
 
   updatePlayer(dt);
   updateObstacles(dt);
@@ -1559,8 +1755,9 @@ function takeHit() {
 }
 
 // A bump knocks a few pages out of the book: they fly off as real sheets, and the
-// page counter flashes red with a "−3".
+// page counter flashes red with a "−3". (Endless only: in Story Mode a bump costs a heart, never pages.)
 function losePages(b) {
+  if (story) return;
   const lost = Math.min(PAGES_LOST_ON_HIT, pages);
   if (lost === 0) return;
   pages -= lost;
@@ -1661,10 +1858,13 @@ let deathMs = DEATH_MS; // (this run's wait: longer after a wipeout, see WIPEOUT
 const overGraceMs = () => deathMs + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
 let howtoScreen = 0; // How to play: which screen of cards (see HOWTO_SCREENS)
+// How to play: which mode it's describing (its Story | Endless switch). Some cards differ: Story
+// Mode's pages earn stars and its bookmarks are hidden collectables; Endless is a run for a high score.
+let howtoMode = "story";
 // The start screen's buttons, in arrow-key order: the mode switch's two halves, Play and
 // How to play. Play is the one highlighted to begin with.
 const READY_PLAY = 2;
-const selected = { ready: READY_PLAY, paused: 0, howto: 0, over: 0, chars: 0, levels: 0, cleared: 0 }; // highlighted button on each screen
+const selected = { ready: READY_PLAY, paused: 0, howto: 0, over: 0, chars: 0, levels: 0, cleared: 0, tip: 0 }; // highlighted button on each screen
 // Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen's
 // highlight stays on Start except while another button is hovered.
 let keyNav = false;
@@ -1733,11 +1933,12 @@ const MENU = {
     ["again", "Play again"],
     ["menu", "Main menu"],
   ],
+  tip: [["tipgo", "Got it"]], // (Story Mode: a pop-up about something new, just before you meet it: see storyWatchTips)
 };
 // Where each screen's buttons go: a row in the wide layout, a column in the tall one.
 const BUTTON_Y = {
-  wide: { ready: 178, chars: 234, paused: 196, howto: 260, over: 196, levels: 252, cleared: 226 },
-  tall: { ready: 340, chars: 494, paused: 288, howto: 532, over: 330, levels: 486, cleared: 318 },
+  wide: { ready: 178, chars: 234, paused: 196, howto: 260, over: 236, levels: 252, cleared: 230, tip: 260 },
+  tall: { ready: 340, chars: 494, paused: 288, howto: 532, over: 344, levels: 486, cleared: 356, tip: 556 },
 };
 let BUTTONS = {};
 function makeButtons() {
@@ -1793,6 +1994,7 @@ function makeButtons() {
         { id: "prev", label: "‹ Back", x, y, w: 150, h: 54 },
         { id: "tips", label: "All tips", tips: true, ...tipsRect() },
         { id: "back", label: "✕", close: true, x: W - 14 - 44, y: 18, w: 44, h: 44 },
+        ...howtoSwitch(W / 2 - 130, y + 60, 260, 44), // (which mode the cards describe: under Back and Next)
       ];
     } else {
       BUTTONS.howto = [
@@ -1800,6 +2002,7 @@ function makeButtons() {
         { id: "prev", label: "‹ Back", x: W / 2 - 302, y, w: 110, h: 42 },
         { id: "tips", label: "All tips", tips: true, ...tipsRect() },
         { id: "back", label: "✕", close: true, x: W - 12 - 44, y: 8, w: 44, h: 44 },
+        ...howtoSwitch(W / 2 - 120, y, 240, 42), // (which mode the cards describe: between Back and Next)
       ];
     }
   }
@@ -1808,7 +2011,7 @@ function makeButtons() {
 // How to play's All tips: the top-left corner, matching ✕ in the top right. How to play is an
 // overlay, so it sits over the Sound button there (M still mutes; see pointerdown).
 function tipsRect() {
-  return tall() ? { x: 14, y: 18, w: 140, h: 44 } : { x: 12, y: 8, w: 124, h: 44 };
+  return tall() ? { x: 14, y: 18, w: 118, h: 44 } : { x: 12, y: 8, w: 124, h: 44 }; // (phone: narrow enough to clear the title)
 }
 // The mode switch's two halves, inside its track (x, y, w, h). (The track itself is drawn with
 // the first half: see drawModeSegment.)
@@ -1821,6 +2024,10 @@ function modeSwitch(x, y, w, h) {
     { id: "mode-story", label: "Story", seg: "story", track, x: x + p, y: y + p, w: half, h: h - p * 2 },
     { id: "mode-endless", label: "Endless", seg: "endless", track, x: x + p + half + 2, y: y + p, w: half, h: h - p * 2 },
   ];
+}
+// How to play's own Story | Endless switch (which mode its cards describe: see howtoMode).
+function howtoSwitch(x, y, w, h) {
+  return modeSwitch(x, y, w, h).map((b) => ({ ...b, id: "how" + b.id, mode: () => howtoMode }));
 }
 // The mode Play starts: remembered between visits.
 let playMode = safeGet("deweydash-mode") === "endless" ? "endless" : "story";
@@ -2029,11 +2236,19 @@ function choose(id) {
   } else if (id === "resume") state = "running";
   else if (id === "howto") {
     howtoFrom = state;
+    // describe the mode you're about to play (from the start screen) or are playing
+    howtoMode = howtoFrom === "ready" ? playMode : story ? "story" : "endless";
     selected.howto = 0; // Next, so Enter / Space step through the screens
     howtoScreen = -1; // (so the first screen deals in, without the flick sound)
     tipsIndex.open = false;
     showHowtoScreen(0);
     state = "howto";
+  } else if (id.startsWith("howmode-")) {
+    // How to play's Story | Endless switch: the cards that differ deal in again
+    if (howtoMode !== id.slice(8)) {
+      howtoMode = id.slice(8);
+      howtoDealAt = performance.now();
+    }
   } else if (id === "next") {
     if (howtoScreen < HOWTO_SCREENS.length - 1) showHowtoScreen(howtoScreen + 1);
     else choose("back"); // (Done)
@@ -2051,6 +2266,7 @@ function goBack() {
   else if (state === "howto") choose("back");
   else if (state === "chars") choose("charsBack");
   else if (state === "over") choose("menu");
+  else if (state === "tip") choose("tipgo"); // (Esc: got it)
 }
 
 // ---------- Layout: wide (desktop, tablets, phones on their side) or tall (phones held upright) ----------
@@ -2161,6 +2377,7 @@ function frame(now) {
     updateParticles(dt);
     overTime += dt;
   } else if (state === "book") updateBook(dt);
+  else if (state === "preview") updateStoryPreview(dt); // Story Mode: a look at the scene before the level's goals
   else if (state === "route") updateRoute(dt); // Story Mode: the Bookmobile's drive between chapters
   else if (state === "cleared") updateCleared(dt);
   else if (onStartScreen()) {
@@ -2761,6 +2978,22 @@ function drawTallCeiling() {
   }
   R(0, WORLD_Y - 3, W, 3, "#14100d"); // where the ceiling meets the room
 }
+// While the view follows a couch bounce up: the ceiling above the room, from the top of the screen
+// down to the room (in room coordinates, with the room shifted down by camY). Like the phone
+// layout's ceiling, with its row of soft lights just above the room.
+function drawCeilingAbove() {
+  const top = -(WORLD_Y + TOP) - camY;
+  const g = ctx.createLinearGradient(0, top, 0, 0);
+  g.addColorStop(0, "#1a1512");
+  g.addColorStop(1, "#2e2724");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, top, W, -top);
+  for (let lx = 45; lx < W; lx += 90) {
+    oval(lx, -12, 16, 3, "rgba(255, 236, 190, 0.18)");
+    oval(lx, -12, 7, 1.6, "rgba(255, 244, 214, 0.8)");
+  }
+  R(0, -3, W, 3, "#14100d"); // where the ceiling meets the room
+}
 // Shade the floor below the room so it reads as floor, and for the first few seconds of a
 // run, show the touch controls there.
 function drawTallFloor() {
@@ -2796,6 +3029,10 @@ function draw() {
   if (WORLD_Y) {
     drawTallCeiling();
     ctx.translate(0, WORLD_Y); // everything in the room is drawn lower down the screen
+  }
+  if (camY > 0) {
+    ctx.translate(0, camY); // following a couch bounce up: the room drops down the screen…
+    drawCeilingAbove(); // …showing more ceiling above it
   }
   drawBackground();
   if (tall()) drawTallFloor();
@@ -2873,7 +3110,16 @@ function draw() {
   ctx.globalAlpha = 1;
   ctx.restore(); // end of the shaking part
 
-  if (state === "paused") dimBehindCard(); // (before the top bar, which stays bright while paused)
+  // The cards shown during a run (pause, game over, a level's results) keep the top bar bright:
+  // the run behind them is dimmed here, before the bar is drawn (and fades in with the card).
+  const runDim =
+    state === "paused" ? 1 : state === "over" ? overFade() : state === "cleared" && typeof clearedFade === "function" ? clearedFade() : 0;
+  if (runDim > 0) {
+    ctx.save();
+    ctx.globalAlpha = runDim;
+    dimBehindCard();
+    ctx.restore();
+  }
   if (state === "ready") drawStartScreen();
   else if (!onStartScreen()) drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, MUTE_BTN.y + (MUTE_BTN.h - 32) / 2); // (centred on the buttons)
   if (state === "running") drawPauseButton();
@@ -3052,7 +3298,7 @@ function cardRules(x, y, w) {
 // - The highlight is a ring just outside the button (focusRing): dark on the cream cards, cream on
 //   dark screens.
 // - ▶ marks the buttons that start playing (STARTS_PLAY). ‹ goes back, › goes on to a new screen.
-const PRIMARY = new Set(["again", "continue", "go", "next", "resume"]),
+const PRIMARY = new Set(["again", "continue", "go", "next", "resume", "tipgo"]),
   STARTS_PLAY = new Set(["again", "go", "replay", "resume"]),
   ON_ORANGE = "#2a1a0e"; // the letters on an orange button
 const ringInk = () => (state === "ready" || state === "howto" || state === "levels" ? PAPER : INK);
@@ -3135,7 +3381,7 @@ function drawModeSegment(b, on) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
-  const chosen = playMode === b.seg,
+  const chosen = (b.mode ? b.mode() : playMode) === b.seg, // (the start screen's mode, or How to play's)
     r = b.h / 2;
   if (chosen) {
     ctx.fillStyle = PAPER;
@@ -3301,41 +3547,100 @@ function drawRingButton(b, dim = false) {
   ctx.stroke();
 }
 
-// The pause screen: "Bookmarked!", as if a bookmark had been slipped in to keep your place. The
-// card sits below the top bar, which stays bright (the run behind is dimmed before the bar is
-// drawn: see draw). On the left, where your run's at; on the right, a big Resume, How to play, and
-// Quit on its own under a rule, quieter, saying where it goes. Sound is the top bar's button.
-// On a phone it's all one column.
-function pauseLayout() {
+// ---------- The card standards (the design canvas's "Modals standardized" page) ----------
+// Every card is the same library catalog card, built from the same parts in the same order:
+// a centred heading over the double red rule; a context line in italics (for Story Mode, the
+// story line: "Chapter 1 · Level 2 · Chasing the Cart"); the run's numbers in a row (drawStatRow);
+// one more line; the buttons; and a hint line at the very bottom. The ribbon hangs top right.
+// Cards shown during a run (pause, game over, level complete) sit under the top bar, which stays
+// bright (see draw: the run behind is dimmed before the bar is drawn).
+const MIDRUN_CARD = { wide: { y: 52, w: 432, h: 262 }, tall: { x: 16, y: 124, h: 486 } };
+// The hint line's words: for keys, for a controller, or for a touch screen.
+const hintFor = (keys, pad, touch) => (padUI() ? pad : HAS_KEYS ? keys : touch);
+// The story line, under a Story Mode card's heading.
+const storyLine = (lv) => `Chapter ${lv.chapter} · Level ${lv.num} · ${lv.name}`;
+// The run's numbers in a row, each over its label, split by thin red lines. items: [value, label],
+// the value a number or words, or "hearts" for the hearts left. (y: the numbers' baseline.)
+function drawStatRow(cx, y, items) {
+  const big = tall(),
+    colW = big ? 124 : 120,
+    x0 = cx - (items.length * colW) / 2;
+  items.forEach(([v, label], i) => {
+    const x = x0 + colW * (i + 0.5);
+    if (v === "hearts") {
+      const s = big ? 8 : 7,
+        gap = s * 2.6;
+      for (let k = 0; k < LIVES; k++) {
+        heartPath(x + (k - (LIVES - 1) / 2) * gap, y - s - 1, s);
+        ctx.fillStyle = k < lives ? RIBBON_RED : "rgba(58, 42, 30, 0.18)";
+        ctx.fill();
+      }
+    } else {
+      ctx.textAlign = "center";
+      ctx.fillStyle = INK;
+      ctx.font = `bold ${String(v).length > 5 ? (big ? 22 : 20) : big ? 28 : 26}px Georgia, serif`;
+      ctx.fillText(String(v), x, y);
+    }
+    ctx.textAlign = "center";
+    ctx.fillStyle = INK_SOFT;
+    ctx.font = `${big ? 13 : 12}px Georgia, serif`;
+    ctx.fillText(label, x, y + 17);
+    if (i > 0) {
+      ctx.fillStyle = "rgba(168, 56, 47, 0.3)";
+      ctx.fillRect(x0 + colW * i - 0.5, y - 26, 1, 48);
+    }
+  });
+}
+// The card's context line, in italics, under the rule.
+function cardSub(text, y) {
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK_SOFT;
+  ctx.font = `italic ${tall() ? 15 : 13}px Georgia, serif`;
+  ctx.fillText(text, W / 2, y);
+}
+// One more line, under the numbers.
+function cardLine(text, y, red = false) {
+  ctx.textAlign = "center";
+  ctx.fillStyle = red ? CARD_RED : INK_SOFT;
+  ctx.font = `bold ${tall() ? 15 : 14}px Georgia, serif`;
+  ctx.fillText(text, W / 2, y);
+}
+// A mid-run card's frame (where it goes in this layout).
+function midrunCard() {
   if (tall()) {
-    const card = { x: 16, y: 124, w: W - 32, h: 486 },
-      x = card.x + 24,
-      w = card.w - 48;
+    const t = MIDRUN_CARD.tall;
+    return { x: t.x, y: t.y, w: W - t.x * 2, h: t.h };
+  }
+  const m = MIDRUN_CARD.wide;
+  return { x: W / 2 - m.w / 2, y: m.y, w: m.w, h: m.h };
+}
+
+// The pause screen: "Bookmarked!", as if a bookmark had been slipped in to keep your place. Where
+// the run's at, then Resume (with How to play beside it), and Quit on its own under a rule,
+// quieter, saying where it goes. Sound is the top bar's button.
+function pauseLayout() {
+  const c = midrunCard();
+  if (tall()) {
+    const x = c.x + 24,
+      w = c.w - 48;
     return {
-      tall: true,
-      card,
-      info: { x, y: card.y, w },
-      resume: { x, y: card.y + 262, w, h: 56 },
-      howto: { x, y: card.y + 330, w, h: 48 },
-      ruleY: card.y + card.h - 68,
-      quit: { x, y: card.y + card.h - 58, w, h: 44 },
-      ribbonX: card.x + card.w - 56,
+      card: c,
+      resume: { x, y: c.y + 182, w, h: 56 },
+      howto: { x, y: c.y + 250, w, h: 50 },
+      ruleY: c.y + 322, // (Quit just under the buttons, not stranded at the bottom)
+      quit: { x: x + 20, y: c.y + 330, w: w - 40, h: 44 },
     };
   }
-  const card = { x: 136, y: 60, w: 528, h: 244 },
-    x = card.x + 300,
-    w = card.w - 300 - 24;
+  const rw = 170,
+    hw = 150,
+    gap = 16,
+    x0 = W / 2 - (rw + gap + hw) / 2;
   return {
-    tall: false,
-    card,
-    info: { x: card.x + 72, y: card.y, w: 210 },
-    divX: card.x + 288,
-    resume: { x, y: card.y + 26, w, h: 50 },
-    howto: { x, y: card.y + 86, w, h: 44 },
-    ruleY: card.y + 168,
-    quit: { x, y: card.y + 174, w, h: 32 },
-    hintY: card.y + card.h - 14,
-    ribbonX: card.x + 36,
+    card: c,
+    resume: { x: x0, y: c.y + 158, w: rw, h: 42 },
+    howto: { x: x0 + rw + gap, y: c.y + 157, w: hw, h: 44 },
+    ruleY: c.y + 212,
+    quit: { x: W / 2 - 120, y: c.y + 216, w: 240, h: 28 },
   };
 }
 // Its buttons, in MENU.paused's order (Resume, How to play, Quit). See makeButtons.
@@ -3351,46 +3656,25 @@ function drawPause() {
   const L = pauseLayout(),
     c = L.card,
     B = BUTTONS.paused,
-    on = (id) => B[selected.paused] && B[selected.paused].id === id;
+    on = (id) => B[selected.paused] && B[selected.paused].id === id,
+    big = tall();
   // (the run behind was dimmed before the top bar was drawn)
-  drawCard(c.x, c.y, c.w, c.h, null, false);
-  // the bookmark, tucked in over the top edge
-  const rx = L.ribbonX,
-    rw = 22,
-    rh = 52;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
-  ctx.fillRect(rx + 2, c.y - 8, rw, rh);
-  poly(CARD_RED, rx, c.y - 8, rx + rw, c.y - 8, rx + rw, c.y - 8 + rh, rx + rw / 2, c.y - 8 + rh * 0.8, rx, c.y - 8 + rh);
-  if (!L.tall) {
-    ctx.fillStyle = "rgba(58, 42, 30, 0.18)";
-    ctx.fillRect(L.divX, c.y + 24, 1, c.h - 48);
-  }
-  drawPauseInfo(L);
+  drawCard(c.x, c.y, c.w, c.h, "Bookmarked!");
+  const lv = story && story.level;
+  cardSub(lv ? storyLine(lv) : "Your run will wait right here.", c.y + (big ? 74 : 68));
+  drawStatRow(W / 2, c.y + (big ? 118 : 106), [
+    [pages, pages === 1 ? "page found" : "pages found"],
+    lv ? [`${Math.round(storyProgress() * 100)}%`, "of the level"] : [`${Math.floor(runDist * METERS_PER_PX)} m`, "distance"],
+    ["hearts", lives === 1 ? "heart left" : "hearts left"],
+  ]);
+  cardLine(lv ? "Your run will wait right here." : `Best: ${best} pages`, c.y + (big ? 162 : 144));
 
-  // Resume: the card's main action, a big orange box (see the button rules, at drawButton)
-  const r = L.resume;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-  roundRect(r.x + 2, r.y + 3, r.w, r.h, 10);
-  ctx.fillStyle = MAPLE;
-  roundRect(r.x, r.y, r.w, r.h, 10);
-  ctx.strokeStyle = GOLD;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  if (on("resume")) focusRing(r.x, r.y, r.w, r.h, 10, INK);
-  const keycap = HAS_KEYS && !padUI();
-  ctx.font = `bold ${L.tall ? 22 : 19}px Georgia, serif`;
-  const tw = ctx.measureText("Resume").width,
-    total = 16 + 10 + tw + (keycap ? 28 : 0),
-    tx = r.x + r.w / 2 - total / 2,
-    cy = r.y + r.h / 2;
-  poly(ON_ORANGE, tx + 2, cy - 7, tx + 14, cy, tx + 2, cy + 7);
-  ctx.textAlign = "left";
-  ctx.fillStyle = ON_ORANGE;
-  ctx.fillText("Resume", tx + 26, cy + 7);
-  if (keycap) {
-    // the key that does it, as a little paper keycap
-    const kx = tx + 26 + tw + 10,
-      ky = cy - 10;
+  // Resume, the card's main action (with its key, P, on a little paper keycap), and How to play
+  drawButton(B[0], on("resume"));
+  if (HAS_KEYS && !padUI()) {
+    const r = L.resume,
+      kx = r.x + r.w - 30,
+      ky = r.y + r.h / 2 - 10;
     ctx.fillStyle = "#b9a888";
     roundRect(kx, ky + 2, 20, 20, 4);
     ctx.fillStyle = "#fffaf0";
@@ -3400,17 +3684,15 @@ function drawPause() {
     ctx.font = "bold 11px Georgia, serif";
     ctx.fillText("P", kx + 10, ky + 14);
   }
-
-  // How to play: the same "?" pill as everywhere else
   drawHelpButton(B[1], on("howto"));
 
   // Quit: on its own under a rule, quieter, and it says where it goes
   const q = L.quit;
   ctx.fillStyle = "rgba(58, 42, 30, 0.18)";
-  ctx.fillRect(q.x, L.ruleY, q.w, 1);
+  ctx.fillRect(W / 2 - c.w * 0.3, L.ruleY, c.w * 0.6, 1);
   if (on("quit")) focusRing(q.x, q.y, q.w, q.h, 8, INK, 2);
   const quitText = story ? "Back to the chapters" : "Quit to the main menu";
-  ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
+  ctx.font = `bold ${big ? 16 : 14}px Georgia, serif`;
   const qw = ctx.measureText(quitText).width,
     qx = q.x + q.w / 2 - (14 + 8 + qw) / 2,
     qy = q.y + q.h / 2;
@@ -3436,107 +3718,10 @@ function drawPause() {
   ctx.fillStyle = CARD_RED;
   ctx.fillText(quitText, qx + 22, qy + 5);
 
-  // the keys (with a keyboard or a controller; on a touch screen there's nothing to say)
-  if (!L.tall && (HAS_KEYS || padUI())) {
-    ctx.textAlign = "center";
-    ctx.fillStyle = INK_SOFT;
-    ctx.font = "11px Georgia, serif";
-    ctx.fillText(
-      padUI() ? "▲ ▼ to choose · A to select · Start to resume" : "↑ ↓ to choose · Enter to select · P or Esc to resume",
-      c.x + c.w / 2,
-      L.hintY,
-    );
-  }
-}
-// The left side (the top, on a phone): PAUSED, Bookmarked!, and where your run's at.
-function drawPauseInfo(L) {
-  const { x, y, w } = L.info,
-    big = L.tall;
-  ctx.textAlign = "left";
-  ctx.fillStyle = CARD_RED;
-  ctx.font = "bold 10px Georgia, serif";
-  if ("letterSpacing" in ctx) ctx.letterSpacing = "3px";
-  ctx.fillText("PAUSED", x, y + (big ? 34 : 28));
-  if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
-  ctx.fillStyle = INK;
-  ctx.font = `bold ${big ? 30 : 26}px Georgia, serif`;
-  ctx.fillText("Bookmarked!", x, y + (big ? 66 : 56));
-  ctx.fillStyle = "#5c4a3a";
-  ctx.font = `italic ${big ? 15 : 13}px Georgia, serif`;
-  ctx.fillText("Your run will wait right here.", x, y + (big ? 90 : 76));
-  let ty = y + (big ? 104 : 90); // where the boxes start
-  const gap = big ? 8 : 6,
-    th = big ? 54 : 40,
-    tw = (w - gap) / 2;
-  if (story) {
-    // where you are in the story: the level, and how far through it
-    const bh = big ? 74 : 58;
-    pauseBox(x, ty, w, bh);
-    ctx.textAlign = "left";
-    ctx.fillStyle = INK_SOFT;
-    ctx.font = `bold ${big ? 10 : 9}px Georgia, serif`;
-    ctx.fillText(`CHAPTER ${story.level.chapter} · LEVEL ${story.level.num}`, x + 12, ty + (big ? 20 : 16));
-    ctx.fillStyle = INK;
-    ctx.font = `bold ${big ? 18 : 15}px Georgia, serif`;
-    ctx.fillText(story.level.name, x + 12, ty + (big ? 42 : 34));
-    const pct = Math.round(storyProgress() * 100),
-      barX = x + 12,
-      barW = w - 24 - 40,
-      barY = ty + bh - (big ? 20 : 15);
-    ctx.fillStyle = "rgba(58, 42, 30, 0.14)";
-    roundRect(barX, barY, barW, 8, 4);
-    ctx.fillStyle = GOLD;
-    roundRect(barX, barY, Math.max(8, (barW * pct) / 100), 8, 4);
-    ctx.textAlign = "right";
-    ctx.fillStyle = "#5c4a3a";
-    ctx.font = "bold 11px Georgia, serif";
-    ctx.fillText(pct + "%", x + w - 12, barY + 8);
-    ty += bh + gap;
-    pauseTile(x, ty, tw, th, String(pages), pages === 1 ? "page found" : "pages found", big);
-    pauseHearts(x + tw + gap, ty, tw, th, big);
-    return;
-  }
-  // Endless: pages, distance, hearts, and how far off your best
-  const m = Math.floor(runDist * METERS_PER_PX);
-  pauseTile(x, ty, tw, th, String(pages), pages === 1 ? "page" : "pages", big);
-  pauseTile(x + tw + gap, ty, tw, th, `${m} m`, "run so far", big);
-  ty += th + gap;
-  pauseHearts(x, ty, tw, th, big);
-  if (pages > best) pauseTile(x + tw + gap, ty, tw, th, "New best!", best ? `old best: ${best}` : "your first run", big, true);
-  else pauseTile(x + tw + gap, ty, tw, th, `${best - pages + 1} to go`, "to beat your best", big, true);
-}
-function pauseBox(x, y, w, h) {
-  ctx.fillStyle = "rgba(58, 42, 30, 0.06)";
-  roundRect(x, y, w, h, 7);
-  ctx.strokeStyle = "rgba(58, 42, 30, 0.12)";
-  ctx.lineWidth = 1;
-  roundRectPath(x, y, w, h, 7);
-  ctx.stroke();
-}
-// A box with a number (or a few words, if `small`) and what it means under it.
-function pauseTile(x, y, w, h, value, what, big, small = false) {
-  pauseBox(x, y, w, h);
-  ctx.textAlign = "center";
-  ctx.fillStyle = INK;
-  ctx.font = `bold ${small ? (big ? 17 : 14) : big ? 24 : 19}px Georgia, serif`;
-  ctx.fillText(value, x + w / 2, y + h / 2 + (big ? 3 : 2));
-  ctx.fillStyle = INK_SOFT;
-  ctx.font = `${big ? 12 : 10}px Georgia, serif`;
-  ctx.fillText(what, x + w / 2, y + h - (big ? 8 : 5));
-}
-function pauseHearts(x, y, w, h, big) {
-  pauseBox(x, y, w, h);
-  const s = big ? 8 : 6.5,
-    gap = s * 2.6;
-  for (let i = 0; i < LIVES; i++) {
-    heartPath(x + w / 2 + (i - (LIVES - 1) / 2) * gap, y + h / 2 - (big ? 5 : 4), s);
-    ctx.fillStyle = i < lives ? RIBBON_RED : "rgba(58, 42, 30, 0.18)";
-    ctx.fill();
-  }
-  ctx.textAlign = "center";
-  ctx.fillStyle = INK_SOFT;
-  ctx.font = `${big ? 12 : 10}px Georgia, serif`;
-  ctx.fillText(lives === 1 ? "heart left" : "hearts left", x + w / 2, y + h - (big ? 8 : 5));
+  hint(
+    hintFor("Tab or arrows to choose · Enter to select · P or Esc to resume", "▲ ▼ to choose · A to select · Start to resume", "Tap Resume to keep reading"),
+    c.y + c.h - (big ? 14 : 10),
+  );
 }
 
 // How to play: its own screen, opened from the start screen or the pause screen. Each section's
@@ -3557,12 +3742,24 @@ const padUI = () => pad.polling,
 const HOWTO_PAGES = [
   {
     name: "Goal",
-    tip: "Dash through the library and collect as many pages as you can!",
-    rows: () => [
-      { title: "Loose pages", how: "Every one you grab adds to your score.", pic: "run", items: iconPage, count: 3 },
-      { title: "Bookmarks", how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`, pic: "icon", icon: iconBookmarkPick },
-      { title: "Go the distance", how: "The farther you run, the trickier it gets.", pic: "run" },
-    ],
+    tipsTitle: "Objective", // (what All tips calls this section: see tipsItems)
+    // (Story Mode and Endless have different goals: see howtoMode. Same number of cards, so the screens don't change.)
+    tip: () =>
+      howtoMode === "story"
+        ? "Find Dewey's lost pages and reach the end of each level!"
+        : "Dash through the library and collect as many pages as you can!",
+    rows: () =>
+      howtoMode === "story"
+        ? [
+            { title: "Loose pages", how: "Each one you find counts toward the level's stars.", pic: "run", items: iconPage, count: 1 }, // (Story Mode's pages come one at a time)
+            { title: "Hidden bookmarks", how: "A few in every level, in hard-to-reach spots. Find them all!", pic: "icon", icon: iconBookmarkPick },
+            { title: "Reach the end", how: "Run all the way through to finish the level.", pic: "run" },
+          ]
+        : [
+            { title: "Loose pages", how: "Every one you grab adds to your score.", pic: "run", items: iconPage, count: 3 },
+            { title: "Bookmarks", how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`, pic: "icon", icon: iconBookmarkPick },
+            { title: "Go the distance", how: "The farther you run, the trickier it gets.", pic: "run" },
+          ],
   },
   {
     name: "Controls",
@@ -3599,7 +3796,13 @@ const HOWTO_PAGES = [
     name: "Hearts",
     tip: "Bumps hurt, but a little book tape fixes everything.",
     rows: () => [
-      { title: `You have ${LIVES} hearts`, how: `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages.`, pic: "row", item: iconHeart, count: LIVES },
+      {
+        title: `You have ${LIVES} hearts`,
+        how: howtoMode === "story" ? "Each bump costs a heart. Your pages are safe." : `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages.`,
+        pic: "row",
+        item: iconHeart,
+        count: LIVES,
+      },
       { title: "Book tape", how: "Shows up when you're hurt: grab it for +1 heart.", pic: "run", items: iconTape, count: 1 },
     ],
   },
@@ -3723,15 +3926,7 @@ function drawHowTo() {
     rows = page.rows().slice(scr.from, scr.to),
     now = performance.now();
 
-  // the section: its name and its one line (two on a phone, if it needs them)
-  ctx.textAlign = "center";
-  ctx.fillStyle = PAPER;
-  ctx.font = `bold ${tall() ? 28 : 22}px Georgia, serif`;
-  ctx.fillText(page.name, W / 2, L.nameY);
-  ctx.fillStyle = "#e8dcc0";
-  ctx.font = `${tall() ? 15 : 12}px Georgia, serif`;
-  const tipLines = wrapLines(typeof page.tip === "function" ? page.tip() : page.tip, W - 60);
-  tipLines.forEach((l, i) => ctx.fillText(l, W / 2, L.tipY + i * 19));
+  drawHowtoHeading(page.name, typeof page.tip === "function" ? page.tip() : page.tip);
 
   // the progress bar: one segment per section (done in gold, this one in cream). Tap to jump.
   const n = HOWTO_PAGES.length,
@@ -3745,9 +3940,46 @@ function drawHowTo() {
     howtoSegs.push({ x: x - gap / 2, y: L.segY - 10, w: L.segW + gap, h: 24 }); // (a bigger target than it looks)
   }
 
-  // the cards: side by side (wide) or stacked (tall), dealt in one after another
+  drawHowtoCards(rows, howtoDealAt, now);
+
+  drawButtons();
+  // where you are, and how to flip
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#c9bc9f";
+  ctx.font = `${tall() ? 14 : 12}px Georgia, serif`;
+  // (wide only: on a phone the progress bar shows where you are, and there's no room)
+  if (!tall()) {
+    ctx.font = "11px Georgia, serif";
+    ctx.fillText(
+      `Screen ${howtoScreen + 1} of ${HOWTO_SCREENS.length} · ` +
+        (padUI()
+          ? "◀ ▶ to flip · ▲ ▼ for the buttons · A to choose · B to close"
+          : touchUI
+            ? "swipe to flip · ✕ to close"
+            : "← → to flip · Tab for the buttons · T for all tips · Esc to close"),
+      W / 2,
+      BUTTON_Y.wide.howto + 56,
+    );
+  }
+}
+// How to play's heading (also Story Mode's pop-ups'): a name, and its one line under it (two on a
+// phone, if it needs them), in cream on the dark.
+function drawHowtoHeading(name, line) {
+  const L = HOWTO_LAYOUT[layout];
+  ctx.textAlign = "center";
+  ctx.fillStyle = PAPER;
+  ctx.font = `bold ${tall() ? 28 : 22}px Georgia, serif`;
+  ctx.fillText(name, W / 2, L.nameY);
+  ctx.fillStyle = "#e8dcc0";
+  ctx.font = `${tall() ? 15 : 12}px Georgia, serif`;
+  wrapLines(line, W - 60).forEach((l, i) => ctx.fillText(l, W / 2, L.tipY + i * 19));
+}
+// How to play's tip cards (also Story Mode's pop-ups'): side by side (wide) or stacked (tall),
+// dealt in one after another from dealAt (performance.now()).
+function drawHowtoCards(rows, dealAt, now) {
+  const L = HOWTO_LAYOUT[layout];
   rows.forEach((r, i) => {
-    const k = Math.min(1, Math.max(0, (now - howtoDealAt - i * 90) / 260)),
+    const k = Math.min(1, Math.max(0, (now - dealAt - i * 90) / 260)),
       ease = 1 - (1 - k) * (1 - k);
     if (k <= 0) return;
     let x, y, w, h;
@@ -3770,26 +4002,6 @@ function drawHowTo() {
     drawHowtoCard(r, -w / 2, -h / 2, w, h, now);
     ctx.restore();
   });
-
-  drawButtons();
-  // where you are, and how to flip
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#c9bc9f";
-  ctx.font = `${tall() ? 14 : 12}px Georgia, serif`;
-  // (wide only: on a phone the progress bar shows where you are, and there's no room)
-  if (!tall()) {
-    ctx.font = "11px Georgia, serif";
-    ctx.fillText(
-      `Screen ${howtoScreen + 1} of ${HOWTO_SCREENS.length} · ` +
-        (padUI()
-          ? "◀ ▶ to flip · ▲ ▼ for the buttons · A to choose · B to close"
-          : touchUI
-            ? "swipe to flip · ✕ to close"
-            : "← → to flip · Tab for the buttons · T for all tips · Esc to close"),
-      W / 2,
-      BUTTON_Y.wide.howto + 56,
-    );
-  }
 }
 
 // One card: cream paper, the picture, then the title and what to do.
@@ -3928,6 +4140,66 @@ function drawHowtoPic(r, x, y, w, h, now) {
       bx = x0 + (x1 - x0) * p,
       by = floorY - 4 * p * (1 - p) * (floorY - peak);
     book(bx, by, bk);
+  } else if (r.pic === "bounce") {
+    // a couch, and the book springing off its cushions along a tall arc: leaning back on the way
+    // up, a front flip at the top, then down past the end of the couch (as a couch bounce goes)
+    const ck = 0.72 * s, // the couch's size (smaller than life, so the bounce has room to look high)
+      sb = 0.5 * s, // and the book's
+      cw = 76 * ck,
+      ch = 16 * ck,
+      cx0 = x + w * 0.1,
+      top = floorY - ch; // the seat
+    ctx.fillStyle = "#2a747a";
+    roundRect(cx0 + 4 * ck, top - 13 * ck, cw - 8 * ck, 17 * ck, 5 * ck); // back
+    ctx.fillStyle = "#256a70";
+    roundRect(cx0 + 2 * ck, top + 5 * ck, cw - 4 * ck, ch - 7 * ck, 3 * ck); // base
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = "#3fa2a8"; // seat cushions
+      roundRect(cx0 + 6 * ck + i * ((cw - 12 * ck) / 3), top, (cw - 12 * ck) / 3 - 2 * ck, 7 * ck, 3 * ck);
+    }
+    ctx.fillStyle = "#2f8088";
+    roundRect(cx0 - 2 * ck, top - 5 * ck, 9 * ck, ch + 3 * ck, 4 * ck); // arms
+    roundRect(cx0 + cw - 7 * ck, top - 5 * ck, 9 * ck, ch + 3 * ck, 4 * ck);
+    const x0 = cx0 + 22 * ck,
+      x1 = x + w * 0.9,
+      peak = y + 26 * s; // (the feet at the top: the book's head near the top of the picture)
+    const mx = (x0 + x1) / 2 - (x1 - x0) * 0.08;
+    ctx.save();
+    ctx.strokeStyle = "rgba(168, 56, 47, 0.55)";
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4 * s, 4 * s]);
+    ctx.beginPath();
+    ctx.moveTo(x0, top);
+    ctx.quadraticCurveTo(mx, 2 * peak - (top + floorY) / 2, x1, floorY);
+    ctx.stroke();
+    ctx.restore();
+    const p = loop(2000),
+      q = 1 - p,
+      cy0 = 2 * peak - (top + floorY) / 2,
+      bx = q * q * x0 + 2 * q * p * mx + p * p * x1,
+      by = q * q * top + 2 * q * p * cy0 + p * p * floorY;
+    // the turn: leaning back, then a full turn forward around the top
+    const f = Math.min(1, Math.max(0, (p - 0.34) / 0.3)),
+      e = f < 0.5 ? 2 * f * f : 1 - 2 * (1 - f) * (1 - f),
+      lean = -0.32 * Math.min(1, p / 0.08);
+    if (p < 0.07) {
+      // a little "boing" off the cushions
+      ctx.strokeStyle = "rgba(63, 162, 168, 0.8)";
+      ctx.lineWidth = 1.5 * s;
+      for (const dx of [-10, 0, 10]) {
+        ctx.beginPath();
+        ctx.moveTo(x0 + dx * s, top - 4 * s);
+        ctx.lineTo(x0 + dx * 1.6 * s, top - 10 * s);
+        ctx.stroke();
+      }
+    }
+    ctx.save();
+    const midY = by - 25 * sb;
+    ctx.translate(bx, midY);
+    ctx.rotate(lean * (1 - e) + Math.PI * 2 * e);
+    ctx.translate(-bx, -midY);
+    book(bx, by, sb);
+    ctx.restore();
   } else if (r.pic === "duck") {
     if (r.around === "tunnel") {
       // a bookcase on posts, with a low gap to duck through
@@ -4036,8 +4308,11 @@ const tipsIndex = { open: false, focus: 0, items: [], card: null, close: null };
 function openTips() {
   buildHowtoScreens();
   tipsIndex.open = true;
-  // start on the first tip of the screen you were looking at
-  const first = tipsItems().findIndex((t) => t.screen === howtoScreen);
+  // start on the section you were reading
+  const items = tipsItems(),
+    page = HOWTO_SCREENS[howtoScreen] ? HOWTO_SCREENS[howtoScreen].page : -1;
+  let first = items.findIndex((t) => t.screen === howtoScreen);
+  if (first < 0) first = items.findIndex((t) => t.page === page);
   tipsIndex.focus = Math.max(0, first);
 }
 function closeTips() {
@@ -4049,23 +4324,23 @@ function pickTip(i) {
   tipsIndex.open = false;
   if (t) showHowtoScreen(t.screen);
 }
-// Every tip, in order: its section, its title, and which screen it's on.
+// All tips is a short contents list: one line per section (its tipsTitle, if it has one, else its
+// name), each opening that section's first screen.
 function tipsItems() {
   const list = [];
   HOWTO_SCREENS.forEach((scr, screen) => {
-    HOWTO_PAGES[scr.page]
-      .rows()
-      .slice(scr.from, scr.to)
-      .forEach((r) => list.push({ page: scr.page, title: r.title, screen }));
+    if (scr.from !== 0) return; // (a section's first screen only)
+    const p = HOWTO_PAGES[scr.page];
+    list.push({ page: scr.page, title: p.tipsTitle || p.name, screen });
   });
   return list;
 }
 function drawTipsIndex() {
   const t = tall(),
-    px = t ? 20 : 40,
-    py = t ? 24 : 12,
-    pw = W - px * 2,
-    ph = t ? 590 : 296;
+    pw = t ? 370 : 360,
+    px = W / 2 - pw / 2,
+    py = t ? 60 : 12,
+    ph = t ? 452 : 296;
   drawCard(px, py, pw, ph, "All tips", false);
   tipsIndex.card = { x: px, y: py, w: pw, h: ph };
   // ✕, back to the cards
@@ -4073,44 +4348,36 @@ function drawTipsIndex() {
   tipsIndex.close = { x: px + pw - cs - 10, y: py + 10, w: cs, h: cs };
   drawCloseButton(tipsIndex.close, false);
 
-  // the sections in a grid (four across on a wide screen, two on a phone), each with its tips
+  // the sections, one line each, like a book's contents (the one you were reading in red)
   const items = tipsItems(),
-    cols = t ? 2 : 4,
-    colW = (pw - 32) / cols,
-    step = t ? 24 : 16, // one tip's line (taller on a phone, easier to tap)
-    head = t ? 24 : 18; // the section's name
+    rowH = t ? 46 : 29,
+    x = px + 24,
+    w = pw - 48,
+    page = HOWTO_SCREENS[howtoScreen] ? HOWTO_SCREENS[howtoScreen].page : -1;
   tipsIndex.items = [];
-  let rowY = py + (t ? 70 : 64);
-  for (let first = 0; first < HOWTO_PAGES.length; first += cols) {
-    let tallest = 0;
-    for (let c = 0; c < cols && first + c < HOWTO_PAGES.length; c++) {
-      const page = first + c,
-        x = px + 16 + c * colW,
-        mine = items.map((it, i) => ({ ...it, i })).filter((it) => it.page === page);
-      tallest = Math.max(tallest, mine.length);
-      ctx.textAlign = "left";
-      ctx.fillStyle = CARD_RED;
-      ctx.font = `bold ${t ? 16 : 13}px Georgia, serif`;
-      ctx.fillText(HOWTO_PAGES[page].name, x + 6, rowY);
-      mine.forEach((it, j) => {
-        const r = { x: x, y: rowY + 6 + j * step, w: colW - 8, h: step };
-        tipsIndex.items[it.i] = r;
-        const here = it.screen === howtoScreen,
-          on = it.i === tipsIndex.focus;
-        if (on) {
-          ctx.fillStyle = "rgba(215, 163, 94, 0.35)";
-          roundRect(r.x, r.y, r.w, r.h, 5);
-        }
-        ctx.fillStyle = here ? CARD_RED : INK;
-        ctx.font = `${here ? "bold " : ""}${t ? 14 : 12}px Georgia, serif`; // (highlighting doesn't change it)
-        let label = it.title;
-        while (ctx.measureText(label).width > r.w - 14 && label.length > 4) label = label.slice(0, -2).trimEnd() + "…";
-        ctx.fillText(label, r.x + 6, r.y + r.h / 2 + (t ? 5 : 4));
-      });
+  items.forEach((it, i) => {
+    const r = { x, y: py + (t ? 76 : 64) + i * rowH, w, h: rowH - (t ? 6 : 3) };
+    tipsIndex.items[i] = r;
+    const here = it.page === page;
+    if (i === tipsIndex.focus) {
+      // (like a line in the chapter book's contents: a gold tint and a dark outline)
+      ctx.fillStyle = "rgba(215, 163, 94, 0.35)";
+      roundRect(r.x, r.y, r.w, r.h, 6);
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1.5;
+      roundRectPath(r.x, r.y, r.w, r.h, 6);
+      ctx.stroke();
     }
-    rowY += head + tallest * step + (t ? 18 : 12);
-  }
-  hint(touchUI ? "Tap a tip to jump to it" : "Arrow keys to choose · Enter to open · Esc to go back", py + ph - 12);
+    const cy = r.y + r.h / 2 + (t ? 6 : 5);
+    ctx.textAlign = "left";
+    ctx.fillStyle = here ? CARD_RED : INK;
+    ctx.font = `bold ${t ? 18 : 15}px Georgia, serif`;
+    ctx.fillText(it.title, r.x + 12, cy);
+    ctx.textAlign = "right";
+    ctx.fillStyle = here ? CARD_RED : INK_SOFT;
+    ctx.fillText("›", r.x + r.w - 12, cy);
+  });
+  hint(touchUI ? "Tap a section to jump to it" : "Arrow keys to choose · Enter to open · Esc to go back", py + ph - 12);
 }
 
 // The All tips button: three lines (a list), then the label. Quiet like the start screen's
@@ -4191,60 +4458,30 @@ function iconWetFloor(x, y) {
   poly("#1a1a1a", x - 4, y - 5, x, y + 4, x - 8, y + 4);
 }
 
+// How faded-in the game-over card is: 0 not yet (the crash is still playing) … 1 showing.
+const overFade = () => Math.min(1, Math.max(0, (overTime - deathMs) / OVER_FADE_MS));
 function drawGameOver() {
   // wait for the crash to finish, then fade in (rising slightly as it appears)
-  const fade = Math.min(1, Math.max(0, (overTime - deathMs) / OVER_FADE_MS));
+  const fade = overFade();
   if (fade === 0) return;
   ctx.save();
   ctx.globalAlpha = fade;
   ctx.translate(0, (1 - fade) * 12);
 
-  dimBehindCard();
-  const pw = 380,
-    px = W / 2 - pw / 2,
-    py = tall() ? 120 : 34,
-    ph = tall() ? 384 : 252;
-  drawCard(px, py, pw, ph);
-
-  // the run's numbers, like the lines of a due-date card
-  const sy = py + (tall() ? 122 : 100); // the numbers' baseline
-  ctx.textAlign = "center";
-  const stats = [
-    [pages, pages === 1 ? "page collected" : "pages collected"],
-    story
-      ? [`${Math.round(storyProgress() * 100)}%`, "of the way through " + levelName(story.level)]
-      : [`${Math.floor(runDist * METERS_PER_PX)} m`, "run"],
-  ];
-  stats.forEach(([n, label], i) => {
-    const x = W / 2 + (i === 0 ? -80 : 80);
-    ctx.fillStyle = INK;
-    ctx.font = "bold 30px Georgia, serif";
-    ctx.fillText(String(n), x, sy);
-    ctx.fillStyle = INK_SOFT;
-    ctx.font = "13px Georgia, serif";
-    ctx.fillText(label, x, sy + 18);
-  });
-  ctx.fillStyle = "rgba(168, 56, 47, 0.3)"; // a line between them
-  ctx.fillRect(W / 2 - 0.5, sy - 26, 1, 48);
-  cardRules(px, sy + 26, pw);
-  ctx.fillStyle = newBest && best > 0 ? CARD_RED : INK_SOFT;
-  ctx.font = "bold 15px Georgia, serif";
-  ctx.fillText(
-    story
-      ? `${chapterLevelName(story.level)} · ${story.level.name}`
-      : newBest && best > 0 ? "★ New best! ★" : `Best: ${best} pages`,
-    W / 2,
-    sy + 48,
-  );
-
-  // "OVERDUE", rubber-stamped across the top of the card: it slams down as the card appears
-  const sp = Math.min(1, Math.max(0, (overTime - deathMs - 120) / 220));
+  // (the run behind was dimmed before the top bar was drawn)
+  const c = midrunCard(),
+    big = tall(),
+    lv = story && story.level;
+  drawCard(c.x, c.y, c.w, c.h);
+  // the stamp is the card's title: "OVERDUE", slammed down as the card appears (then the rule)
+  const sp = Math.min(1, Math.max(0, (overTime - deathMs - 120) / 220)),
+    stampY = c.y + (big ? 50 : 42);
   if (sp > 0) {
     const scale = 1 + (1 - sp) * (1 - sp) * 0.9;
     ctx.save();
     ctx.globalAlpha = fade * Math.min(1, sp * 2) * 0.92;
-    ctx.translate(W / 2, py + (tall() ? 52 : 44));
-    ctx.rotate(-0.07);
+    ctx.translate(W / 2, stampY);
+    ctx.rotate(-0.05);
     ctx.scale(scale, scale);
     ctx.strokeStyle = CARD_RED;
     ctx.lineWidth = 3;
@@ -4258,13 +4495,24 @@ function drawGameOver() {
     ctx.fillText("OVERDUE", 0, 2);
     ctx.restore();
   }
+  cardRules(c.x, stampY + 30, c.w);
+  cardSub(lv ? storyLine(lv) : "Out of hearts! Your run has ended.", stampY + 52);
+  drawStatRow(W / 2, stampY + (big ? 98 : 88), [
+    [pages, pages === 1 ? "page found" : "pages found"],
+    lv ? [`${Math.round(storyProgress() * 100)}%`, "of the level"] : [`${Math.floor(runDist * METERS_PER_PX)} m`, "distance"],
+  ]);
+  const beat = !lv && newBest && best > 0;
+  cardLine(lv ? "So close! Try it again." : beat ? "★ New best! ★" : `Best: ${best} pages`, stampY + (big ? 146 : 130), beat);
 
   drawButtons();
+  const where = lv ? "chapters" : "menu";
   hint(
-    tall()
-      ? story ? "Chapters goes back to the chapter book" : "Main menu goes back to the start screen"
-      : "Tab or ← → to choose · Enter to select · Esc for the menu",
-    py + ph - 14,
+    hintFor(
+      `Tab or ← → to choose · Enter to select · Esc for the ${where}`,
+      `◀ ▶ to choose · A to select · B for the ${where}`,
+      lv ? "Chapters goes back to the chapter book" : "Main menu goes back to the start screen",
+    ),
+    c.y + c.h - (big ? 14 : 10),
   );
   ctx.restore();
 }
@@ -4551,42 +4799,69 @@ function drawPlatform(o) {
   if (o.kind === "cart") drawCart(o);
   else if (o.kind === "bench") drawBench(o);
   else if (o.kind === "chair") drawReadingChair(o);
+  else if (o.kind === "couch") drawCouch(o);
   else drawReadingTable(o);
 }
 
-// A steel book cart (so it stands out from the wooden shelves behind): a flat top shelf to land on,
-// books on the lower shelf, wheels.
+// A long, low couch from the children's wing: a back behind, three plump seat cushions to run
+// along, rounded arms at the ends and a throw pillow.
+function drawCouch(o) {
+  const { x, w } = o,
+    seg = (w - 28) / 3,
+    // just bounced on: the seat squishes down, then springs back
+    sq = o.squishAt != null ? Math.max(0, 1 - (runTime - o.squishAt) / 260) : 0,
+    y = o.y + Math.sin(sq * Math.PI) * 5;
+  ctx.fillStyle = "#2a747a"; // the back (behind you)
+  roundRect(x + 10, y - 30, w - 20, 38, 12);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = "#3a959c"; // back cushions
+    roundRect(x + 16 + i * seg, y - 24, seg - 6, 26, 9);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+    roundRect(x + 22 + i * seg, y - 20, seg - 18, 4, 2);
+  }
+  ctx.fillStyle = "#f39c4a"; // a throw pillow
+  roundRect(x + 22, y - 18, 26, 20, 7);
+  ctx.fillStyle = "#256a70"; // the base
+  roundRect(x + 2, y + 12, w - 4, FLOOR - 8 - y - 12, 6);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = "#3fa2a8"; // the seat cushions (where you run)
+    roundRect(x + 14 + i * seg, y, seg - 4, 16, 6);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+    roundRect(x + 19 + i * seg, y + 2, seg - 14, 3, 2);
+  }
+  for (const ax of [x - 4, x + w - 22]) {
+    ctx.fillStyle = "#2f8088"; // rounded arms
+    roundRect(ax, y - 12, 26, FLOOR - 8 - (y - 12), 11);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+    roundRect(ax + 5, y - 10, 16, 4, 2);
+  }
+  for (const fx of [x + 14, x + w / 2 - 4, x + w - 22]) R(fx, FLOOR - 8, 8, 8, "#4a2c17"); // little feet
+}
+
+// A black two-shelf book cart, like the ones in the picture books: thin black uprights, black
+// shelves, books standing on the lower shelf (packed right up under the top one, so it reads
+// clearly against the bookcases behind), small black wheels. The top shelf is kept clear: it's
+// what you land on and run along.
 function drawCart(o) {
-  const { x, y, w, h } = o;
-  const shelf = FLOOR - 24; // top of the lower shelf
-  R(x + 6, y + 9, w - 12, shelf - y - 9, "#353c46"); // a solid steel back, so the shelves behind don't show through
-  R(x + 6, y + 9, w - 12, 3, "rgba(0, 0, 0, 0.3)"); // shadow under the top shelf
-  R(x + 6, y, 8, FLOOR - 14 - y, "#4f5966"); // uprights
-  R(x + w - 14, y, 8, FLOOR - 14 - y, "#4f5966");
-  R(x + 8, y, 2, FLOOR - 14 - y, "rgba(255, 255, 255, 0.25)");
-  R(x + w - 12, y, 2, FLOOR - 14 - y, "rgba(255, 255, 255, 0.25)");
-  // books standing on the lower shelf
-  for (let bx = x + 16, i = 0; bx < x + w - 22; i++) {
-    const bw = 7 + (hash(i, o.seed) * 6) | 0,
-      bh = 20 + hash(i + 3, o.seed) * 14;
+  const { x, y, w } = o;
+  const shelf = FLOOR - 16; // top of the lower shelf
+  // books standing on the lower shelf, all different heights, up to just under the top shelf
+  for (let bx = x + 8, i = 0; bx < x + w - 12; i++) {
+    const bw = 7 + ((hash(i, o.seed) * 6) | 0),
+      bh = shelf - y - 12 - hash(i + 3, o.seed) * 16;
     R(bx, shelf - bh, bw, bh, SPINES[(hash(i + 7, o.seed) * SPINES.length) | 0]);
     R(bx + 1, shelf - bh + 3, bw - 2, 1.5, "rgba(255, 255, 255, 0.35)");
     bx += bw + 1;
   }
-  R(x + 4, shelf, w - 8, 7, "#7d8794"); // lower shelf
-  R(x + 4, shelf + 7, w - 8, 2, "#3f4752");
-  for (const wx of [x + 20, x + w - 20]) {
-    oval(wx, FLOOR - 7, 7, 7, "#2b2b30"); // wheels
-    oval(wx, FLOOR - 7, 2.5, 2.5, "#9aa0aa");
+  R(x, shelf, w, 5, "#1f1f22"); // the lower shelf
+  // the uprights at each end (and one in the middle, on a cart this long)
+  for (const ux of [x, x + w / 2 - 2, x + w - 5]) R(ux, y, 5, FLOOR - 7 - y, "#2a2a2e");
+  for (const wx of [x + 8, x + w / 2, x + w - 8]) {
+    oval(wx, FLOOR - 5, 5, 5, "#111"); // wheels
+    oval(wx, FLOOR - 5, 1.6, 1.6, "#555");
   }
-  R(x, y, w, 9, "#9aa4b1"); // the top shelf (where you land)
-  R(x, y + 9, w, 2, "#3f4752");
-  R(x, y, w, 2, "rgba(255, 255, 255, 0.45)");
-  R(x + w / 2 - 18, y + 2, 36, 6, "#f2c230"); // a little "RETURNS" label
-  ctx.fillStyle = "#3a2a10";
-  ctx.font = "bold 5px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("RETURNS", x + w / 2, y + 7);
+  R(x - 2, y, w + 4, 6, "#1f1f22"); // the top shelf (where you land)
+  R(x - 2, y, w + 4, 1.5, "rgba(255, 255, 255, 0.18)");
 }
 
 // A long padded reading bench with button tufting, on wooden legs.
@@ -5217,6 +5492,14 @@ function drawPlayer() {
     ctx.fillStyle = "#7fb8e0";
     roundRect(bx, barY, Math.max(3, bw * k), 4, 2);
   } else {
+    const spin = bounceSpin(); // (bouncing off a couch: the lean back, then the flip)
+    if (spin) {
+      const cx = px + pw / 2,
+        cy = by + ph / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(spin);
+      ctx.translate(-cx, -cy);
+    }
     drawCharacter(CHARACTERS[charIndex], px, by, pw, ph, look);
     ctx.restore(); // (the run lean / squash)
   }
@@ -6154,18 +6437,18 @@ const iconFlyerOf = (kind) => (x, y) =>
 function iconPage(x, y) {
   drawPage(x - 9, y - 11, 18, 23, -0.12);
 }
+// The book cart, small (How to play's pictures): black, like the game's carts.
 function iconCart(x, y) {
-  R(x - 12, y - 6, 24, 10, "#353c46"); // steel back
-  R(x - 14, y - 10, 28, 4, "#9aa4b1"); // top shelf
-  R(x - 13, y - 10, 3, 16, "#4f5966");
-  R(x + 10, y - 10, 3, 16, "#4f5966");
-  R(x - 9, y - 4, 4, 8, SPINES[0]);
-  R(x - 4, y - 6, 4, 10, SPINES[1]);
-  R(x + 1, y - 3, 4, 7, SPINES[2]);
-  R(x + 6, y - 5, 3, 9, SPINES[4]);
-  R(x - 14, y + 4, 28, 3, "#7d8794"); // lower shelf
-  oval(x - 9, y + 10, 3, 3, "#2b2b30");
-  oval(x + 9, y + 10, 3, 3, "#2b2b30");
+  R(x - 9, y - 5, 4, 9, SPINES[0]); // books on the lower shelf
+  R(x - 4, y - 7, 4, 11, SPINES[1]);
+  R(x + 1, y - 4, 4, 8, SPINES[2]);
+  R(x + 6, y - 6, 3, 10, SPINES[4]);
+  R(x - 14, y + 4, 28, 3, "#1f1f22"); // lower shelf
+  R(x - 14, y - 10, 3, 18, "#2a2a2e"); // uprights
+  R(x + 11, y - 10, 3, 18, "#2a2a2e");
+  R(x - 15, y - 10, 30, 3, "#1f1f22"); // top shelf
+  oval(x - 10, y + 10, 2.6, 2.6, "#111");
+  oval(x + 10, y + 10, 2.6, 2.6, "#111");
 }
 function iconBookmark(x, y) {
   drawBookmark(x - 7, y - 13, 14, 26, RIBBON_YELLOW);
@@ -6262,8 +6545,8 @@ document.addEventListener("keydown", (e) => {
     }
     return;
   }
-  // Counting down: wait for "Go!" (M still mutes)
-  if (state === "countdown") {
+  // Counting down: wait for "Go!" (M still mutes). (Also a level's first look at its scene.)
+  if (state === "countdown" || state === "preview") {
     if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault(); // (don't scroll the page)
     if (e.code === "KeyM") toggleMute();
     return;
