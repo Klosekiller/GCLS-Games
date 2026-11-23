@@ -35,6 +35,13 @@ const progress = (() => {
 function saveProgress() {
   safeSet(STORY_KEY, JSON.stringify(progress));
 }
+// Settings' Reset progress: back to a fresh start (only the first level open, no stars or bookmarks)
+function resetStoryProgress() {
+  progress.unlocked = 0;
+  progress.stars = {};
+  progress.bookmarks = {};
+  saveProgress();
+}
 
 // ---------- The levels ----------
 // Each level is a run through a fixed series of scenes, start to finish ([draw, width] each; the
@@ -816,7 +823,7 @@ function drawContentsLine(b, on) {
   let x = b.x;
   if (lockedShake && lockedShake.i === i) {
     const t = runTime - lockedShake.at;
-    if (t < 350) x += Math.sin(t * 0.09) * 5 * (1 - t / 350);
+    if (t < 350) x += reduceMotion() ? 0 : Math.sin(t * 0.09) * 5 * (1 - t / 350);
     else lockedShake = null;
   }
   if (on) {
@@ -939,15 +946,19 @@ function padlock(cx, cy, s, color) {
   roundRect(cx - 8 * s, cy - 3 * s, 16 * s, 12 * s, 2.5 * s);
 }
 // ---------- During a level ----------
-// The score bar's right half: the level, and a bar for how far through it the book is.
-function drawStoryProgress(x, sy) {
+// The score bar's right half: the level, and a bar for how far through it the book is. The bar
+// is w wide; when that's narrow (beside the Controls button, with a keyboard), the level's name
+// gives its room to the progress bar (it's on the pause card, and shown as the level starts).
+function drawStoryProgress(x, sy, w) {
+  const named = w >= 300;
   ctx.textAlign = "left";
   ctx.fillStyle = GOLD;
   ctx.font = "bold 16px Georgia, serif";
-  ctx.fillText(levelShortName(story.level), x + 100, sy + 22); // (chapter-level, as "1-2")
+  if (named) ctx.fillText(levelShortName(story.level), x + 100, sy + 22); // (chapter-level, as "1-2")
   const marks = story.level.bookmarks ? story.level.bookmarks.length : 0,
-    bx = x + 146,
-    bw = marks ? 186 - marks * 10 - 8 : 186, // (room at the end for the bookmark slots)
+    bx = x + (named ? 146 : 100),
+    full = Math.max(40, w - (bx - x) - 26), // (the bar's length: what's left, less the flag at its end)
+    bw = marks ? full - marks * 10 - 8 : full, // (room at the end for the bookmark slots)
     by = sy + 12;
   ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
   roundRect(bx, by, bw, 8, 4);

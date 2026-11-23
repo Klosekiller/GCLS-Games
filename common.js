@@ -29,6 +29,7 @@ const soundSettings = {
   softStart: false, // fade each note in, so it doesn't click (gentler)
   onMute: null, // called with true/false whenever sound is muted or unmuted
   startMuted: false, // true: sound is always off when the game loads, until the player turns it on
+  effectsOff: false, // true: tone() is silent (a game's own setting for its sound effects)
 };
 
 // Load this game's saved mute setting, set its defaults and hook up its "Sound: on" button.
@@ -73,7 +74,7 @@ for (const ev of ["touchend", "pointerup", "click", "keydown"]) {
 
 // Play a short tone that slides from one pitch to another and fades out.
 function tone(freqStart, freqEnd, duration, type = soundSettings.type, volume = soundSettings.volume, delay = 0) {
-  if (muted) return;
+  if (muted || soundSettings.effectsOff) return;
   try {
     const a = getAudio();
     const t = a.currentTime + delay;

@@ -66,7 +66,6 @@ const POWERS = {
 const MAGNET_RANGE = 280; // px ahead of the book that the magnet reaches
 const MAGNET_PULL = 0.75; // how fast pages fly to the book (px per ms)
 const SPEED_BOOST = 1.6; // speed reading's speed, times normal
-const METERS_PER_PX = 0.02; // for showing the distance run
 const LIVES = 3; // hearts per run
 const HURT_MS = 1200; // after a bump the player blinks and can't be hit again for this long
 const START_DRIFT = 0.12; // how fast the library drifts by on the start screen (px per ms)
@@ -241,7 +240,7 @@ let pickups = []; // loose pages and the odd bookmark: { kind, x, y, w, h, color
 let particles = [];
 let popups = [];
 let plusOnes = []; // the faint "+1" that floats up from each page picked up: { x, y, text, life }
-let speed, pages, runDist, nextSpawn, state, runTime; // pages collected, px run this run
+let speed, pages, nextSpawn, state, runTime; // pages collected
 let upcoming = "stack"; // what turns up next (picked ahead of time: see Spacing)
 let distance = 0; // total scrolled distance, drives the background
 let duckHeld = false; // is the duck key / touch held?
@@ -682,7 +681,7 @@ function musicDuck() {
 
 // Called every frame: picks the mood from what's on screen, and schedules the next few notes.
 function updateMusic() {
-  if (!musicUnlocked || (muted && !music)) return; // no audio until sound is turned on
+  if (!musicUnlocked || ((muted || !settings.music) && !music)) return; // no audio until sound (and music) is on
   const mode =
     state === "over"
       ? "over"
@@ -712,7 +711,7 @@ function updateMusic() {
     ); // muffled when paused
     musicMode = mode;
   }
-  const level = muted
+  const level = muted || !settings.music // (Settings' Music switch)
     ? 0
     : mode === "menu"
       ? MUSIC_VOLUME * 0.75
@@ -768,7 +767,8 @@ function drawKeycap(x, y, label) {
 // It shows on every screen; on the start screen, tapping it opens the Characters screen.
 // (Its position, and the score bar's, are set by the layout.)
 let PROFILE = { x: 0, y: 12, w: 112, h: 32 };
-let SCORE = { x: 0, y: 12 }; // the pages / best / distance bar
+let SCORE = { x: 0, y: 12 }; // the pages / best bar's row (its x and width: see scoreBarRoom)
+const SCORE_W = 358; // the score bar at its widest (Story Mode's), when there's room for it
 
 function reset() {
   player.x = PLAYER_X; // (the end of a story level has it run on to the goal, off its spot)
@@ -789,7 +789,6 @@ function reset() {
   power = null;
   powerWait = POWER_FIRST_MS;
   pages = 0;
-  runDist = 0;
   runTime = 0;
   nextSpawn = 600;
   upcoming = "stack";
@@ -1979,7 +1978,6 @@ function update(dt) {
   const wantBoost = power && power.type === "speed" ? SPEED_BOOST : 1;
   boost += (wantBoost - boost) * Math.min(1, dt / 250); // eases up and back down
   speed = baseSpeed * boost;
-  runDist += speed * dt;
   distance += speed * dt;
   if (story) storyCheckEnd(); // reached the end of the level's library?
   if (story) storyWatchTips(); // (something new just ahead that the level explains: see storyWatchTips)
@@ -2197,6 +2195,7 @@ const selected = {
   howto: 0,
   over: 0,
   chars: 0,
+  settings: 0,
   levels: 0,
   cleared: 0,
   tip: 0,
@@ -2369,6 +2368,18 @@ function makeButtons() {
   }
   // the pause screen: Resume, How to play and Quit in their places on its card (see drawPause)
   BUTTONS.paused = pauseButtons();
+  // Settings: the gear in the start screen's top-left corner (Sound moves to the bottom right
+  // there: see soundRect), and the Settings card's own buttons
+  BUTTONS.ready.push({
+    id: "settings",
+    label: "Settings",
+    gear: true,
+    x: MUTE_BTN.x,
+    y: MUTE_BTN.y,
+    w: HAS_KEYS ? 112 : MUTE_BTN.h,
+    h: MUTE_BTN.h,
+  });
+  BUTTONS.settings = settingsButtons();
   // How to play: Back and Next at the bottom, either side of where you are; ✕ in the top right
   {
     const y = BUTTON_Y[layout].howto;
@@ -2466,7 +2477,7 @@ let lastTap = { x: 0, y: 0, at: -Infinity }; // where the last tap or click was 
 // How far the Story button is shaken right now (a quick, dying wobble)
 function lockShake() {
   const age = performance.now() - lockShakeAt;
-  if (age > LOCK_SHAKE_MS) return 0;
+  if (age > LOCK_SHAKE_MS || reduceMotion()) return 0;
   return Math.sin(age * 0.09) * 4 * (1 - age / LOCK_SHAKE_MS);
 }
 function tryLockedStory() {
@@ -2494,6 +2505,188 @@ function setMode(m) {
   playMode = m;
   if (!storyLocked()) safeSet("deweydash-mode", m);
 }
+
+// ---------- Settings (the start screen's gear) ----------
+// Music and Sound effects switch on and off separately (the Sound button still turns all sound
+// on and off); Reduce motion calms the shakes, blinks and flashes; Reset progress clears what's
+// saved, after a second press to confirm. The switches are remembered between visits.
+const settings = {
+  music: safeGet("deweydash-music") !== "0",
+  effects: safeGet("deweydash-effects") !== "0",
+  // (until it's been set here, Reduce motion follows the device's own setting)
+  motion:
+    safeGet("deweydash-reduce-motion") === null
+      ? !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      : safeGet("deweydash-reduce-motion") === "1",
+};
+const SETTING_KEYS = { music: "deweydash-music", effects: "deweydash-effects", motion: "deweydash-reduce-motion" };
+soundSettings.effectsOff = !settings.effects; // (tone, in common.js, checks it)
+const reduceMotion = () => settings.motion;
+function toggleSetting(k) {
+  if (!(k in settings)) return;
+  settings[k] = !settings[k];
+  safeSet(SETTING_KEYS[k], settings[k] ? "1" : "0");
+  if (k === "effects") soundSettings.effectsOff = !settings.effects;
+}
+// Reset progress: the first press arms it (the button turns red and asks again), a second press
+// within a few seconds erases. (Two presses rather than a hold, so it works the same with a
+// mouse, a finger, the keys or a controller.)
+const RESET_CONFIRM_MS = 3500;
+let resetArmedAt = -Infinity,
+  resetDoneAt = -Infinity; // (shows "Progress reset" for a moment)
+function pressReset() {
+  const now = performance.now();
+  if (now - resetArmedAt > RESET_CONFIRM_MS) {
+    resetArmedAt = now;
+    return;
+  }
+  resetArmedAt = -Infinity;
+  resetDoneAt = now;
+  // the best score, Story Mode's levels, stars and bookmarks, the chosen book, and the mode
+  best = 0;
+  safeSet("runner-best-pages", "0");
+  charIndex = 0;
+  safeSet("runner-character", CHARACTERS[0].id);
+  if (!storyLocked()) setMode("story");
+  if (typeof resetStoryProgress === "function") resetStoryProgress();
+}
+
+// The Sound button: top left (MUTE_BTN), except on the start screen itself, where Settings has
+// that corner and Sound sits bottom right.
+function soundRect() {
+  if (state !== "ready") return MUTE_BTN;
+  return { x: W - 12 - MUTE_BTN.w, y: H + TOP - 12 - MUTE_BTN.h, w: MUTE_BTN.w, h: MUTE_BTN.h };
+}
+
+// The gear: a pill saying "Settings" with a keyboard, a circle on a touch screen (like Sound).
+function drawGearButton(b, on) {
+  drawRingButton(b);
+  if (on) focusRing(b.x, b.y, b.w, b.h, b.h / 2, PAPER, 4);
+  const cy = b.y + b.h / 2;
+  drawGear(HAS_KEYS ? b.x + 21 : b.x + b.w / 2, cy, HAS_KEYS ? 8.5 : b.h * 0.24, GOLD);
+  if (HAS_KEYS) {
+    ctx.font = "14px Georgia, serif";
+    ctx.textAlign = "left";
+    ctx.fillStyle = PAPER;
+    ctx.fillText("Settings", b.x + 38, cy + 5);
+  }
+}
+function drawGear(x, y, r, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = color;
+  for (let i = 0; i < 8; i++) {
+    ctx.save();
+    ctx.rotate((i * Math.PI) / 4);
+    roundRect(-r * 0.22, -r * 1.15, r * 0.44, r * 0.6, r * 0.08); // a tooth
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.82, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#1c140f"; // the hole in the middle (the button's dark)
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.34, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// The Settings card: three switches, Reset progress, and Back.
+const SETTING_ROWS = [
+  ["music", "Music", "The background tunes"],
+  ["effects", "Sound effects", "Jumps, pages, bumps and buttons"],
+  ["motion", "Reduce motion", "Fewer shakes, blinks and flashes"],
+];
+function settingsLayout() {
+  const big = tall(),
+    w = big ? W - 32 : 440,
+    h = big ? 470 : 296,
+    x = W / 2 - w / 2,
+    y = big ? 70 : 12,
+    rowH = big ? 62 : 44,
+    top = y + (big ? 96 : 80), // the first row's middle
+    tw = big ? 96 : 88, // a switch
+    th = big ? 38 : 30;
+  return {
+    x,
+    y,
+    w,
+    h,
+    rows: SETTING_ROWS.map(([k], i) => ({ k, x: x + w - 28 - tw, y: top + i * rowH - th / 2, w: tw, h: th })),
+    reset: { x: x + 28, y: top + 3 * rowH - th / 2 + (big ? 4 : -4), w: w - 56, h: th },
+    back: { x: W / 2 - 70, y: y + h - (big ? 66 : 46), w: 140, h: big ? 46 : 34 },
+  };
+}
+function settingsButtons() {
+  const L = settingsLayout();
+  return [
+    ...L.rows.map((r) => ({ id: "set-" + r.k, toggle: r.k, x: r.x, y: r.y, w: r.w, h: r.h })),
+    { id: "set-reset", label: "Reset progress", ...L.reset },
+    { id: "settingsBack", label: "Back", ...L.back },
+  ];
+}
+function drawSettings() {
+  dimBehindCard();
+  const L = settingsLayout(),
+    big = tall();
+  drawCard(L.x, L.y, L.w, L.h, "Settings");
+  BUTTONS.settings.forEach((b, i) => {
+    const on = i === selected.settings;
+    if (b.toggle) {
+      const [, name, about] = SETTING_ROWS.find((r) => r[0] === b.toggle),
+        cy = b.y + b.h / 2;
+      ctx.textAlign = "left";
+      ctx.fillStyle = INK;
+      ctx.font = `bold ${big ? 18 : 16}px Georgia, serif`;
+      ctx.fillText(name, L.x + 28, cy - 2);
+      ctx.fillStyle = INK_SOFT;
+      ctx.font = `${big ? 13 : 12}px Georgia, serif`;
+      ctx.fillText(about, L.x + 28, cy + (big ? 16 : 13));
+      drawSwitch(b, settings[b.toggle], on);
+    } else if (b.id === "set-reset") drawResetButton(b, on);
+    else drawButton(b, on);
+  });
+  // with all sound off, the Music and Sound effects switches won't be heard: say so
+  if (muted) {
+    const r = BUTTONS.settings.find((b) => b.id === "set-reset"),
+      k = BUTTONS.settings.find((b) => b.id === "settingsBack");
+    hint("Sound is off: the speaker button turns it on.", (r.y + r.h + k.y) / 2 + 4);
+  }
+}
+// An on/off switch: green with the knob right when on, pale with the knob left when off.
+function drawSwitch(b, value, on) {
+  const r = b.h / 2,
+    k = b.h - 6;
+  ctx.fillStyle = value ? "#3f6b3a" : "rgba(58, 42, 30, 0.18)";
+  roundRect(b.x, b.y, b.w, b.h, r);
+  ctx.fillStyle = "#fffaf0";
+  roundRect(value ? b.x + b.w - 3 - k : b.x + 3, b.y + 3, k, k, k / 2);
+  ctx.font = `bold ${tall() ? 15 : 13}px Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.fillStyle = value ? "#fffaf0" : INK;
+  const tx = value ? b.x + (b.w - k - 3) / 2 : b.x + 3 + k + (b.w - k - 3) / 2;
+  ctx.fillText(value ? "On" : "Off", tx, b.y + b.h / 2 + 5);
+  if (on) focusRing(b.x, b.y, b.w, b.h, r, INK, 4);
+}
+function drawResetButton(b, on) {
+  const now = performance.now(),
+    armed = now - resetArmedAt < RESET_CONFIRM_MS,
+    done = now - resetDoneAt < 2500;
+  ctx.fillStyle = armed ? CARD_RED : "rgba(168, 56, 47, 0.08)";
+  roundRect(b.x, b.y, b.w, b.h, 8);
+  ctx.strokeStyle = CARD_RED;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.font = "bold 14px Georgia, serif";
+  ctx.fillStyle = armed ? "#fffaf0" : CARD_RED;
+  ctx.fillText(
+    done ? "Progress reset ✓" : armed ? "Press again to erase best, stars & bookmarks" : "Reset progress",
+    b.x + b.w / 2,
+    b.y + b.h / 2 + 5,
+  );
+  if (on) focusRing(b.x, b.y, b.w, b.h, 8, INK, 4);
+}
 const isMenu = () => state in BUTTONS;
 // Highlight button i on a menu screen, with a tick if that's a different button.
 function highlight(screen, i) {
@@ -2510,6 +2703,7 @@ function focusTip(i) {
 // Is the start screen (or a screen opened from it) showing? Then there's no score bar.
 const onStartScreen = () =>
   state === "ready" ||
+  state === "settings" ||
   state === "chars" ||
   state === "levels" ||
   (state === "howto" && howtoFrom === "ready");
@@ -2680,6 +2874,26 @@ function pause() {
   selected.paused = 0;
 }
 
+// C (or the top bar's controls button): a quick look at the controls during a run. It pauses
+// and opens How to play at its Controls page; C again closes it and the run carries on. (Back
+// goes to the pause card, as usual.) Only during a run: elsewhere C does nothing.
+let quickControls = false; // is How to play open from C? (choose("howto") clears it)
+function openControls() {
+  if (fadeOut !== null) return;
+  if (state === "howto" && quickControls) {
+    // C again: close it and carry on running
+    quickControls = false;
+    tipsIndex.open = false;
+    state = "running";
+    return;
+  }
+  if (state !== "running") return;
+  pause();
+  choose("howto");
+  quickControls = true;
+  showHowtoPage(HOWTO_PAGES.findIndex((p) => p.name === "Controls"));
+}
+
 function choose(id) {
   if (state === "over" && overTime < overGraceMs()) return; // let the crash and the fade finish
   if (fadeOut !== null) return; // fading to another scene: the buttons are done
@@ -2699,6 +2913,22 @@ function choose(id) {
     if (!keyNav) selected.ready = READY_PLAY; // (with the keys, stay on the switch: Enter flips it, then on to Play)
     return;
   }
+  if (id === "settings") {
+    state = "settings";
+    selected.settings = 0;
+    resetArmedAt = -Infinity;
+    return;
+  }
+  if (id.startsWith("set-")) {
+    if (id === "set-reset") pressReset();
+    else toggleSetting(id.slice(4));
+    return;
+  }
+  if (id === "settingsBack") {
+    state = "ready";
+    if (!keyNav) selected.ready = READY_PLAY;
+    return;
+  }
   if (id === "play" && playMode === "endless") {
     // Endless: choose your book first (Play on that screen starts the run)
     state = "chars";
@@ -2715,6 +2945,7 @@ function choose(id) {
     goHome();
   } else if (id === "resume") state = "running";
   else if (id === "howto") {
+    quickControls = false; // (openControls sets it again, after)
     howtoFrom = state;
     // describe the mode you're about to play (from the start screen) or are playing
     howtoMode = howtoFrom === "ready" ? playMode : story ? "story" : "endless";
@@ -2746,6 +2977,7 @@ function goBack() {
   if (state === "paused") choose("resume");
   else if (state === "howto") choose("back");
   else if (state === "chars") choose("charsBack");
+  else if (state === "settings") choose("settingsBack");
   else if (state === "over") choose("menu");
   else if (state === "tip") choose("tipgo"); // (Esc: got it)
 }
@@ -2808,8 +3040,8 @@ function applyLayout(name) {
   // wide: the score bar sits beside the profile; tall: there isn't room, so it goes on the
   // ceiling, under the row of buttons
   SCORE = tall()
-    ? { x: W / 2 - 179, y: 12 - TOP + bh + 10 }
-    : { x: PROFILE.x - 8 - 358, y: 12 };
+    ? { x: 12, y: 12 - TOP + bh + 10 }
+    : { x: PROFILE.x - 8 - SCORE_W, y: 12 };
   makeButtons();
   fitCanvas();
   fitRes();
@@ -3515,7 +3747,7 @@ function draw() {
   if (state === "route") return drawRoute(); // so does the Bookmobile's route map, between chapters
   // a quick shake when the player gets bumped (the HUD stays still)
   ctx.save();
-  if (shake > 0) {
+  if (shake > 0 && !reduceMotion()) {
     const s = Math.min(1, shake / 200) * 4;
     ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
   }
@@ -3623,7 +3855,10 @@ function draw() {
   if (state === "ready") drawStartScreen();
   else if (!onStartScreen())
     drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, MUTE_BTN.y + (MUTE_BTN.h - 32) / 2); // (centred on the buttons)
-  if (state === "running") drawPauseButton();
+  if (state === "running") {
+    drawPauseButton();
+    if (hasControlsBtn()) drawControlsButton();
+  }
 
   // (the corner badges fade up with the rest of the start screen in the opening sequence)
   ctx.globalAlpha = state === "ready" ? introUI() : 1;
@@ -3633,7 +3868,7 @@ function draw() {
   if (barShown) {
     // Sound button (click/tap it, or press M)
     // (a gold speaker; grey with a fainter ring when it's off)
-    const mb = MUTE_BTN,
+    const mb = soundRect(),
       mcy = mb.y + mb.h / 2;
     drawRingButton(mb, muted);
     if (HAS_KEYS) {
@@ -3663,49 +3898,47 @@ function draw() {
     ctx.globalAlpha = 1;
     if (state === "howto") drawHowTo();
     if (state === "chars") drawCharacters();
+    if (state === "settings") drawSettings();
     if (state === "levels") drawLevels();
     return; // the start screen has no score bar
   }
   ctx.globalAlpha = 1;
 
-  // HUD
-  ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
-  const sy = SCORE.y; // top of the score bar
-  roundRect(SCORE.x, sy, 358, 32, 8);
-  drawPage(SCORE.x + 12, sy + 6, 14, 18, -0.08);
+  // HUD: the score bar. Story Mode's is full width (its progress bar); Endless's is just pages and
+  // best, so it's only as wide as those. It keeps its right end by the profile (centred on a phone).
   ctx.font = "bold 16px Georgia, serif";
+  const room = scoreBarRoom(),
+    sw = story ? Math.min(SCORE_W, room.w) : 108 + ctx.measureText("BEST " + best).width + 14,
+    sx = tall() ? room.x + room.w / 2 - sw / 2 : room.x + room.w - sw, // (wide: up against the profile)
+    sy = SCORE.y; // top of the score bar
+  ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
+  roundRect(sx, sy, sw, 32, 8);
+  drawPage(sx + 12, sy + 6, 14, 18, -0.08);
   ctx.textAlign = "left";
   if (pageLoss) {
     const t = 1 - pageLoss.life / 900; // 0 → 1 over the flash
-    const jiggle = Math.sin(t * 40) * 3 * (1 - t);
-    ctx.fillStyle = Math.floor(t * 8) % 2 ? PAPER : "#ff8a7a"; // flash red
-    ctx.fillText("× " + pages, SCORE.x + 32 + jiggle, sy + 22);
+    const jiggle = reduceMotion() ? 0 : Math.sin(t * 40) * 3 * (1 - t);
+    ctx.fillStyle = reduceMotion() ? "#ff8a7a" : Math.floor(t * 8) % 2 ? PAPER : "#ff8a7a"; // flash red (steady red with Reduce motion)
+    ctx.fillText("× " + pages, sx + 32 + jiggle, sy + 22);
     // "−3" drops out below the counter and fades
     ctx.globalAlpha = Math.min(1, (1 - t) * 2);
     const label = "−" + pageLoss.amount,
       ly = sy + 50 + t * 14;
     const lw = ctx.measureText(label).width;
     ctx.fillStyle = "rgba(20, 14, 10, 0.75)";
-    roundRect(SCORE.x + 28, ly - 16, lw + 12, 22, 6);
+    roundRect(sx + 28, ly - 16, lw + 12, 22, 6);
     ctx.fillStyle = "#ff8a7a";
-    ctx.fillText(label, SCORE.x + 34, ly);
+    ctx.fillText(label, sx + 34, ly);
     ctx.globalAlpha = 1;
   } else {
     ctx.fillStyle = PAPER;
-    ctx.fillText("× " + pages, SCORE.x + 32, sy + 22);
+    ctx.fillText("× " + pages, sx + 32, sy + 22);
   }
   if (story)
-    drawStoryProgress(SCORE.x, sy); // the level, and how far through it the book is
+    drawStoryProgress(sx, sy, sw); // the level, and how far through it the book is
   else {
     ctx.fillStyle = GOLD;
-    ctx.fillText("BEST " + best, SCORE.x + 108, sy + 22);
-    ctx.textAlign = "right";
-    ctx.fillStyle = PAPER;
-    ctx.fillText(
-      "DISTANCE " + Math.floor(runDist * METERS_PER_PX) + " m",
-      SCORE.x + 346,
-      sy + 22,
-    );
+    ctx.fillText("BEST " + best, sx + 108, sy + 22);
   }
 
   drawPowerHUD();
@@ -3855,12 +4088,13 @@ function drawButtonList() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
     if (b.help) return drawHelpButton(b, on);
+    if (b.gear) return drawGearButton(b, on);
     if (b.seg) return drawModeSegment(b, on);
     if (b.play)
       return drawPlayButton(
         b,
         on,
-        on ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1,
+        on && !reduceMotion() ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1,
       );
     if (story && state === "over")
       b = { ...b, label: b.id === "again" ? "Try again" : "Chapters" };
@@ -3883,7 +4117,7 @@ function drawButtonList() {
     drawButton(
       b,
       on,
-      on && state === "ready" ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1,
+      on && state === "ready" && !reduceMotion() ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1,
     );
   });
 }
@@ -4143,6 +4377,52 @@ function drawPauseButton() {
   R(bx + bw + 4, cy - bh / 2, bw, bh, PAPER);
   if (HAS_KEYS) drawKeycap(b.x + b.w - 18 - 8, cy - 9, "P");
 }
+// The Controls button (desktop only: with a keyboard, as it's C's button), matching pause: a pill
+// saying "Controls" with a "C" keycap. It pauses the run and opens How to play at its Controls
+// page (see openControls). Wide: just right of pause. Tall: the top row's full, so it sits at the
+// right end of the score bar's row instead.
+const hasControlsBtn = () => HAS_KEYS;
+const controlsFont = () => "bold 14px Georgia, serif";
+function controlsLabelW() {
+  ctx.save();
+  ctx.font = controlsFont();
+  const w = ctx.measureText("Controls").width;
+  ctx.restore();
+  return w;
+}
+const CONTROLS_BTN = {
+  get x() {
+    return tall() ? W - 12 - this.w : PAUSE_BTN.x + PAUSE_BTN.w + 8;
+  },
+  get y() {
+    return tall() ? SCORE.y + 16 - this.h / 2 : PAUSE_BTN.y;
+  },
+  get w() {
+    return Math.ceil(12 + controlsLabelW() + 8 + 18 + 8);
+  },
+  get h() {
+    return tall() ? 40 : PAUSE_BTN.h;
+  },
+};
+function drawControlsButton() {
+  const b = CONTROLS_BTN,
+    cy = b.y + b.h / 2;
+  drawRingButton(b);
+  ctx.font = controlsFont();
+  ctx.fillStyle = PAPER;
+  ctx.textAlign = "left";
+  ctx.fillText("Controls", b.x + 12, cy + 5);
+  drawKeycap(b.x + b.w - 18 - 8, cy - 9, "C");
+}
+// The room the score bar has: wide, between the top bar's last button (Controls, or Pause
+// without it) and the profile; tall, its own row (left of the Controls button, if there is one).
+function scoreBarRoom() {
+  const c = hasControlsBtn() ? CONTROLS_BTN : null;
+  if (tall()) return { x: SCORE.x, w: (c ? c.x - 8 : W - 12) - SCORE.x };
+  const last = c || PAUSE_BTN,
+    x = last.x + last.w + 8;
+  return { x, w: PROFILE.x - 8 - x };
+}
 // The top bar's buttons (Sound and pause): a dark shape with a gold ring, like the menus' quieter
 // buttons. Rounded into a pill, or a circle when it's as wide as it is tall. `dim`: a fainter ring.
 // A pill's gold ring (Sound, Pause, How to play, ‹ Back, Skip, All tips, ✕).
@@ -4279,9 +4559,7 @@ function drawPause() {
   );
   drawStatRow(W / 2, c.y + (big ? 118 : 106), [
     [pages, pages === 1 ? "page found" : "pages found"],
-    lv
-      ? [`${Math.round(storyProgress() * 100)}%`, "of the level"]
-      : [`${Math.floor(runDist * METERS_PER_PX)} m`, "distance"],
+    ...(lv ? [[`${Math.round(storyProgress() * 100)}%`, "of the level"]] : []),
     ["hearts", lives === 1 ? "heart left" : "hearts left"],
   ]);
   cardLine(
@@ -4517,6 +4795,14 @@ const HOWTO_PAGES = [
                 icon: iconSound,
                 badge: true,
                 keys: ["M"],
+              },
+              {
+                title: "Controls",
+                how: "During a run, C pauses and opens this. C again goes back.",
+                pic: "icon",
+                icon: iconHelp,
+                badge: true,
+                keys: ["C"],
               },
             ],
   },
@@ -5357,6 +5643,16 @@ function iconPauseBars(x, y) {
   R(x - 7, y - 9, 5, 18, PAPER);
   R(x + 2, y - 9, 5, 18, PAPER);
 }
+// a question mark (the Controls page: see openControls)
+function iconHelp(x, y) {
+  ctx.save();
+  ctx.fillStyle = PAPER;
+  ctx.font = "bold 24px Georgia, serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("?", x, y + 1);
+  ctx.restore();
+}
 function iconSound(x, y) {
   drawSpeaker(x - 10, y, false);
 }
@@ -5423,9 +5719,7 @@ function drawGameOver() {
   );
   drawStatRow(W / 2, stampY + (big ? 98 : 88), [
     [pages, pages === 1 ? "page found" : "pages found"],
-    lv
-      ? [`${Math.round(storyProgress() * 100)}%`, "of the level"]
-      : [`${Math.floor(runDist * METERS_PER_PX)} m`, "distance"],
+    ...(lv ? [[`${Math.round(storyProgress() * 100)}%`, "of the level"]] : []),
   ]);
   const beat = !lv && newBest && best > 0;
   cardLine(
@@ -6305,7 +6599,7 @@ function drawPowerUp(b, bob) {
 // Around the book while a power-up is in use. It flickers in the last 1.5 seconds.
 function drawPowerAura() {
   if (!power) return;
-  if (power.time < 1500 && Math.floor(power.time / 120) % 2) return;
+  if (power.time < 1500 && !reduceMotion() && Math.floor(power.time / 120) % 2) return;
   const b = playerBox(),
     cx = b.x + b.w / 2,
     cy = b.y + b.h / 2;
@@ -6427,7 +6721,7 @@ function drawPlayer() {
   look.accessory = accLift; // hats float up and glasses slide onto the head while jumping
 
   // just bumped: blink (fade in and out) until it's safe again
-  if (hurtTime > 0) ctx.globalAlpha = Math.floor(hurtTime / 100) % 2 ? 0.3 : 1;
+  if (hurtTime > 0) ctx.globalAlpha = reduceMotion() ? 0.5 : Math.floor(hurtTime / 100) % 2 ? 0.3 : 1; // (Reduce motion: see-through, not blinking)
   const fx = px + pw / 2,
     fy = py + ph + 6; // the feet: running leans and squashes around this point
   ctx.save();
@@ -7634,6 +7928,8 @@ document.addEventListener("keydown", (e) => {
       goBack();
     } else if (e.code === "KeyM") {
       toggleMute();
+    } else if (e.code === "KeyC" && !e.repeat) {
+      openControls();
     }
     return;
   }
@@ -7654,6 +7950,8 @@ document.addEventListener("keydown", (e) => {
     toggleMute();
   } else if (e.code === "KeyP" || e.code === "Escape") {
     pause();
+  } else if (e.code === "KeyC" && !e.repeat) {
+    openControls(); // (pauses the run)
   }
 });
 document.addEventListener("keyup", (e) => {
@@ -7729,7 +8027,7 @@ canvas.addEventListener("pointerdown", (e) => {
     state === "howto" &&
     !tipsIndex.open &&
     BUTTONS.howto.some((b) => inside(cx, cy, b));
-  if (inside(cx, cy, MUTE_BTN) && !overSound) return toggleMute();
+  if (inside(cx, cy, soundRect()) && !overSound) return toggleMute();
   if (isMenu()) {
     keyNav = false;
     if (state === "howto" && tipsIndex.open) {
@@ -7764,6 +8062,7 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   if (state !== "running") return;
   if (inside(cx, cy, PAUSE_BTN)) return pause();
+  if (hasControlsBtn() && inside(cx, cy, CONTROLS_BTN)) return openControls();
   if (e.pointerType === "mouse") return jump();
   if (gesture) return; // already a finger down; ignore a second one
   gesture = {
