@@ -2872,26 +2872,31 @@ function draw() {
 
   // (the corner badges fade up with the rest of the start screen in the opening sequence)
   ctx.globalAlpha = state === "ready" ? introUI() : 1;
-  // Sound button (click/tap it, or press M)
-  // (a gold speaker; grey with a fainter ring when it's off)
-  const mb = MUTE_BTN,
-    mcy = mb.y + mb.h / 2;
-  drawRingButton(mb, muted);
-  if (HAS_KEYS) {
-    drawSpeaker(mb.x + 13, mcy, muted, muted ? "#9a8f7c" : GOLD);
-    ctx.font = "14px Georgia, serif";
-    ctx.textAlign = "left";
-    ctx.fillStyle = muted ? "#9a8f7c" : PAPER;
-    ctx.fillText(muted ? "Sound off" : "Sound on", mb.x + 42, mcy + 5);
-    drawKeycap(mb.x + mb.w - 18 - 8, mcy - 9, "M"); // (small and quiet, at its right end)
-  } else {
-    // just the speaker, centred and sized to the circle
-    const k = mb.h / 38;
-    ctx.save();
-    ctx.translate(mb.x + mb.w / 2, mcy);
-    ctx.scale(k, k);
-    drawSpeaker(-10.5, 0, muted, muted ? "#9a8f7c" : GOLD);
-    ctx.restore();
+  // (Nothing is drawn while it's faded right out: Safari on iPhone shows some things drawn
+  // fully transparent, so the opening's black screen would show them too early.)
+  const barShown = ctx.globalAlpha > 0;
+  if (barShown) {
+    // Sound button (click/tap it, or press M)
+    // (a gold speaker; grey with a fainter ring when it's off)
+    const mb = MUTE_BTN,
+      mcy = mb.y + mb.h / 2;
+    drawRingButton(mb, muted);
+    if (HAS_KEYS) {
+      drawSpeaker(mb.x + 13, mcy, muted, muted ? "#9a8f7c" : GOLD);
+      ctx.font = "14px Georgia, serif";
+      ctx.textAlign = "left";
+      ctx.fillStyle = muted ? "#9a8f7c" : PAPER;
+      ctx.fillText(muted ? "Sound off" : "Sound on", mb.x + 42, mcy + 5);
+      drawKeycap(mb.x + mb.w - 18 - 8, mcy - 9, "M"); // (small and quiet, at its right end)
+    } else {
+      // just the speaker, centred and sized to the circle
+      const k = mb.h / 38;
+      ctx.save();
+      ctx.translate(mb.x + mb.w / 2, mcy);
+      ctx.scale(k, k);
+      drawSpeaker(-10.5, 0, muted, muted ? "#9a8f7c" : GOLD);
+      ctx.restore();
+    }
   }
 
   // the profile badge (who you're playing as) only shows during play, not on the start screen
@@ -2899,7 +2904,7 @@ function draw() {
   if (!onStartScreen()) drawProfile();
 
   if (onStartScreen()) {
-    drawBestBadge();
+    if (barShown) drawBestBadge();
     ctx.globalAlpha = 1;
     if (state === "howto") drawHowTo();
     if (state === "chars") drawCharacters();
@@ -3146,7 +3151,8 @@ function drawPlayButton(b, on, scale) {
   ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
   roundRect(x + 2, y + 3, w, h, h / 2);
   ctx.save();
-  ctx.shadowColor = "rgba(212, 166, 74, 0.55)";
+  // (the glow fades with the button: see drawStartScreen)
+  ctx.shadowColor = `rgba(212, 166, 74, ${0.55 * ctx.globalAlpha})`;
   ctx.shadowBlur = on ? 18 : 10;
   ctx.fillStyle = MAPLE;
   roundRect(x, y, w, h, h / 2);
@@ -5442,7 +5448,7 @@ const TITLE_BOOKS = [
   { color: "#5b3a6b", h: 55, tilt: -0.1 }, // the Y, leaning on the E
 ];
 // When the game first loads: the books fade in and hop in a wave, left to right, "Dash" zooms in
-// from off the left of the screen (overshooting a touch and settling), then Dewey peeks out.
+// from off the left of the screen (overshooting a touch and settling) as Dewey peeks out.
 // After that, every 15–30 seconds on the start screen, the books wave or Dewey peeks (taking turns).
 const TITLE_FADE_MS = 250, // the books fading in…
   TITLE_WAVE_START = TITLE_FADE_MS, // …then hopping
@@ -5456,7 +5462,7 @@ const PEEK_OUT_MS = 340; // Dewey sliding out from behind the D book (then it st
 const PEEK_MS = 1400; // one wiggle hello
 const randomTitleGap = () => 15000 + Math.random() * 15000;
 let waveTime = -TITLE_WAVE_START, // ms since the books' current wave began
-  peekTime = -(TITLE_DONE + 250 + PEEK_OUT_MS), // ms since Dewey's current hello began (the first: once it's out)
+  peekTime = -(DASH_START + PEEK_OUT_MS), // ms since Dewey's current hello began (the first: once it's out)
   nextTitleAnim = randomTitleGap(), // ms until the next wave or peek (counted once the title has landed)
   nextIsPeek = false; // which one it'll be
 function updateTitle(dt) {
@@ -5476,9 +5482,12 @@ function updateTitle(dt) {
 }
 
 // The opening sequence, when the game first loads: on black, the logo drops in with a gold glow,
-// then the title animates, then the library, buttons and badges fade up. A tap or key skips it.
+// then "presents" fades in beside it, then the title animates, then the library, buttons and
+// badges fade up. A tap or key skips it.
 const INTRO_LOGO_MS = 650, // the logo dropping in
-  INTRO_TITLE_AT = 750, // when the title starts animating
+  INTRO_PRESENTS_AT = INTRO_LOGO_MS + 100, // then "presents" fading in, once it has landed…
+  INTRO_PRESENTS_MS = 450,
+  INTRO_TITLE_AT = INTRO_PRESENTS_AT + INTRO_PRESENTS_MS + 300, // …then, after a beat, the title
   INTRO_UI_DELAY = 150, // after "Dash" lands, before the rest fades up
   INTRO_UI_MS = 700; // the rest fading up
 let intro = true, // still playing?
@@ -5498,12 +5507,12 @@ function skipIntro() {
   peekTime = Math.max(peekTime, 10000); // no peek or wave left halfway
   waveTime = Math.max(waveTime, 10000);
 }
-// Dewey, beside the D book (x0: that book's left edge, on the shelf top). Once "Dash" has landed
+// Dewey, beside the D book (x0: that book's left edge, on the shelf top). As "Dash" flies in
 // it slides out from behind the book and stays out, leaning out with a gentle sway; every so often
 // (its turn of the title animations) it does a little wiggle hello. It's mirrored, so it faces you
 // rather than the books, and while sliding out only the part past the book's edge shows.
 function drawPeek(x0) {
-  const t = titleTime - (TITLE_DONE + 250); // ms since it started coming out
+  const t = titleTime - DASH_START; // ms since it started coming out (with "Dash")
   if (t <= 0) return;
   const ease = (v) => v * v * (3 - 2 * v);
   const out = ease(Math.min(1, t / PEEK_OUT_MS));
@@ -5702,14 +5711,17 @@ function drawStartScreen() {
     drawPresents(lx, ltop);
   }
   // the title fades in just before its books start hopping
+  // (and isn't drawn at all before then: see the buttons, below)
   ctx.globalAlpha = intro ? Math.min(1, titleTime / TITLE_FADE_MS) : 1;
-  drawTitle(tx, titleY);
+  if (ctx.globalAlpha > 0) drawTitle(tx, titleY);
   ctx.globalAlpha = 1;
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
 
+  // the buttons fade up with the rest (and aren't drawn at all until they start to: Safari on
+  // iPhone shows some things drawn fully transparent, which put Play on the black opening screen)
   ctx.globalAlpha = ui;
-  drawButtons();
+  if (ui > 0) drawButtons();
 
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
   ctx.shadowBlur = 6;
@@ -5756,7 +5768,7 @@ function drawIntroLogo(x, top) {
   drawFullLogo(x, top, h);
   ctx.restore();
   // "presents" fades in once the logo has landed
-  const pr = (introTime - INTRO_LOGO_MS) / 400;
+  const pr = (introTime - INTRO_PRESENTS_AT) / INTRO_PRESENTS_MS;
   if (pr > 0) drawPresents(x, top, Math.min(1, pr));
 }
 
