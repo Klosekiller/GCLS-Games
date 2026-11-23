@@ -545,9 +545,11 @@ for (const ev of ["keydown", "pointerdown"]) {
   });
 }
 
-// (With a keyboard it's a little wider, to fit a small "M" keycap: the key that does the same.)
+// With a keyboard it's a gold-ringed pill (speaker, "Sound on", and a small "M" keycap: the key
+// that does the same); on a touch screen, just the speaker in a gold-ringed circle, big enough to
+// tap. Its size and place are set by the layout (see applyLayout); the pause button matches it.
 const HAS_KEYS = !(window.matchMedia && window.matchMedia("(hover: none)").matches);
-const MUTE_BTN = { x: 12, y: 12, w: HAS_KEYS ? 140 : 120, h: 32 };
+const MUTE_BTN = { x: 12, y: 12, w: 140, h: 34 };
 // A small, quiet keycap (18 square) at (x, y): the key that does what the button beside it does.
 function drawKeycap(x, y, label) {
   const k = 18;
@@ -2084,14 +2086,19 @@ function applyLayout(name) {
   WORLD_Y = LAYOUTS[name].worldY;
   canvas.style.setProperty("--ratio", W / (H + 2 * TOP)); // lets the page shrink the game to fit the screen's height
   // the top bar: pinned to the top of the screen. On a phone, the profile badge is bigger.
-  MUTE_BTN.y = 12 - TOP;
+  // Sound and pause: pills with a keyboard; circles on a touch screen (biggest on a phone held
+  // upright). In the wide layout they're centred on the row of badges (32 tall).
+  const bh = HAS_KEYS ? 34 : tall() ? 54 : 44;
+  MUTE_BTN.w = HAS_KEYS ? 140 : bh;
+  MUTE_BTN.h = bh;
+  MUTE_BTN.y = tall() ? 12 - TOP : 12 - (bh - 32) / 2;
   PROFILE = tall()
-    ? { x: W - 12 - 136, y: 12 - TOP - 4, w: 136, h: 40 }
+    ? { x: W - 12 - 136, y: 12 - TOP + (bh - 40) / 2, w: 136, h: 40 }
     : { x: W - 12 - 112, y: 12, w: 112, h: 32 };
   // wide: the score bar sits beside the profile; tall: there isn't room, so it goes on the
   // ceiling, under the row of buttons
   SCORE = tall()
-    ? { x: W / 2 - 179, y: 54 - TOP }
+    ? { x: W / 2 - 179, y: 12 - TOP + bh + 10 }
     : { x: PROFILE.x - 8 - 358, y: 12 };
   makeButtons();
   fitCanvas();
@@ -2858,21 +2865,32 @@ function draw() {
   ctx.restore(); // end of the shaking part
 
   if (state === "ready") drawStartScreen();
-  else if (!onStartScreen()) drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, MUTE_BTN.y);
+  else if (!onStartScreen()) drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, MUTE_BTN.y + (MUTE_BTN.h - 32) / 2); // (centred on the buttons)
   if (state === "running") drawPauseButton();
 
   // (the corner badges fade up with the rest of the start screen in the opening sequence)
   ctx.globalAlpha = state === "ready" ? introUI() : 1;
   // Sound button (click/tap it, or press M)
-  const mb = MUTE_BTN;
-  ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
-  roundRect(mb.x, mb.y, mb.w, mb.h, 8);
-  drawSpeaker(mb.x + 12, mb.y + 16, muted);
-  ctx.font = "bold 14px Georgia, serif";
-  ctx.textAlign = "left";
-  ctx.fillStyle = muted ? "#9a8f7c" : PAPER;
-  ctx.fillText(muted ? "Sound off" : "Sound on", mb.x + 42, mb.y + 21);
-  if (HAS_KEYS) drawKeycap(mb.x + mb.w - 18 - 6, mb.y + (mb.h - 18) / 2, "M"); // (small and quiet, at its right end)
+  // (a gold speaker; grey with a fainter ring when it's off)
+  const mb = MUTE_BTN,
+    mcy = mb.y + mb.h / 2;
+  drawRingButton(mb, muted);
+  if (HAS_KEYS) {
+    drawSpeaker(mb.x + 13, mcy, muted, muted ? "#9a8f7c" : GOLD);
+    ctx.font = "14px Georgia, serif";
+    ctx.textAlign = "left";
+    ctx.fillStyle = muted ? "#9a8f7c" : PAPER;
+    ctx.fillText(muted ? "Sound off" : "Sound on", mb.x + 42, mcy + 5);
+    drawKeycap(mb.x + mb.w - 18 - 8, mcy - 9, "M"); // (small and quiet, at its right end)
+  } else {
+    // just the speaker, centred and sized to the circle
+    const k = mb.h / 38;
+    ctx.save();
+    ctx.translate(mb.x + mb.w / 2, mcy);
+    ctx.scale(k, k);
+    drawSpeaker(-10.5, 0, muted, muted ? "#9a8f7c" : GOLD);
+    ctx.restore();
+  }
 
   // the profile badge (who you're playing as) only shows during play, not on the start screen
   // and the screens opened from it
@@ -3182,21 +3200,40 @@ function hint(text, y) {
 }
 
 // The pause button shown during a run (so touch screens can pause too), right of the hearts.
+// (It matches the Sound button: a pill with a "P" keycap with a keyboard, a circle on a touch screen.)
 const PAUSE_BTN = {
-  x: MUTE_BTN.x + MUTE_BTN.w + 8 + LIVES * 24 + 10 + 8,
+  get x() {
+    return MUTE_BTN.x + MUTE_BTN.w + 8 + LIVES * 24 + 10 + 8; // (past the Sound button and the hearts)
+  },
   get y() {
     return MUTE_BTN.y; // (in the top bar, wherever that is)
   },
-  w: HAS_KEYS ? 52 : 32, // (with a keyboard, wide enough for a little "P" keycap too)
-  h: 32,
+  get w() {
+    return HAS_KEYS ? 54 : MUTE_BTN.h;
+  },
+  get h() {
+    return MUTE_BTN.h;
+  },
 };
 function drawPauseButton() {
   const b = PAUSE_BTN;
-  ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
-  roundRect(b.x, b.y, b.w, b.h, 8);
-  R(b.x + 9, b.y + 9, 4, 14, PAPER);
-  R(b.x + 17, b.y + 9, 4, 14, PAPER);
-  if (HAS_KEYS) drawKeycap(b.x + b.w - 18 - 6, b.y + (b.h - 18) / 2, "P");
+  drawRingButton(b);
+  const bh = Math.round(b.h * 0.4), // the bars
+    bw = Math.max(4, Math.round(b.h * 0.12)),
+    cy = b.y + b.h / 2,
+    bx = HAS_KEYS ? b.x + 13 : b.x + b.w / 2 - bw - 2;
+  R(bx, cy - bh / 2, bw, bh, PAPER);
+  R(bx + bw + 4, cy - bh / 2, bw, bh, PAPER);
+  if (HAS_KEYS) drawKeycap(b.x + b.w - 18 - 8, cy - 9, "P");
+}
+// The top bar's buttons (Sound and pause): a dark shape with a gold ring, like the menus' quieter
+// buttons. Rounded into a pill, or a circle when it's as wide as it is tall. `dim`: a fainter ring.
+function drawRingButton(b, dim = false) {
+  ctx.fillStyle = "rgba(20, 14, 10, 0.7)";
+  roundRect(b.x, b.y, b.w, b.h, b.h / 2);
+  ctx.strokeStyle = dim ? "rgba(212, 166, 74, 0.4)" : "rgba(212, 166, 74, 0.7)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 }
 
 function drawPause() {
@@ -3329,7 +3366,10 @@ let howtoSegs = []; // where the progress bar's segments were drawn (for taps)
 function showHowtoScreen(i) {
   buildHowtoScreens();
   i = Math.max(0, Math.min(HOWTO_SCREENS.length - 1, i));
-  if (i !== howtoScreen && howtoScreen >= 0) tone(520, 700, 0.05, "triangle", 0.05); // a soft flick
+  // already there (→ on the last screen, ← on the first, or this section's segment): leave the
+  // cards as they are, rather than dealing them in again
+  if (i === howtoScreen) return;
+  if (howtoScreen >= 0) tone(520, 700, 0.05, "triangle", 0.05); // a soft flick
   howtoScreen = i;
   howtoDealAt = performance.now();
 }
@@ -4044,8 +4084,8 @@ function drawHearts(x, y, panel = true) {
 }
 
 // Speaker icon with sound waves, or a cross when muted. (x, y) is the left-middle.
-function drawSpeaker(x, y, off) {
-  const c = off ? "#9a8f7c" : PAPER;
+function drawSpeaker(x, y, off, color) {
+  const c = color || (off ? "#9a8f7c" : PAPER);
   poly(
     c,
     x,
