@@ -745,11 +745,13 @@ for (const ev of ["keydown", "pointerdown"]) {
   });
 }
 
-// With a keyboard it's a gold-ringed pill (speaker, "Sound on", and a small "M" keycap: the key
-// that does the same); on a touch screen, just the speaker in a gold-ringed circle, big enough to
-// tap. Its size and place are set by the layout (see applyLayout); the pause button matches it.
+// Is this a desktop, with a keyboard and mouse? Then the top bar's buttons are pills with small
+// keycaps (the P on Pause), and hints and How to play name the keys. On a touch screen they're
+// round buttons big enough to tap, and no keys are mentioned. (Some phones and tablets claim
+// they can hover, so a touch screen as the main pointer also counts as no keyboard.)
 const HAS_KEYS = !(
-  window.matchMedia && window.matchMedia("(hover: none)").matches
+  window.matchMedia &&
+  (window.matchMedia("(hover: none)").matches || window.matchMedia("(pointer: coarse)").matches)
 );
 const MUTE_BTN = { x: 12, y: 12, w: 140, h: 34 };
 // A small, quiet keycap (18 square) at (x, y): the key that does what the button beside it does.
@@ -2359,8 +2361,7 @@ function makeButtons() {
   }
   // the pause screen: Resume, How to play and Quit in their places on its card (see drawPause)
   BUTTONS.paused = pauseButtons();
-  // Settings: the gear in the start screen's top-left corner (Sound moves to the bottom right
-  // there: see soundRect), and the Settings card's own buttons
+  // Settings: the gear in the start screen's top-left corner, and the Settings card's own buttons
   BUTTONS.ready.push({
     id: "settings",
     label: "Settings",
@@ -2575,22 +2576,55 @@ function pressReset() {
   if (typeof resetStoryProgress === "function") resetStoryProgress();
 }
 
-// The Sound button: only on Settings opened from the start screen, bottom right. Everywhere else
-// Settings' Music and Sound effects switches do its job (and M still works), so it isn't shown.
-// (MUTE_BTN still gives the top bar's size and where its row starts.)
-function soundRect() {
-  if (state === "settings" && settingsFrom === "ready")
-    return { x: W - 12 - MUTE_BTN.w, y: H + TOP - 12 - MUTE_BTN.h, w: MUTE_BTN.w, h: MUTE_BTN.h };
-  return null;
-}
+// (There's no Sound button: Settings' Music and Sound effects switches do its job, and M still
+// works. MUTE_BTN still gives the top bar's size and where its row starts.)
 
+// Under the start screen's Settings button: the Sound button, in its original design. Desktop:
+// a dark pill with a gold ring, the speaker, "Sound on" / "Sound off" and a small M keycap at its
+// right end (M does the same). Phones and tablets: a round button with just the speaker. Grey, with a fainter ring, while sound is off.
+// The game starts with sound off, so this is how a player finds out how to hear it.
+// Clicking it turns sound on or off (see pointerdown).
+let soundHint = null; // where it was last drawn: { x, y, w, h } (null when it isn't shown)
+let soundHintHover = false;
+function clearSoundHintHover() {
+  soundHintHover = false;
+  canvas.style.cursor = "";
+}
+function drawSoundKeyHint() {
+  soundHint = null;
+  if (padUI()) return; // (a controller has its own: View)
+  const g = BUTTONS.ready.find((b) => b.id === "settings");
+  if (!g) return;
+  const labelled = gearLabelled(), // desktop: the pill; phones and tablets: a round button
+    b = { x: g.x, y: g.y + g.h + 8, w: labelled ? 140 : g.h, h: g.h },
+    cy = b.y + b.h / 2,
+    grey = "#9a8f7c";
+  soundHint = b;
+  drawRingButton(b, muted);
+  if (soundHintHover) focusRing(b.x, b.y, b.w, b.h, b.h / 2, PAPER, 3);
+  if (!labelled) {
+    // just the speaker, centred and sized to the circle (as the old touch Sound button)
+    const k = b.h / 38;
+    ctx.save();
+    ctx.translate(b.x + b.w / 2, cy);
+    ctx.scale(k, k);
+    drawSpeaker(-10.5, 0, muted, muted ? grey : GOLD);
+    ctx.restore();
+    return;
+  }
+  drawSpeaker(b.x + 13, cy, muted, muted ? grey : GOLD);
+  ctx.font = "14px Georgia, serif";
+  ctx.textAlign = "left";
+  ctx.fillStyle = muted ? grey : PAPER;
+  ctx.fillText(muted ? "Sound off" : "Sound on", b.x + 42, cy + 5);
+  drawKeycap(b.x + b.w - 18 - 8, cy - 9, "M"); // (small and quiet, at its right end)
+}
 // The gear: a pill saying "Settings" with a keyboard, a circle on a touch screen (like Sound).
 // Does the start screen's gear say "Settings"? Only on a desktop: a mouse, not a touch screen,
 // and not the phone-held-upright layout. (Some phones and tablets claim they can hover, so the
 // touch check matters.) Otherwise it's just the gear, in a circle.
 function gearLabelled() {
-  const touch = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
-  return HAS_KEYS && !touch && !tall();
+  return HAS_KEYS && !tall();
 }
 function drawGearButton(b, on) {
   const cy = b.y + b.h / 2;
@@ -2645,8 +2679,8 @@ function settingsLayout() {
     h = big ? 470 : 296,
     x = W / 2 - w / 2,
     y = big ? 70 : 12,
-    rowH = big ? 62 : 44,
-    top = y + (big ? 96 : 80), // the first row's middle
+    rowH = big ? 62 : 42,
+    top = y + (big ? 122 : 100), // the first row's middle (under the SOUND heading)
     tw = big ? 96 : 88, // a switch
     th = big ? 38 : 30;
   return {
@@ -2654,6 +2688,7 @@ function settingsLayout() {
     y,
     w,
     h,
+    soundY: top - (big ? 36 : 27), // the SOUND heading's baseline, over Music and Sound effects
     rows: SETTING_ROWS.map(([k], i) => ({ k, x: x + w - 28 - tw, y: top + i * rowH - th / 2, w: tw, h: th })),
     reset: { x: x + 28, y: top + 3 * rowH - th / 2 + (big ? 4 : -4), w: w - 56, h: th },
     back: { x: W / 2 - 70, y: y + h - (big ? 66 : 46), w: 140, h: big ? 46 : 34 },
@@ -2672,6 +2707,7 @@ function drawSettings() {
   const L = settingsLayout(),
     big = tall();
   drawCard(L.x, L.y, L.w, L.h, "Settings");
+  drawSoundHeading(L, big);
   BUTTONS.settings.forEach((b, i) => {
     const on = i === selected.settings;
     if (b.toggle) {
@@ -2696,6 +2732,46 @@ function drawSettings() {
     ctx.font = `italic ${big ? 14 : 13}px Georgia, serif`;
     ctx.fillText("Reset progress is in Settings on the start screen.", W / 2, r.y + r.h / 2 + 5);
   }
+}
+// The SOUND heading over the Music and Sound effects switches, with the shortcut that turns all
+// sound on and off on its right: M with a keyboard, View with a controller (on a touch screen
+// these switches are the way, so there's no shortcut to show). A hairline under it.
+function drawSoundHeading(L, big) {
+  const y = L.soundY,
+    left = L.x + 28,
+    right = L.x + L.w - 28;
+  ctx.textAlign = "left";
+  ctx.fillStyle = INK_SOFT;
+  ctx.font = `bold ${big ? 13 : 12}px Georgia, serif`;
+  ctx.fillText("SOUND", left, y);
+  const key = padUI() ? "View" : HAS_KEYS && !tall() ? "M" : ""; // (none on a phone)
+  if (key) {
+    const text = "turns all sound on or off";
+    ctx.font = `${big ? 13 : 12}px Georgia, serif`;
+    const tw = ctx.measureText(text).width;
+    ctx.font = "bold 11px Georgia, serif";
+    const kw = Math.max(20, ctx.measureText(key).width + 12),
+      kx = right - tw - 8 - kw,
+      ky = y - 14;
+    // a little paper keycap (as on the pause card's Resume)
+    ctx.fillStyle = "#b9a888";
+    roundRect(kx, ky + 2, kw, 18, 4);
+    ctx.fillStyle = "#fffaf0";
+    roundRect(kx, ky, kw, 18, 4);
+    ctx.textAlign = "center";
+    ctx.fillStyle = INK;
+    ctx.fillText(key, kx + kw / 2, ky + 13);
+    ctx.textAlign = "left";
+    ctx.fillStyle = INK_SOFT;
+    ctx.font = `${big ? 13 : 12}px Georgia, serif`;
+    ctx.fillText(text, right - tw, y);
+  }
+  ctx.fillStyle = "rgba(58, 42, 30, 0.18)";
+  ctx.fillRect(left, y + 7, right - left, 1);
+  // and another between the sound switches and Reduce motion, so it's clearly not about sound
+  const fx = L.rows[1],
+    motion = L.rows[2];
+  ctx.fillRect(left, Math.round((fx.y + fx.h + motion.y) / 2), right - left, 1);
 }
 // An on/off switch: green with the knob right when on, pale with the knob left when off.
 function drawSwitch(b, value, on) {
@@ -3911,30 +3987,6 @@ function draw() {
   // (Nothing is drawn while it's faded right out: Safari on iPhone shows some things drawn
   // fully transparent, so the opening's black screen would show them too early.)
   const barShown = ctx.globalAlpha > 0;
-  if (barShown && soundRect()) {
-    // Sound button (click/tap it, or press M)
-    // (a gold speaker; grey with a fainter ring when it's off)
-    const mb = soundRect(),
-      mcy = mb.y + mb.h / 2;
-    drawRingButton(mb, muted);
-    if (HAS_KEYS) {
-      drawSpeaker(mb.x + 13, mcy, muted, muted ? "#9a8f7c" : GOLD);
-      ctx.font = "14px Georgia, serif";
-      ctx.textAlign = "left";
-      ctx.fillStyle = muted ? "#9a8f7c" : PAPER;
-      ctx.fillText(muted ? "Sound off" : "Sound on", mb.x + 42, mcy + 5);
-      drawKeycap(mb.x + mb.w - 18 - 8, mcy - 9, "M"); // (small and quiet, at its right end)
-    } else {
-      // just the speaker, centred and sized to the circle
-      const k = mb.h / 38;
-      ctx.save();
-      ctx.translate(mb.x + mb.w / 2, mcy);
-      ctx.scale(k, k);
-      drawSpeaker(-10.5, 0, muted, muted ? "#9a8f7c" : GOLD);
-      ctx.restore();
-    }
-  }
-
   // the profile badge (who you're playing as) only shows during play, not on the start screen
   // and the screens opened from it
   if (!onStartScreen()) drawProfile();
@@ -4701,7 +4753,7 @@ function drawPause() {
 // over `over`), "duck" (ducking under `over`, which flies past, or `around`, which it ducks
 // through), "icon" (one big picture, on a navy badge when `badge`), "row" (`count` of `item` in a
 // row) or "power" (a power-up's badge). `keys`: the keys that do it, shown as keycaps on a keyboard.
-const touchUI = window.matchMedia && window.matchMedia("(hover: none)").matches;
+const touchUI = !HAS_KEYS; // (a touch screen: see HAS_KEYS)
 // With a controller plugged in (see Game controller, at the end), the Controls cards show its buttons.
 const padUI = () => pad.polling,
   PAD_FACES = { A: "#6cc24a", B: "#e5484d" }; // the A and B buttons' letter colors
@@ -4823,7 +4875,7 @@ const HOWTO_PAGES = [
               },
               {
                 title: "Sound",
-                how: "The Sound button at the top left.",
+                how: "Music and Sound effects switches are in Settings (the gear).",
                 pic: "icon",
                 icon: iconSound,
                 badge: true,
@@ -4854,7 +4906,7 @@ const HOWTO_PAGES = [
               },
               {
                 title: "Sound",
-                how: "M turns it on and off.",
+                how: "M turns all sound on and off, any time. Music and effects: in Settings.",
                 pic: "icon",
                 icon: iconSound,
                 badge: true,
@@ -7682,7 +7734,10 @@ function drawStartScreen() {
   // the buttons fade up with the rest (and aren't drawn at all until they start to: Safari on
   // iPhone shows some things drawn fully transparent, which put Play on the black opening screen)
   ctx.globalAlpha = ui;
-  if (ui > 0) drawButtons();
+  if (ui > 0) {
+    drawButtons();
+    drawSoundKeyHint();
+  }
 
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
   ctx.shadowBlur = 6;
@@ -8095,13 +8150,8 @@ canvas.addEventListener("pointerdown", (e) => {
   if (state === "route") return routeTap(e); // a tap skips the drive, then goes on
   const [cx, cy] = toCanvas(e);
   lastTap = { x: cx, y: cy, at: performance.now() }; // (a locked Story's message floats up from here)
-  // (How to play's All tips sits over the Sound button: there, a tap is for All tips)
-  const overSound =
-    state === "howto" &&
-    !tipsIndex.open &&
-    BUTTONS.howto.some((b) => inside(cx, cy, b));
-  const sound = soundRect();
-  if (sound && inside(cx, cy, sound) && !overSound) return toggleMute();
+  if (state === "ready" && soundHint && inside(cx, cy, soundHint)) return toggleMute(); // the M hint, clicked
+  if (soundHintHover) clearSoundHintHover(); // (a click anywhere else, which may leave the start screen)
   if (isMenu()) {
     keyNav = false;
     if (state === "howto" && tipsIndex.open) {
@@ -8174,9 +8224,17 @@ canvas.addEventListener("pointermove", (e) => {
     }
     return;
   }
+  if (state !== "ready" && soundHintHover) clearSoundHintHover(); // (left the start screen)
   if (!isMenu()) return;
   keyNav = false;
   const [cx, cy] = toCanvas(e);
+  // the start screen's M hint: brighter, and a pointing hand, while the mouse is over it
+  const overHint = state === "ready" && !!soundHint && inside(cx, cy, soundHint);
+  if (overHint !== soundHintHover) {
+    soundHintHover = overHint;
+    canvas.style.cursor = overHint ? "pointer" : "";
+    if (overHint) sfx.hover(); // (the same tick as the other buttons: see highlight)
+  }
   if (state === "howto" && tipsIndex.open) {
     // hovering All tips highlights a tip
     const t = tipsIndex.items.findIndex((r) => r && inside(cx, cy, r));
@@ -8189,6 +8247,7 @@ canvas.addEventListener("pointermove", (e) => {
 });
 // The mouse leaving the game also hands the start screen's highlight back to Start.
 canvas.addEventListener("pointerleave", () => {
+  clearSoundHintHover();
   if (state === "ready" && !keyNav) selected.ready = -1;
 });
 // Swiping up with the finger still down (often out of a duck): stand up and jump. Like a tap,
