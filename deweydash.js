@@ -1638,7 +1638,10 @@ let deathMs = DEATH_MS; // (this run's wait: longer after a wipeout, see WIPEOUT
 const overGraceMs = () => deathMs + OVER_FADE_MS; // its buttons work once the panel is fully shown
 let howtoFrom = "ready"; // the screen How to play goes back to: "ready" or "paused"
 let howtoPage = 0; // How to play: which topic (see HOWTO_PAGES)
-const selected = { ready: 0, paused: 0, howto: 0, over: 0, chars: 0, levels: 0, cleared: 0 }; // highlighted button on each screen
+// The start screen's buttons, in arrow-key order: the mode switch's two halves, Play and
+// How to play. Play is the one highlighted to begin with.
+const READY_PLAY = 2;
+const selected = { ready: READY_PLAY, paused: 0, howto: 0, over: 0, chars: 0, levels: 0, cleared: 0 }; // highlighted button on each screen
 // Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen's
 // highlight stays on Start except while another button is hovered.
 let keyNav = false;
@@ -1681,18 +1684,17 @@ function buttonCol(y, ...items) {
   }));
 }
 const MENU = {
-  ready: [
-    ["story", "Story"],
-    ["endless", "Endless"],
-    ["howto", "How to play"],
-  ], // (+ the character card under them, added in makeButtons)
+  ready: [], // (the mode switch, Play and How to play: see makeButtons)
   levels: [["home", "Back"]], // Story Mode's level list (+ a tile for each level: see storyButtons)
   cleared: [
     ["continue", "Continue"],
     ["replay", "Play again"],
     ["map", "Levels"],
   ],
-  chars: [["done", "Done"]],
+  chars: [
+    ["charsBack", "Back"],
+    ["go", "Play"],
+  ], // (Endless: pick your book, then Play starts the run)
   paused: [
     ["resume", "Resume"],
     ["howto", "How to play"],
@@ -1721,13 +1723,58 @@ function makeButtons() {
       ...items,
     );
   }
-  // The start screen's Characters option is a card with the chosen character's portrait,
-  // set apart under the main buttons. It's still a button, so the arrow keys reach it.
-  const card = tall()
-    ? { w: COL_BTN.w, h: 58, y: BUTTON_Y.tall.ready + MENU.ready.length * (COL_BTN.h + COL_BTN.gap) + 6 } // (just under the buttons)
-    : { w: 260, h: 46, y: 232 };
-  BUTTONS.ready.push({ id: "chars", label: "Characters", card: true, x: W / 2 - card.w / 2, ...card });
+  // The start screen: a switch to pick the mode (Story or Endless) and one big Play button that
+  // starts it, then a quieter How to play button. Side by side in the wide layout, stacked in the
+  // tall one. All of them are buttons, so the arrow keys reach them. (Endless asks for your
+  // character after Play; Story Mode is always Dewey.)
+  if (tall()) {
+    const x = W / 2 - COL_BTN.w / 2,
+      w = COL_BTN.w,
+      y = BUTTON_Y.tall.ready; // the switch
+    BUTTONS.ready = [
+      ...modeSwitch(x, y, w, 56),
+      { id: "play", label: "Play", play: true, x, y: y + 56 + 14, w, h: 64 },
+      { id: "howto", label: "How to play", help: true, x, y: y + 152, w, h: 48 },
+    ];
+    // the Characters screen: Back and Play side by side, big enough to tap, inside its card
+    const bw = 170,
+      gap = 16,
+      cy = BUTTON_Y.tall.chars;
+    BUTTONS.chars = [
+      { id: "charsBack", label: "Back", x: W / 2 - bw - gap / 2, y: cy, w: bw, h: 54 },
+      { id: "go", label: "Play", x: W / 2 + gap / 2, y: cy, w: bw, h: 54 },
+    ];
+  } else {
+    const sw = 242, // the switch
+      pw = 150, // Play
+      hw = 150, // How to play
+      gap = 12,
+      x1 = W / 2 - (sw + gap + pw) / 2;
+    BUTTONS.ready = [
+      ...modeSwitch(x1, 176, sw, 46),
+      { id: "play", label: "Play", play: true, x: x1 + sw + gap, y: 176, w: pw, h: 46 },
+      { id: "howto", label: "How to play", help: true, x: W / 2 - hw / 2, y: 232, w: hw, h: 46 },
+    ];
+  }
   if (typeof storyButtons === "function") storyButtons(); // (once deweydash-story.js has loaded)
+}
+// The mode switch's two halves, inside its track (x, y, w, h). (The track itself is drawn with
+// the first half: see drawModeSegment.)
+const SWITCH_PAD = 4;
+function modeSwitch(x, y, w, h) {
+  const p = SWITCH_PAD,
+    half = (w - p * 2 - 2) / 2;
+  const track = { x, y, w, h };
+  return [
+    { id: "mode-story", label: "Story", seg: "story", track, x: x + p, y: y + p, w: half, h: h - p * 2 },
+    { id: "mode-endless", label: "Endless", seg: "endless", track, x: x + p + half + 2, y: y + p, w: half, h: h - p * 2 },
+  ];
+}
+// The mode Play starts: remembered between visits.
+let playMode = safeGet("deweydash-mode") === "endless" ? "endless" : "story";
+function setMode(m) {
+  playMode = m;
+  safeSet("deweydash-mode", m);
 }
 const isMenu = () => state in BUTTONS;
 // Is the start screen (or a screen opened from it) showing? Then there's no score bar.
@@ -1781,7 +1828,7 @@ function goHome() {
     if (story) leaveStory();
     reset();
     state = "ready";
-    if (!keyNav) selected.ready = 0; // Start is highlighted
+    if (!keyNav) selected.ready = READY_PLAY; // Start is highlighted
   });
 }
 // Called when the screen is fully black: set up the run and begin the countdown.
@@ -1894,6 +1941,19 @@ function pause() {
 function choose(id) {
   if (state === "over" && overTime < overGraceMs()) return; // let the crash and the fade finish
   if (fadeOut !== null) return; // fading to another scene: the buttons are done
+  if (id === "mode-story" || id === "mode-endless") {
+    setMode(id.slice(5));
+    if (!keyNav) selected.ready = READY_PLAY; // (with the keys, stay on the switch: Enter flips it, then on to Play)
+    return;
+  }
+  if (id === "play" && playMode === "endless") {
+    // Endless: choose your book first (Play on that screen starts the run)
+    state = "chars";
+    selected.chars = 1; // Play, so Enter / Space start the run
+    return;
+  }
+  if (id === "play") id = "story"; // the level list
+  if (id === "go") id = "endless"; // (from the Characters screen)
   if (storyChoose(id)) return; // Story Mode's choices (and Endless, which leaves it)
   if (id === "start" || id === "again") startRun();
   else if (id === "menu") goHome();
@@ -1912,9 +1972,8 @@ function choose(id) {
     else choose("back"); // (Done)
   }
   else if (id === "back") state = howtoFrom;
-  else if (id === "chars") state = "chars";
-  else if (id === "done") state = "ready";
-  if (state === "ready" && !keyNav) selected.ready = 0; // back on the start screen: Start is highlighted
+  else if (id === "charsBack") state = "ready";
+  if (state === "ready" && !keyNav) selected.ready = READY_PLAY; // back on the start screen: Start is highlighted
 }
 
 // What Esc does on each menu screen.
@@ -1922,7 +1981,7 @@ function goBack() {
   if (storyGoBack()) return;
   if (state === "paused") choose("resume");
   else if (state === "howto") choose("back");
-  else if (state === "chars") choose("done");
+  else if (state === "chars") choose("charsBack");
   else if (state === "over") choose("menu");
 }
 
@@ -1940,6 +1999,9 @@ let WORLD_Y = 0;
 // match the screen's shape (the ceiling and floor carry on into it), and the top bar (sound,
 // hearts, score, profile) is pinned to the very top of the screen.
 let TOP = 0;
+// RES: the canvas has RES pixels for every layout pixel, so the game stays sharp however big the
+// page shows it, on any screen (see fitRes).
+let RES = 1;
 const tall = () => layout === "tall";
 function wantedLayout() {
   return window.innerHeight > window.innerWidth && window.innerWidth <= 600
@@ -1957,10 +2019,11 @@ function applyLayout(name) {
   H = LAYOUTS[name].h;
   TOP = fullTop(name);
   document.documentElement.classList.toggle("fullscreen", name === "tall");
-  canvas.width = W;
+  canvas.width = W; // (fitRes, below, sets the real resolution once the page has sized the canvas)
   canvas.height = H + 2 * TOP;
+  RES = 1;
   WORLD_Y = LAYOUTS[name].worldY;
-  canvas.style.setProperty("--ratio", W / canvas.height); // lets the page shrink the game to fit the screen's height
+  canvas.style.setProperty("--ratio", W / (H + 2 * TOP)); // lets the page shrink the game to fit the screen's height
   // the top bar: pinned to the top of the screen. On a phone, the profile badge is bigger.
   MUTE_BTN.y = 12 - TOP;
   PROFILE = tall()
@@ -1973,6 +2036,7 @@ function applyLayout(name) {
     : { x: PROFILE.x - 8 - 358, y: 12 };
   makeButtons();
   fitCanvas();
+  fitRes();
 }
 // Full screen: size the canvas to fill the screen exactly. Otherwise the page's CSS sizes it.
 function fitCanvas() {
@@ -1984,7 +2048,24 @@ function fitCanvas() {
   canvas.style.width = canvas.width * s + "px";
   canvas.style.height = canvas.height * s + "px";
 }
-window.addEventListener("resize", fitCanvas);
+// Match the canvas's resolution to the screen pixels it covers (its size on the page times the
+// screen's pixel ratio, which Windows display scaling and browser zoom both change), so the game
+// is never stretched. Phones held upright keep one pixel per layout pixel.
+function fitRes() {
+  let res = 1;
+  if (!tall()) {
+    const shown = canvas.getBoundingClientRect().width * (window.devicePixelRatio || 1);
+    res = Math.min(3, Math.max(1, Math.ceil((shown / W) * 4) / 4)); // (in quarter steps)
+  }
+  if (res === RES) return;
+  RES = res;
+  canvas.width = Math.round(W * RES);
+  canvas.height = Math.round((H + 2 * TOP) * RES);
+}
+window.addEventListener("resize", () => {
+  fitCanvas();
+  fitRes();
+});
 function checkLayout() {
   if (state === "running" || state === "countdown" || fadeOut !== null) return; // locked during a run
   const want = wantedLayout();
@@ -2017,6 +2098,7 @@ function frame(now) {
     if (!intro || introTime >= INTRO_TITLE_AT) updateTitle(dt);
   }
   ctx.save();
+  ctx.scale(RES, RES);
   ctx.translate(0, TOP); // (full screen: the layout sits in the middle)
   draw();
   drawTransition();
@@ -2195,15 +2277,18 @@ function sceneKids(x, w) {
   oval(ax + 38, FLOOR - 2, 3, 3, "#333");
 
   // polka-dot armchairs
-  for (const cx of [x + 815, x + 895]) {
+  for (const off of [815, 895]) {
+    const cx = x + off;
     ctx.fillStyle = "#b8262c";
     roundRect(cx, FLOOR - 62, 70, 40, 10);
     ctx.fillStyle = "#c92f35";
     roundRect(cx - 4, FLOOR - 36, 78, 30, 8);
     for (let i = 0; i < 14; i++) {
       oval(
-        cx + 4 + hash(i, cx) * 62,
-        FLOOR - 58 + hash(cx, i) * 48,
+        // (the dots' places come from the chair's spot in the scene, not on the screen,
+        // which changes every frame as the library scrolls by: that made them jump about)
+        cx + 4 + hash(i, off) * 62,
+        FLOOR - 58 + hash(off, i) * 48,
         2.5,
         2.5,
         BRIGHT[i % BRIGHT.length],
@@ -2729,7 +2814,9 @@ function draw() {
   ctx.fillStyle = muted ? "#9a8f7c" : PAPER;
   ctx.fillText(muted ? "Sound off" : "Sound on", mb.x + 42, mb.y + 21);
 
-  drawProfile();
+  // the profile badge (who you're playing as) only shows during play, not on the start screen
+  // and the screens opened from it
+  if (!onStartScreen()) drawProfile();
 
   if (onStartScreen()) {
     drawBestBadge();
@@ -2876,7 +2963,9 @@ function drawButton(b, on, scale = 1) {
 function drawButtons() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
-    if (b.card) return drawCharacterCard(b, on);
+    if (b.help) return drawHelpButton(b, on);
+    if (b.seg) return drawModeSegment(b, on);
+    if (b.play) return drawPlayButton(b, on, on ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1);
     if (b.tile != null) return drawLevelTile(b, on); // Story Mode's level list
     if (story && state === "over") b = { ...b, label: b.id === "again" ? "Try again" : "Levels" };
     if (b.id === "next" && howtoPage === HOWTO_PAGES.length - 1) b = { ...b, label: "Done" };
@@ -2888,29 +2977,131 @@ function drawButtons() {
   });
 }
 
-// The start screen's character card: portrait, "Playing as" and the name, and "Change ›".
-// Quieter than the main buttons (a dark panel, not a filled button) until it's selected.
-function drawCharacterCard(b, on) {
+// The mode switch: a dark track with a gold edge (drawn with its first half), the chosen mode
+// filled in cream. A highlighted half (keys or hover) gets an outline.
+function drawModeSegment(b, on) {
+  const t = b.track;
+  if (b.seg === "story") {
+    ctx.fillStyle = "rgba(20, 14, 10, 0.78)";
+    roundRect(t.x, t.y, t.w, t.h, t.h / 2);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  const chosen = playMode === b.seg,
+    r = b.h / 2;
+  if (chosen) {
+    ctx.fillStyle = PAPER;
+    roundRect(b.x, b.y, b.w, b.h, r);
+  } else if (on) {
+    ctx.fillStyle = "rgba(215, 163, 94, 0.25)";
+    roundRect(b.x, b.y, b.w, b.h, r);
+  }
+  if (on) {
+    // (roundRect fills; here we only want the outline, so trace the same shape again)
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 0, 0, 0)";
+    roundRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2, r + 1);
+    ctx.restore();
+    ctx.strokeStyle = chosen ? MAPLE : PAPER;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  const ink = chosen ? "#2a1a0e" : PAPER;
+  ctx.font = `${chosen ? "bold " : ""}${tall() ? 19 : 17}px Georgia, serif`;
+  const label = b.label,
+    iw = tall() ? 22 : 20, // the little picture before the label
+    total = iw + 8 + ctx.measureText(label).width,
+    cy = b.y + b.h / 2,
+    ix = b.x + b.w / 2 - total / 2;
+  ctx.strokeStyle = chosen ? ink : GOLD;
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  if (b.seg === "story") {
+    // an open book
+    const k = iw / 2;
+    ctx.beginPath();
+    ctx.moveTo(ix + k, cy - k * 0.55);
+    ctx.quadraticCurveTo(ix + k * 0.5, cy - k * 0.85, ix, cy - k * 0.65);
+    ctx.lineTo(ix, cy + k * 0.75);
+    ctx.quadraticCurveTo(ix + k * 0.5, cy + k * 0.55, ix + k, cy + k * 0.85);
+    ctx.quadraticCurveTo(ix + k * 1.5, cy + k * 0.55, ix + k * 2, cy + k * 0.75);
+    ctx.lineTo(ix + k * 2, cy - k * 0.65);
+    ctx.quadraticCurveTo(ix + k * 1.5, cy - k * 0.85, ix + k, cy - k * 0.55);
+    ctx.lineTo(ix + k, cy + k * 0.85);
+    ctx.stroke();
+  } else {
+    // a loop that goes on forever
+    const a = iw / 4,
+      mx = ix + iw / 2;
+    ctx.beginPath();
+    ctx.ellipse(mx - a, cy, a, a * 0.75, 0, 0, Math.PI * 2);
+    ctx.moveTo(mx + a * 2, cy);
+    ctx.ellipse(mx + a, cy, a, a * 0.75, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.textAlign = "left";
+  ctx.fillStyle = ink;
+  ctx.fillText(label, ix + iw + 8, cy + (tall() ? 6 : 5.5));
+}
+
+// The start screen's Play button: always gold (it's the one to press), with a play triangle.
+// Highlighted, it gets a cream edge and gently pulses.
+function drawPlayButton(b, on, scale) {
+  const w = b.w * scale,
+    h = b.h * scale,
+    x = b.x + (b.w - w) / 2,
+    y = b.y + (b.h - h) / 2;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+  roundRect(x + 2, y + 3, w, h, h / 2);
+  ctx.save();
+  ctx.shadowColor = "rgba(212, 166, 74, 0.55)";
+  ctx.shadowBlur = on ? 18 : 10;
+  ctx.fillStyle = MAPLE;
+  roundRect(x, y, w, h, h / 2);
+  ctx.restore();
+  ctx.strokeStyle = on ? PAPER : GOLD;
+  ctx.lineWidth = on ? 2.5 : 1.5;
+  ctx.stroke();
+  const size = tall() ? 28 : 22;
+  ctx.font = `bold ${size}px Georgia, serif`;
+  const tri = size * 0.72,
+    total = tri + 10 + ctx.measureText(b.label).width,
+    cy = b.y + b.h / 2,
+    tx = b.x + b.w / 2 - total / 2;
+  poly("#2a1a0e", tx, cy - tri / 2, tx + tri * 0.9, cy, tx, cy + tri / 2);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#2a1a0e";
+  ctx.fillText(b.label, tx + tri + 10, cy + size * 0.35);
+}
+
+// The start screen's How to play button: a "?" in a ring, then the label. Quiet (a dark pill,
+// not a filled button) until it's selected, so Play stays the one that stands out.
+function drawHelpButton(b, on) {
   ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : "rgba(20, 14, 10, 0.7)";
   roundRect(b.x, b.y, b.w, b.h, b.h / 2);
   ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
   ctx.lineWidth = on ? 2 : 1.5;
   ctx.stroke();
-  const r = b.h / 2 - 6,
-    cy = b.y + b.h / 2;
-  drawAvatar(b.x + 6 + r, cy, r);
-  const tx = b.x + 12 + r * 2 + 10;
-  ctx.textAlign = "left";
+  ctx.font = `${on ? "bold " : ""}${tall() ? 17 : 15}px Georgia, serif`;
+  const label = b.label,
+    r = tall() ? 13 : 11,
+    gap = 8,
+    total = r * 2 + gap + ctx.measureText(label).width,
+    cy = b.y + b.h / 2,
+    rx = b.x + b.w / 2 - total / 2 + r; // the ring's middle
+  ctx.beginPath();
+  ctx.arc(rx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.textAlign = "center";
   ctx.fillStyle = GOLD;
-  ctx.font = "11px Georgia, serif";
-  ctx.fillText("Playing as", tx, cy - 5);
-  ctx.fillStyle = PAPER;
-  ctx.font = "bold 16px Georgia, serif";
-  ctx.fillText(CHARACTERS[charIndex].name, tx, cy + 13);
-  ctx.textAlign = "right";
-  ctx.fillStyle = on ? "#fff" : "#c9bc9f";
-  ctx.font = `${on ? "bold " : ""}13px Georgia, serif`;
-  ctx.fillText("Change ›", b.x + b.w - 18, cy + 5);
+  ctx.fillText("?", rx, cy + (tall() ? 6 : 5));
+  ctx.textAlign = "left";
+  ctx.fillStyle = on ? "#fff" : PAPER;
+  ctx.fillText(label, rx + r + gap, cy + (tall() ? 6 : 5));
 }
 
 function hint(text, y) {
@@ -3358,7 +3549,8 @@ function drawProfile() {
   drawAvatar(b.x + b.w - r - 6, b.y + b.h / 2, r);
 }
 
-// On the start screen: the best score, in a badge just left of the profile (once there is one).
+// On the start screen: the best score, in a badge at the top right, where the profile badge
+// sits during play (once there is a best score).
 function drawBestBadge() {
   if (best <= 0) return;
   const lead = "Best: ",
@@ -3366,7 +3558,7 @@ function drawBestBadge() {
   ctx.font = "bold 14px Georgia, serif";
   const leadW = ctx.measureText(lead).width,
     w = leadW + ctx.measureText(rest).width + 24,
-    x = PROFILE.x - 8 - w,
+    x = PROFILE.x + PROFILE.w - w, // (right-aligned with the profile badge's spot)
     y = PROFILE.y;
   ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
   roundRect(x, y, w, PROFILE.h, 8);
@@ -4786,8 +4978,8 @@ function drawCharacters() {
   drawButtons();
   hint(
     tall()
-      ? "Tap a book to pick it"
-      : "← → or tap to pick · Enter, Space or Esc when you're done",
+      ? "Tap a book to pick it, then Play"
+      : "← → or tap to pick · Enter or Space to play · Esc to go back",
     py + ph - 10,
   );
 }
@@ -4886,22 +5078,29 @@ function drawPeek(x0) {
   drawCharacter(dewey, -20, -50, 40, 44);
   ctx.restore();
 }
+// Wide: DEWEY and "Dash" side by side. Tall (phones held upright): stacked, the DEWEY books on
+// their shelf with "Dash" centred underneath, a little bigger to fill the narrow screen.
+const TITLE_STACK_SCALE = 1.15, // the stacked title's size
+  TITLE_DASH_DROP = 46, // stacked: "Dash"'s baseline, below the shelf top (tucked up against the shelf)
+  TITLE_DASH_SHIFT = 34; // stacked: how far right of centre "Dash" sits
 function drawTitle(cx, shelfY) {
+  const stacked = tall();
   const bw = 34, // a spine's width
     gap = 3,
     booksW = TITLE_BOOKS.length * bw + (TITLE_BOOKS.length - 1) * gap,
     space = 26; // between the books and "Dash" (its speed lines go here)
   ctx.font = "bold italic 56px Georgia, serif";
   const dashW = ctx.measureText("Dash").width;
-  const total = booksW + space + dashW;
   // On a phone, centre everything you see, Dewey's spot on the shelf to the left included.
   const deweyRoom = tall() ? 40 : 0;
-  const s = Math.min(1, (W - 48) / (total + deweyRoom)); // shrink to fit a narrow screen
+  const total = stacked ? booksW : booksW + space + dashW; // (the row with the books in it)
+  const widest = stacked ? Math.max(total + deweyRoom, dashW + space + TITLE_DASH_SHIFT * 2) : total + deweyRoom;
+  const s = Math.min(stacked ? TITLE_STACK_SCALE : 1, (W - 48) / widest); // shrink to fit a narrow screen
   ctx.save();
   ctx.translate(cx, shelfY);
   ctx.scale(s, s);
   const x0 = -(total + deweyRoom) / 2 + deweyRoom,
-    by = -6; // "Dash"'s baseline, a little above the shelf
+    by = stacked ? TITLE_DASH_DROP : -6; // "Dash"'s baseline: under the shelf, or a little above it
 
   // the shelf (with room on the left for Dewey to step out onto)
   ctx.fillStyle = "#5e3f24";
@@ -4938,7 +5137,7 @@ function drawTitle(cx, shelfY) {
   // "Dash": zooming in, then speed lines behind it, a dark outline, and gold shading
   const fp = (titleTime - DASH_START) / DASH_FLY_MS; // < 0 not yet, 0 → 1 flying, ≥ 1 landed
   if (fp < 0) return ctx.restore();
-  const home = x0 + booksW + space; // just past the books
+  const home = stacked ? -dashW / 2 + TITLE_DASH_SHIFT : x0 + booksW + space; // centred under the books, or just past them
   let dx = home;
   if (fp < 1) {
     // from just off the left edge of the screen, overshooting a little before settling
@@ -4951,7 +5150,7 @@ function drawTitle(cx, shelfY) {
     ctx.save();
     ctx.shadowColor = "transparent";
     ctx.fillStyle = "rgba(243, 234, 215, 0.55)";
-    for (const y of [-38, -27, -16]) roundRect(dx - 6 - tail, y, tail, 3, 1.5);
+    for (const y of [-32, -21, -10]) roundRect(dx - 6 - tail, by + y, tail, 3, 1.5);
     ctx.restore();
   } else {
     // landed: short speed lines in the gap, fading in
@@ -4959,9 +5158,9 @@ function drawTitle(cx, shelfY) {
     ctx.shadowColor = "transparent";
     ctx.globalAlpha = Math.min(1, (fp - 1) * 4);
     ctx.fillStyle = "rgba(243, 234, 215, 0.75)";
-    for (const [y, len] of [[-38, 14], [-27, 20], [-16, 12]]) {
+    for (const [y, len] of [[-32, 14], [-21, 20], [-10, 12]]) {
       const flick = Math.sin(runTime * 0.012 + y) * 2; // a little flicker, as if moving
-      roundRect(dx - 4 - len + flick, y, len, 3, 1.5);
+      roundRect(dx - 4 - len + flick, by + y, len, 3, 1.5);
     }
     ctx.restore();
   }
@@ -4981,15 +5180,62 @@ function drawTitle(cx, shelfY) {
   ctx.restore();
 }
 
+// The full library logo (the icon and the wordmark), for the start screen. Like drawLogo, it sits
+// on a white plate so the brand colors stay true; (cx, top): the plate's top middle, h: the
+// logo's height. FULL_LOGO_PLATE: the plate's height, for a logo h tall.
+const FULL_LOGO = new Image();
+FULL_LOGO.src = "gcls-logo-color%20(5).svg";
+const FULL_LOGO_RATIO = 800 / 261.92, // width / height of the logo
+  FULL_LOGO_PAD = 0.2, // the plate's padding, as a share of h
+  FULL_LOGO_PLATE = (h) => h * (1 + FULL_LOGO_PAD * 2);
+function drawFullLogo(cx, top, h) {
+  const w = h * FULL_LOGO_RATIO,
+    pad = h * FULL_LOGO_PAD;
+  ctx.fillStyle = "#ffffff";
+  roundRect(cx - w / 2 - pad, top, w + pad * 2, h + pad * 2, Math.min(8, pad * 1.5));
+  if (FULL_LOGO.complete && FULL_LOGO.naturalWidth) ctx.drawImage(FULL_LOGO, cx - w / 2, top + pad, w, h);
+}
+const START_LOGO_H = 42, // the start screen's logo height
+  START_LOGO_TOP = 22, // and its plate's top (in the wide layout)
+  PRESENTS_FONT = "italic 13px Georgia, serif";
+// "presents", on a little dark tag hovering over the bottom right corner of the start screen's
+// logo (logoX: the logo's middle, top: its plate's top, as for drawFullLogo).
+function drawPresents(logoX, top, alpha = 1) {
+  const h = START_LOGO_H,
+    right = logoX + (h * (FULL_LOGO_RATIO + FULL_LOGO_PAD * 2)) / 2, // the plate's right edge
+    bottom = top + FULL_LOGO_PLATE(h); // and its bottom edge
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.font = PRESENTS_FONT;
+  const tw = ctx.measureText("presents").width,
+    tagW = tw + 14,
+    tagH = 20,
+    x = right - 22, // mostly outside the plate, just catching its corner (clear of the wordmark)
+    y = bottom - 7;
+  ctx.fillStyle = "rgba(26, 18, 12, 0.92)";
+  roundRect(x, y, tagW, tagH, 6);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1;
+  ctx.shadowColor = "transparent";
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = PAPER;
+  ctx.fillText("presents", x + tagW / 2, y + tagH / 2 + 1);
+  ctx.restore();
+}
+
 // The start screen: the title with Start and How to play buttons.
 // The library keeps drifting by behind it, and the book jogs on the spot.
 function drawStartScreen() {
   ctx.fillStyle = "rgba(26, 18, 12, 0.5)";
   fillScreen();
+  // the tall layout drops the logo and the (stacked) title down to sit just above the buttons
   const tx = W / 2,
-    ty = tall() ? 160 : 0; // the tall layout drops the title down to sit just above the buttons
+    titleY = tall() ? 248 : 150, // the title's shelf
+    ltop = tall() ? 95 : START_LOGO_TOP; // the logo's top
   // a little darker in the middle so the small text stays readable over the shelves
-  const shade = ctx.createRadialGradient(W / 2, 150 + ty, 40, W / 2, 150 + ty, 300);
+  const shade = ctx.createRadialGradient(W / 2, titleY, 40, W / 2, titleY, 300);
   shade.addColorStop(0, "rgba(26, 18, 12, 0.4)");
   shade.addColorStop(1, "rgba(26, 18, 12, 0)");
   ctx.fillStyle = shade;
@@ -5004,11 +5250,15 @@ function drawStartScreen() {
 
   ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
   ctx.shadowBlur = 6;
-  if (intro) drawIntroLogo(tx, 30 + ty);
-  else drawLogo(tx, 30 + ty, 30);
+  const lx = tx;
+  if (intro) drawIntroLogo(lx, ltop);
+  else {
+    drawFullLogo(lx, ltop, START_LOGO_H);
+    drawPresents(lx, ltop);
+  }
   // the title fades in just before its books start hopping
   ctx.globalAlpha = intro ? Math.min(1, titleTime / TITLE_FADE_MS) : 1;
-  drawTitle(tx, 150 + ty);
+  drawTitle(tx, titleY);
   ctx.globalAlpha = 1;
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
@@ -5029,17 +5279,17 @@ function drawStartScreen() {
 }
 
 // The opening sequence's logo: it drops in from above, lands with a little bounce, and a soft
-// gold glow bursts out behind it. (x, top): where it ends up, as for drawLogo.
+// gold glow bursts out behind it. (x, top): where it ends up, as for drawFullLogo.
 function drawIntroLogo(x, top) {
-  const h = 30,
-    plateH = h * 1.36, // the logo's white plate (see drawLogo)
+  const h = START_LOGO_H,
+    plateH = FULL_LOGO_PLATE(h), // the logo's white plate
     cy = top + plateH / 2;
   const p = Math.min(1, introTime / INTRO_LOGO_MS);
   if (p <= 0) return;
   // the glow, once it lands (at about 70% of the drop)
   const g = (introTime - INTRO_LOGO_MS * 0.7) / 900;
   if (g > 0 && g < 1) {
-    const r = 30 + g * 90;
+    const r = 60 + g * 120; // (wider than the icon was, to suit the full logo)
     const glow = ctx.createRadialGradient(x, cy, 0, x, cy, r);
     glow.addColorStop(0, `rgba(212, 166, 74, ${0.55 * (1 - g)})`);
     glow.addColorStop(1, "rgba(212, 166, 74, 0)");
@@ -5058,8 +5308,11 @@ function drawIntroLogo(x, top) {
   ctx.save();
   ctx.globalAlpha = Math.min(1, p * 3);
   ctx.translate(0, dy);
-  drawLogo(x, top, h);
+  drawFullLogo(x, top, h);
   ctx.restore();
+  // "presents" fades in once the logo has landed
+  const pr = (introTime - INTRO_LOGO_MS) / 400;
+  if (pr > 0) drawPresents(x, top, Math.min(1, pr));
 }
 
 // Little pictures for the How to play screen, each centered on (x, y).
@@ -5278,7 +5531,7 @@ function toCanvas(e) {
   const rect = canvas.getBoundingClientRect();
   return [
     ((e.clientX - rect.left) / rect.width) * W,
-    ((e.clientY - rect.top) / rect.height) * canvas.height - TOP, // (in the layout, which sits TOP down in full screen)
+    ((e.clientY - rect.top) / rect.height) * (H + 2 * TOP) - TOP, // (in the layout, which sits TOP down in full screen)
   ];
 }
 const inside = (x, y, b) =>
@@ -5332,7 +5585,6 @@ canvas.addEventListener("pointerdown", (e) => {
   if (inside(cx, cy, MUTE_BTN)) return toggleMute();
   if (isMenu()) {
     keyNav = false;
-    if (state === "ready" && inside(cx, cy, PROFILE)) return choose("chars"); // tap your profile to change it
     if (state === "howto") {
       if (topics.open) {
         const t = topics.items.findIndex((r) => inside(cx, cy, r));
@@ -5391,11 +5643,11 @@ canvas.addEventListener("pointermove", (e) => {
   }
   const i = BUTTONS[state].findIndex((b) => inside(cx, cy, b));
   if (i >= 0) selected[state] = i;
-  else if (state === "ready") selected.ready = 0; // off the buttons: back to Start
+  else if (state === "ready") selected.ready = READY_PLAY; // off the buttons: back to Start
 });
 // The mouse leaving the game also hands the start screen's highlight back to Start.
 canvas.addEventListener("pointerleave", () => {
-  if (state === "ready" && !keyNav) selected.ready = 0;
+  if (state === "ready" && !keyNav) selected.ready = READY_PLAY;
 });
 function startDuck() {
   if (!duckHeld && state === "running") sfx.duck();

@@ -230,7 +230,7 @@ function storyChoose(id) {
   if (state === "levels") {
     if (id === "home") {
       state = "ready";
-      if (!keyNav) selected.ready = 0;
+      if (!keyNav) selected.ready = READY_PLAY;
       return true;
     }
     if (id.startsWith("level-")) {
@@ -716,10 +716,12 @@ function scenePictureBooks(x, w) {
   R(x, 32, w, 1, "#e3e0d8");
   R(x, CEIL, w, FLOOR - CEIL, "#e2e7ed");
   // big windows onto the trees
-  for (const wx of [x + 590, x + 790]) {
+  for (const off of [590, 790]) {
+    const wx = x + off;
     R(wx, CEIL + 10, 180, FLOOR - CEIL - 60, "#cfd6dc");
     R(wx + 6, CEIL + 16, 168, FLOOR - CEIL - 72, "#bfe0c9");
-    for (let i = 0; i < 6; i++) oval(wx + 20 + i * 28, CEIL + 60 + hash(i, wx | 0) * 40, 26, 22, i % 2 ? "#7fb26a" : "#93c27c");
+    // (seeded by the window's spot in the scene, not on the screen, so the trees hold still)
+    for (let i = 0; i < 6; i++) oval(wx + 20 + i * 28, CEIL + 60 + hash(i, off) * 40, 26, 22, i % 2 ? "#7fb26a" : "#93c27c");
     R(wx + 88, CEIL + 16, 4, FLOOR - CEIL - 72, "#cfd6dc");
   }
   // a feature wall with three framed illustrations
@@ -741,11 +743,14 @@ function scenePictureBooks(x, w) {
   carpet(x, w, "#9c8a6c", "#84735a");
   drawGiraffe(x + 110, FLOOR);
   // low picture-book shelves, red at the ends, with books standing face-out on top
-  for (const [sx, sw] of [[x + 200, 110], [x + 580, 150], [x + 780, 160]]) {
-    shelfUnit(sx, FLOOR - 66, sw, 66, 2, sx | 0);
+  // (each shelf's books are picked by its spot in the scene, off, not on the screen, which
+  // changes every frame as the library scrolls: that made the books flicker)
+  for (const [off, sw] of [[200, 110], [580, 150], [780, 160]]) {
+    const sx = x + off;
+    shelfUnit(sx, FLOOR - 66, sw, 66, 2, off);
     R(sx - 6, FLOOR - 70, 7, 70, "#c62a2f");
     R(sx + sw - 1, FLOOR - 70, 7, 70, "#c62a2f");
-    for (let i = 0; 8 + i * 22 < sw; i++) R(sx + 6 + i * 22, FLOOR - 92, 16, 22, BRIGHT[(i * 3 + (sx | 0)) % BRIGHT.length]);
+    for (let i = 0; 8 + i * 22 < sw; i++) R(sx + 6 + i * 22, FLOOR - 92, 16, 22, BRIGHT[(i * 3 + off) % BRIGHT.length]);
   }
   // blue armchairs around an octagonal maple book table
   for (const ax of [x + 330, x + 488]) {
@@ -1414,9 +1419,11 @@ function drawBookmobile(bx, groundY, t, opts) {
   R(bx, top + bodyH - 31, L, 14, "#2f7d84");
   label("BOOKMOBILE", bx + 112, top + 26, 20, "#2f7d84", "Georgia, serif");
   // windows full of books
-  for (const wx of [bx + 18, bx + 116]) {
+  // (the books' colours go by which window, not where it is on the screen, so they hold
+  // still while the Bookmobile moves)
+  for (const [n, wx] of [[0, bx + 18], [1, bx + 116]]) {
     R(wx, top + 36, 84, 40, "#2a1d14");
-    for (let k = 0; k < 9; k++) R(wx + 3 + k * 9, top + 42 + (k % 3) * 3, 7, 32 - (k % 3) * 3, SPINES[(k + (wx | 0)) % SPINES.length]);
+    for (let k = 0; k < 9; k++) R(wx + 3 + k * 9, top + 42 + (k % 3) * 3, 7, 32 - (k % 3) * 3, SPINES[(k + n * 4) % SPINES.length]);
   }
   // the door
   const dx = bx + BM_DOOR - 16;

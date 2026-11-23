@@ -130,6 +130,13 @@ html.fullscreen canvas {
 html.fullscreen .hint,
 html.fullscreen .controls { display: none; }
 
+/* Dewey Dash on a desktop: the game grows to fill the window, up to twice its size (it's drawn
+   at double resolution, so it stays sharp), while still fitting the window's height. */
+[data-game="deweydash"] canvas {
+  max-width: min(1600px, calc((100vh - var(--reserve)) * var(--ratio)));
+  max-width: min(1600px, calc((100dvh - var(--reserve)) * var(--ratio)));
+}
+
 /* Dewey Dash on a phone turned on its side: less padding, so the game can use the whole screen. */
 @media (orientation: landscape) and (max-height: 500px) {
   [data-game="deweydash"] {
