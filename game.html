@@ -130,6 +130,7 @@
           location.replace("test.html" + location.search);
           return;
         }
+        window.TEST_MODE = true; // games can check this (Dewey Dash locks Story Mode)
       } else if (params.get("pass") !== GAME_PASS) {
         location.replace("index.html?error=pass"); // wrong or missing password
         return;

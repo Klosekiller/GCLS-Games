@@ -399,6 +399,7 @@ function storyChoose(id) {
     return true;
   }
   if (id === "story") {
+    if (storyLocked()) return true; // test mode: no Story Mode (see storyLocked, in deweydash.js)
     openLevels();
     return true;
   }

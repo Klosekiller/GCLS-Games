@@ -44,9 +44,24 @@ const REPAIR_EVERY_MS = 30000; // …and this long between rolls after that
 const POWER_FIRST_MS = 20000; // the first one can turn up this far into a run…
 const POWER_GAP_MS = [25000, 40000]; // …then one every this long (a random time in between)
 const POWERS = {
-  magnet: { name: "Magnet", popup: "Bookmark magnet! Pages fly to you", ms: 8000, color: "#d94b4b" },
-  shield: { name: "Hardcover", popup: "Hardcover! It takes the next bump", ms: 20000, color: "#4b79d9" },
-  speed: { name: "Speed reading", popup: "Speed reading! Double pages", ms: 6000, color: "#f2c14e" },
+  magnet: {
+    name: "Magnet",
+    popup: "Bookmark magnet! Pages fly to you",
+    ms: 8000,
+    color: "#d94b4b",
+  },
+  shield: {
+    name: "Hardcover",
+    popup: "Hardcover! It takes the next bump",
+    ms: 20000,
+    color: "#4b79d9",
+  },
+  speed: {
+    name: "Speed reading",
+    popup: "Speed reading! Double pages",
+    ms: 6000,
+    color: "#f2c14e",
+  },
 };
 const MAGNET_RANGE = 280; // px ahead of the book that the magnet reaches
 const MAGNET_PULL = 0.75; // how fast pages fly to the book (px per ms)
@@ -213,7 +228,14 @@ const MARK_COLORS = [RIBBON_RED, RIBBON_BLUE, RIBBON_YELLOW];
 
 // ---------- State ----------
 const PLAYER_X = 70; // where the book runs, from the left of the screen (every run and level starts here)
-const player = { x: PLAYER_X, y: GROUND_Y, w: 40, h: 44, vy: 0, onGround: true };
+const player = {
+  x: PLAYER_X,
+  y: GROUND_Y,
+  w: 40,
+  h: 44,
+  vy: 0,
+  onGround: true,
+};
 let obstacles = [];
 let pickups = []; // loose pages and the odd bookmark: { kind, x, y, w, h, color, phase }
 let particles = [];
@@ -291,7 +313,9 @@ const sfx = {
   thunk: () => {
     tone(130, 55, 0.22, "square", 0.16);
     tone(85, 40, 0.3, "triangle", 0.14, 0.02);
-    [1400, 1700, 1500].forEach((f, i) => tone(f, f * 1.1, 0.06, "sine", 0.05, 0.25 + i * 0.09)); // seeing stars
+    [1400, 1700, 1500].forEach((f, i) =>
+      tone(f, f * 1.1, 0.06, "sine", 0.05, 0.25 + i * 0.09),
+    ); // seeing stars
   },
   lose: () =>
     [1100, 900, 700].forEach((f, i) =>
@@ -308,8 +332,12 @@ const sfx = {
   // feet out from under it: a squeak, then a "whoa-oa-oa" wobbling up and down through the flips
   wipeout: () => {
     tone(1300, 1700, 0.08, "sine", 0.08);
-    [0, 1, 2].forEach((i) => tone(320, 700, 0.17, "triangle", 0.07, 0.1 + i * 0.3));
-    [0, 1, 2].forEach((i) => tone(700, 320, 0.13, "triangle", 0.06, 0.27 + i * 0.3));
+    [0, 1, 2].forEach((i) =>
+      tone(320, 700, 0.17, "triangle", 0.07, 0.1 + i * 0.3),
+    );
+    [0, 1, 2].forEach((i) =>
+      tone(700, 320, 0.13, "triangle", 0.06, 0.27 + i * 0.3),
+    );
   },
   hurt: () => {
     tone(330, 160, 0.16, "triangle", 0.16);
@@ -323,7 +351,9 @@ const sfx = {
   count: () => tone(440, 440, 0.1, "triangle", 0.12), // each number of the 3, 2, 1
   // power-ups: a bright run up when you grab one, a step down when it wears off
   power: () =>
-    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, f * 1.01, 0.12, "sine", 0.11, i * 0.05)),
+    [523, 659, 784, 1047, 1319].forEach((f, i) =>
+      tone(f, f * 1.01, 0.12, "sine", 0.11, i * 0.05),
+    ),
   powerEnd: () => {
     tone(784, 523, 0.14, "triangle", 0.07);
     tone(523, 392, 0.16, "triangle", 0.06, 0.1);
@@ -358,35 +388,152 @@ const MUSIC_VOLUME = 0.55; // overall music level (the sound effects aren't affe
 const MUSIC_STEP = 60 / MUSIC_BPM / 4; // one 16th note, in seconds
 const noteHz = (n) => 440 * Math.pow(2, (n - 69) / 12); // MIDI note number → frequency
 // 8 bars in C major: C  G  Am  F | F  G  Am  G
-const MUSIC_CHORDS = [[60, 64, 67], [59, 62, 67], [57, 60, 64], [57, 60, 65], [57, 60, 65], [59, 62, 67], [57, 60, 64], [59, 62, 67]];
+const MUSIC_CHORDS = [
+  [60, 64, 67],
+  [59, 62, 67],
+  [57, 60, 64],
+  [57, 60, 65],
+  [57, 60, 65],
+  [59, 62, 67],
+  [57, 60, 64],
+  [59, 62, 67],
+];
 const MUSIC_BASS = [48, 43, 45, 41, 41, 43, 45, 43];
 // the tune, bar by bar: [16th-note step, note, length in steps]
 const MUSIC_MELODY = [
-  [[0, 76, 2], [2, 79, 2], [4, 76, 2], [6, 72, 2], [8, 74, 2], [10, 76, 2], [12, 79, 4]],
-  [[0, 74, 2], [2, 71, 2], [4, 74, 2], [6, 79, 2], [8, 77, 2], [10, 76, 2], [12, 74, 4]],
-  [[0, 72, 2], [2, 76, 2], [4, 81, 2], [6, 79, 2], [8, 76, 2], [10, 72, 2], [12, 76, 4]],
-  [[0, 77, 2], [2, 76, 2], [4, 74, 2], [6, 72, 2], [8, 69, 4], [12, 72, 4]],
-  [[0, 69, 2], [2, 72, 2], [4, 77, 3], [7, 76, 1], [8, 77, 2], [10, 81, 2], [12, 79, 4]],
-  [[0, 79, 2], [2, 77, 2], [4, 76, 2], [6, 74, 2], [8, 71, 2], [10, 74, 2], [12, 79, 4]],
-  [[0, 76, 2], [2, 74, 2], [4, 72, 2], [6, 76, 2], [8, 81, 3], [11, 79, 1], [12, 76, 4]],
-  [[0, 74, 2], [2, 76, 2], [4, 77, 2], [6, 74, 2], [8, 71, 2], [10, 74, 2], [12, 71, 2], [14, 74, 2]],
+  [
+    [0, 76, 2],
+    [2, 79, 2],
+    [4, 76, 2],
+    [6, 72, 2],
+    [8, 74, 2],
+    [10, 76, 2],
+    [12, 79, 4],
+  ],
+  [
+    [0, 74, 2],
+    [2, 71, 2],
+    [4, 74, 2],
+    [6, 79, 2],
+    [8, 77, 2],
+    [10, 76, 2],
+    [12, 74, 4],
+  ],
+  [
+    [0, 72, 2],
+    [2, 76, 2],
+    [4, 81, 2],
+    [6, 79, 2],
+    [8, 76, 2],
+    [10, 72, 2],
+    [12, 76, 4],
+  ],
+  [
+    [0, 77, 2],
+    [2, 76, 2],
+    [4, 74, 2],
+    [6, 72, 2],
+    [8, 69, 4],
+    [12, 72, 4],
+  ],
+  [
+    [0, 69, 2],
+    [2, 72, 2],
+    [4, 77, 3],
+    [7, 76, 1],
+    [8, 77, 2],
+    [10, 81, 2],
+    [12, 79, 4],
+  ],
+  [
+    [0, 79, 2],
+    [2, 77, 2],
+    [4, 76, 2],
+    [6, 74, 2],
+    [8, 71, 2],
+    [10, 74, 2],
+    [12, 79, 4],
+  ],
+  [
+    [0, 76, 2],
+    [2, 74, 2],
+    [4, 72, 2],
+    [6, 76, 2],
+    [8, 81, 3],
+    [11, 79, 1],
+    [12, 76, 4],
+  ],
+  [
+    [0, 74, 2],
+    [2, 76, 2],
+    [4, 77, 2],
+    [6, 74, 2],
+    [8, 71, 2],
+    [10, 74, 2],
+    [12, 71, 2],
+    [14, 74, 2],
+  ],
 ];
 // The game-over tune: slower and gentler, a music box over a library clock's tick-tock, in
 // A minor. 8 bars: Am  F  C  G | Am  F  Dm  E (the E leans back round to the Am).
 const OVER_BPM = 92;
 const OVER_STEP = 60 / OVER_BPM / 4;
 const OVER_VOLUME = MUSIC_VOLUME * 0.8;
-const OVER_CHORDS = [[57, 60, 64], [57, 60, 65], [55, 60, 64], [55, 59, 62], [57, 60, 64], [57, 60, 65], [57, 62, 65], [56, 59, 64]];
+const OVER_CHORDS = [
+  [57, 60, 64],
+  [57, 60, 65],
+  [55, 60, 64],
+  [55, 59, 62],
+  [57, 60, 64],
+  [57, 60, 65],
+  [57, 62, 65],
+  [56, 59, 64],
+];
 const OVER_BASS = [45, 41, 48, 43, 45, 41, 50, 40];
 const OVER_MELODY = [
-  [[0, 76, 6], [6, 74, 2], [8, 72, 4], [12, 71, 4]],
-  [[0, 72, 6], [6, 69, 2], [8, 72, 8]],
-  [[0, 67, 4], [4, 72, 4], [8, 76, 6], [14, 74, 2]],
-  [[0, 74, 8], [8, 71, 8]],
-  [[0, 76, 6], [6, 74, 2], [8, 72, 4], [12, 76, 4]],
-  [[0, 77, 6], [6, 76, 2], [8, 74, 4], [12, 72, 4]],
-  [[0, 74, 4], [4, 72, 4], [8, 69, 4], [12, 71, 4]],
-  [[0, 68, 8], [8, 71, 8]],
+  [
+    [0, 76, 6],
+    [6, 74, 2],
+    [8, 72, 4],
+    [12, 71, 4],
+  ],
+  [
+    [0, 72, 6],
+    [6, 69, 2],
+    [8, 72, 8],
+  ],
+  [
+    [0, 67, 4],
+    [4, 72, 4],
+    [8, 76, 6],
+    [14, 74, 2],
+  ],
+  [
+    [0, 74, 8],
+    [8, 71, 8],
+  ],
+  [
+    [0, 76, 6],
+    [6, 74, 2],
+    [8, 72, 4],
+    [12, 76, 4],
+  ],
+  [
+    [0, 77, 6],
+    [6, 76, 2],
+    [8, 74, 4],
+    [12, 72, 4],
+  ],
+  [
+    [0, 74, 4],
+    [4, 72, 4],
+    [8, 69, 4],
+    [12, 71, 4],
+  ],
+  [
+    [0, 68, 8],
+    [8, 71, 8],
+  ],
 ];
 const OVER_DELAY = 1.6; // seconds after the run ends before it starts (once the "aww" has finished)
 let music = null; // the music's audio nodes, made the first time it plays
@@ -466,13 +613,24 @@ function scheduleMusicStep(step, t, mode) {
   const chord = MUSIC_CHORDS[bar],
     root = MUSIC_BASS[bar];
   // bass: the root on the beat, bouncing up an octave in between
-  if (s === 0 || s === 8) mNote(noteHz(root), t, MUSIC_STEP * 3, "triangle", 0.09);
-  if (s === 6 || s === 14) mNote(noteHz(root + 12), t, MUSIC_STEP * 1.5, "triangle", 0.06);
+  if (s === 0 || s === 8)
+    mNote(noteHz(root), t, MUSIC_STEP * 3, "triangle", 0.09);
+  if (s === 6 || s === 14)
+    mNote(noteHz(root + 12), t, MUSIC_STEP * 1.5, "triangle", 0.06);
   // plucked chords, up and down on the 8ths
-  if (s % 2 === 0) mNote(noteHz(chord[[0, 1, 2, 1][(s / 2) % 4]]), t, 0.2, "triangle", mode === "menu" ? 0.03 : 0.036);
+  if (s % 2 === 0)
+    mNote(
+      noteHz(chord[[0, 1, 2, 1][(s / 2) % 4]]),
+      t,
+      0.2,
+      "triangle",
+      mode === "menu" ? 0.03 : 0.036,
+    );
   if (mode === "menu") return; // the start screen gets just those two
   // the tune
-  for (const [ms, n, len] of MUSIC_MELODY[bar]) if (ms === s) mNote(noteHz(n), t, MUSIC_STEP * len * 0.9, "square", 0.02, 0.01);
+  for (const [ms, n, len] of MUSIC_MELODY[bar])
+    if (ms === s)
+      mNote(noteHz(n), t, MUSIC_STEP * len * 0.9, "square", 0.02, 0.01);
   // light percussion
   if (s === 0 || s === 8) mThump(t);
   if (s === 4 || s === 12) mNote(1600, t, 0.03, "sine", 0.04); // woodblock
@@ -480,7 +638,8 @@ function scheduleMusicStep(step, t, mode) {
   if (mode === "build") {
     // later in a run: busier hats and a high, sparkly arpeggio
     if (s % 2 === 1) mHat(t, 0.012);
-    if (s % 2 === 1) mNote(noteHz(chord[(s >> 1) % 3] + 24), t, 0.14, "sine", 0.014);
+    if (s % 2 === 1)
+      mNote(noteHz(chord[(s >> 1) % 3] + 24), t, 0.14, "sine", 0.014);
   }
 }
 
@@ -494,16 +653,21 @@ function scheduleOverStep(step, t) {
   if (s === 0) mNote(noteHz(root), t, OVER_STEP * 10, "triangle", 0.07, 0.02);
   if (s === 8) mNote(noteHz(root), t, OVER_STEP * 6, "triangle", 0.045, 0.02);
   // the music box: the chord rippling up and down an octave higher, ringing on
-  if (s % 2 === 0) mNote(noteHz(chord[[0, 1, 2, 1][(s / 2) % 4]] + 12), t, 0.6, "sine", 0.02);
+  if (s % 2 === 0)
+    mNote(noteHz(chord[[0, 1, 2, 1][(s / 2) % 4]] + 12), t, 0.6, "sine", 0.02);
   // the tune
-  for (const [ms, n, len] of OVER_MELODY[bar]) if (ms === s) mNote(noteHz(n), t, OVER_STEP * len * 0.95, "triangle", 0.04, 0.02);
+  for (const [ms, n, len] of OVER_MELODY[bar])
+    if (ms === s)
+      mNote(noteHz(n), t, OVER_STEP * len * 0.95, "triangle", 0.04, 0.02);
   // the library clock: tick… tock…
   if (s % 4 === 0) mNote(s % 8 === 0 ? 1250 : 940, t, 0.03, "sine", 0.018);
 }
 
 // A little "aww" for game over: three notes stepping down.
 function playMusicSting(t) {
-  [67, 63, 60].forEach((n, i) => mNote(noteHz(n), t + i * 0.28, i === 2 ? 0.8 : 0.3, "triangle", 0.07, 0.02));
+  [67, 63, 60].forEach((n, i) =>
+    mNote(noteHz(n), t + i * 0.28, i === 2 ? 0.8 : 0.3, "triangle", 0.07, 0.02),
+  );
 }
 
 // A quick dip in the music when the book gets bumped.
@@ -520,10 +684,15 @@ function musicDuck() {
 function updateMusic() {
   if (!musicUnlocked || (muted && !music)) return; // no audio until sound is turned on
   const mode =
-    state === "over" ? "over"
-    : state === "paused" || (state === "howto" && howtoFrom === "paused") ? "paused"
-    : state === "running" ? (runTime > SWOOP_START_MS ? "build" : "run")
-    : "menu";
+    state === "over"
+      ? "over"
+      : state === "paused" || (state === "howto" && howtoFrom === "paused")
+        ? "paused"
+        : state === "running"
+          ? runTime > SWOOP_START_MS
+            ? "build"
+            : "run"
+          : "menu";
   const m = musicNodes(),
     now = m.a.currentTime;
   if (mode !== musicMode) {
@@ -536,14 +705,22 @@ function updateMusic() {
       musicStep = 0; // a fresh start after game over (or the very first time)
       musicNext = now + 0.05;
     }
-    m.filter.frequency.setTargetAtTime(mode === "paused" ? 650 : 18000, now, 0.1); // muffled when paused
+    m.filter.frequency.setTargetAtTime(
+      mode === "paused" ? 650 : 18000,
+      now,
+      0.1,
+    ); // muffled when paused
     musicMode = mode;
   }
-  const level = muted ? 0
-    : mode === "menu" ? MUSIC_VOLUME * 0.75
-    : mode === "paused" ? MUSIC_VOLUME * 0.6
-    : mode === "over" ? OVER_VOLUME
-    : MUSIC_VOLUME;
+  const level = muted
+    ? 0
+    : mode === "menu"
+      ? MUSIC_VOLUME * 0.75
+      : mode === "paused"
+        ? MUSIC_VOLUME * 0.6
+        : mode === "over"
+          ? OVER_VOLUME
+          : MUSIC_VOLUME;
   if (level !== musicLevel) {
     m.out.gain.setTargetAtTime(level, now, 0.08);
     musicLevel = level;
@@ -552,7 +729,8 @@ function updateMusic() {
   if (musicNext < now - 0.2) musicNext = now + 0.05; // fell behind (the tab was hidden): pick up from now
   while (musicNext < now + 0.15) {
     if (mode === "over") scheduleOverStep(musicStep, musicNext);
-    else scheduleMusicStep(musicStep, musicNext, mode === "paused" ? "run" : mode);
+    else
+      scheduleMusicStep(musicStep, musicNext, mode === "paused" ? "run" : mode);
     musicStep = (musicStep + 1) % 128;
     musicNext += mode === "over" ? OVER_STEP : MUSIC_STEP;
   }
@@ -569,7 +747,9 @@ for (const ev of ["keydown", "pointerdown"]) {
 // With a keyboard it's a gold-ringed pill (speaker, "Sound on", and a small "M" keycap: the key
 // that does the same); on a touch screen, just the speaker in a gold-ringed circle, big enough to
 // tap. Its size and place are set by the layout (see applyLayout); the pause button matches it.
-const HAS_KEYS = !(window.matchMedia && window.matchMedia("(hover: none)").matches);
+const HAS_KEYS = !(
+  window.matchMedia && window.matchMedia("(hover: none)").matches
+);
 const MUTE_BTN = { x: 12, y: 12, w: 140, h: 34 };
 // A small, quiet keycap (18 square) at (x, y): the key that does what the button beside it does.
 function drawKeycap(x, y, label) {
@@ -648,7 +828,8 @@ function jump() {
     player.onGround = false;
     if (standingOn && standingOn.kind === "couch") {
       // a bounce off the cushions: higher (as high as there's room for), floatier, with a flip
-      const rise = ((JUMP_VELOCITY * JUMP_VELOCITY) / (2 * GRAVITY)) * COUCH_RISE; // (the view follows it up)
+      const rise =
+        ((JUMP_VELOCITY * JUMP_VELOCITY) / (2 * GRAVITY)) * COUCH_RISE; // (the view follows it up)
       player.vy = -Math.sqrt(2 * COUCH_GRAVITY * rise);
       player.bounce = { t: 0, flipAt: 0 };
       standingOn.squishAt = runTime; // the cushions squish down under it
@@ -680,10 +861,16 @@ function releaseJump() {
 
 function updatePlayer(dt) {
   // Holding duck in the air pulls you down faster so you can drop under a flying book.
-  const gravity = duckHeld && !player.onGround ? GRAVITY * 2.5 : player.bounce ? COUCH_GRAVITY : GRAVITY;
+  const gravity =
+    duckHeld && !player.onGround
+      ? GRAVITY * 2.5
+      : player.bounce
+        ? COUCH_GRAVITY
+        : GRAVITY;
   if (player.bounce) {
     player.bounce.t += dt;
-    if (!player.bounce.flipAt && player.vy > COUCH_FLIP_AT) player.bounce.flipAt = player.bounce.t; // time to flip
+    if (!player.bounce.flipAt && player.vy > COUCH_FLIP_AT)
+      player.bounce.flipAt = player.bounce.t; // time to flip
   }
   const prevBottom = player.y + player.h;
   player.vy += gravity * dt;
@@ -750,7 +937,12 @@ let lastFootfall = 0,
 // The player's collision box: shorter and a bit wider while ducking.
 function playerBox() {
   if (player.ducking)
-    return { x: player.x, y: player.y + player.h - DUCK_H, w: DUCK_W, h: DUCK_H }; // (on the floor or on furniture)
+    return {
+      x: player.x,
+      y: player.y + player.h - DUCK_H,
+      w: DUCK_W,
+      h: DUCK_H,
+    }; // (on the floor or on furniture)
   return { x: player.x, y: player.y, w: player.w, h: player.h };
 }
 
@@ -784,9 +976,7 @@ function spawnObstacle() {
   const toy = story && typeof storyToy === "function" ? storyToy() : null;
   if (toy) return spawnToy(toy);
   const count =
-    has("double") && Math.random() < 0.35
-      ? 2 + (Math.random() < 0.3)
-      : 1;
+    has("double") && Math.random() < 0.35 ? 2 + (Math.random() < 0.3) : 1;
   const stackW = count === 1 ? 30 : 26;
   const targetH = 26 + Math.random() * 26;
   const x = W + 10;
@@ -840,7 +1030,11 @@ function spawnFlyer() {
 // How a charger is doing: ms into its wind-up (negative before), and whether it's charging.
 function chargeState(o) {
   const into = o.charge.t - o.charge.at;
-  return { into, winding: into > 0 && into <= CHARGE_WINDUP_MS, charging: into > CHARGE_WINDUP_MS };
+  return {
+    into,
+    winding: into > 0 && into <= CHARGE_WINDUP_MS,
+    charging: into > CHARGE_WINDUP_MS,
+  };
 }
 
 function updateObstacles(dt) {
@@ -855,15 +1049,18 @@ function updateObstacles(dt) {
           ? o.skimY + Math.sin(runTime * 0.006 + o.phase) * 1.5 // skimming along the top of furniture
           : o.flock
             ? o.baseY + Math.sin(runTime * 0.008 + o.phase) * o.bob // a jostling flock
-          : o.swoop
-            ? swoopBottom(o) - o.h
-            : FLYER_BOTTOM - o.h + Math.sin(runTime * 0.006 + o.phase) * 2;
+            : o.swoop
+              ? swoopBottom(o) - o.h
+              : FLYER_BOTTOM - o.h + Math.sin(runTime * 0.006 + o.phase) * 2;
       if (o.dart) o.x -= DART_EXTRA * dt;
       if (o.charge && o.x < W) {
         o.charge.t += dt;
         const { into, winding, charging } = chargeState(o);
-        if (winding) o.x += 0.04 * dt; // pulls back a touch, winding up
-        else if (charging) o.x -= CHARGE_EXTRA * Math.min(1, (into - CHARGE_WINDUP_MS) / 200) * dt; // and off it goes
+        if (winding)
+          o.x += 0.04 * dt; // pulls back a touch, winding up
+        else if (charging)
+          o.x -=
+            CHARGE_EXTRA * Math.min(1, (into - CHARGE_WINDUP_MS) / 200) * dt; // and off it goes
       }
     }
   }
@@ -871,7 +1068,8 @@ function updateObstacles(dt) {
 
   // Spawn based on distance so gaps stay jumpable as speed rises.
   nextSpawn -= dx;
-  if (nextSpawn <= 0 && !(story && storyNearEnd())) { // (nothing new near the end of a story level)
+  if (nextSpawn <= 0 && !(story && storyNearEnd())) {
+    // (nothing new near the end of a story level)
     const airTime = (2 * -JUMP_VELOCITY) / GRAVITY; // ms spent in a full jump
     let o = null,
       len, // how far it reaches past where it starts
@@ -881,9 +1079,12 @@ function updateObstacles(dt) {
       moves = ["wet"];
     } else if (upcoming.startsWith("platform")) {
       const piece = upcoming.split(":")[1]; // (a particular piece, or any)
-      const p = withPageAllowance(piece === "couch", () => spawnPlatform(piece));
+      const p = withPageAllowance(piece === "couch", () =>
+        spawnPlatform(piece),
+      );
       len = p.w;
-      moves = piece === "couch" ? ["bounce"] : p.jumpy ? ["high", "jump"] : ["high"]; // (jumping something up there can carry you off the end; a bounce off a couch carries you a long way)
+      moves =
+        piece === "couch" ? ["bounce"] : p.jumpy ? ["high", "jump"] : ["high"]; // (jumping something up there can carry you off the end; a bounce off a couch carries you a long way)
     } else if (upcoming === "tunnel") {
       len = withPageAllowance(false, spawnTunnel);
       moves = ["duck"];
@@ -894,12 +1095,17 @@ function updateObstacles(dt) {
     } else {
       o = upcoming === "flyer" ? spawnFlyer() : spawnObstacle();
       len = o.w;
-      moves = o.swoop ? ["jump", "duck"] : o.type === "flyer" ? ["duck"] : ["jump"];
+      moves = o.swoop
+        ? ["jump", "duck"]
+        : o.type === "flyer"
+          ? ["duck"]
+          : ["jump"];
     }
     upcoming = pickNext();
     nextSpawn = len + gapBefore(moves, nextMoves(upcoming), speed * airTime);
     // (a level's scripted opening sets its own gaps, in jump lengths: see storyOpening)
-    const openingGap = story && typeof storyOpeningGap === "function" ? storyOpeningGap() : null;
+    const openingGap =
+      story && typeof storyOpeningGap === "function" ? storyOpeningGap() : null;
     if (openingGap != null) nextSpawn = len + speed * airTime * openingGap;
     if (o) spawnPickups(o, airTime); // (after the gap is set: a row of pages can go in it)
   }
@@ -908,17 +1114,22 @@ function updateObstacles(dt) {
 // ---------- Spacing ----------
 function pickNext() {
   // (a Story Mode level can start with a set order of things: see storyOpening)
-  const scripted = story && typeof storyOpening === "function" ? storyOpening() : null;
+  const scripted =
+    story && typeof storyOpening === "function" ? storyOpening() : null;
   if (scripted) return scripted;
   // (a Story Mode level can put particular furniture in particular scenes: see storyFurniture)
-  const piece = story && typeof storyFurniture === "function" ? storyFurniture() : null;
+  const piece =
+    story && typeof storyFurniture === "function" ? storyFurniture() : null;
   if (piece) return "platform:" + piece;
   if (has("wet") && Math.random() < chance("wet", WET_CHANCE)) return "wet";
-  if (has("platform") && Math.random() < chance("platform", PLATFORM_CHANCE)) return "platform";
-  if (has("tunnel") && Math.random() < chance("tunnel", TUNNEL_CHANCE)) return "tunnel";
+  if (has("platform") && Math.random() < chance("platform", PLATFORM_CHANCE))
+    return "platform";
+  if (has("tunnel") && Math.random() < chance("tunnel", TUNNEL_CHANCE))
+    return "tunnel";
   if (has("flock") && Math.random() < chance("flock", FLOCK_CHANCE))
     return "flock-" + ["low", "high", "split"][(Math.random() * 3) | 0];
-  if (has("flyer") && Math.random() < chance("flyer", FLYER_CHANCE)) return "flyer";
+  if (has("flyer") && Math.random() < chance("flyer", FLYER_CHANCE))
+    return "flyer";
   return "stack";
 }
 // How you might need to get past what's coming. (A flying book might turn out to be a swooper,
@@ -926,7 +1137,8 @@ function pickNext() {
 function nextMoves(kind) {
   if (kind === "flyer") return has("swoop") ? ["duck", "jump"] : ["duck"];
   if (kind.startsWith("platform")) return ["high"];
-  if (kind === "tunnel" || kind === "flock-high" || kind === "flock-split") return ["duck"];
+  if (kind === "tunnel" || kind === "flock-high" || kind === "flock-split")
+    return ["duck"];
   return ["jump"];
 }
 
@@ -951,21 +1163,35 @@ function spawnFlock(kind, jumpLen) {
   // a low bunch skims the floor (a ducking book still can't get under it); a high bunch flies
   // from head height up (clear of a ducking book, but in the way of any jump). Each returns where it ends.
   const low = (start, n) => {
-    for (let i = 0; i < n; i++) add(start + i * 26 + Math.random() * 10, FLOOR - 6 - Math.random() * 8);
+    for (let i = 0; i < n; i++)
+      add(start + i * 26 + Math.random() * 10, FLOOR - 6 - Math.random() * 8);
     return start + (n - 1) * 26 + 54;
   };
   const high = (start, n) => {
     // every other one right at head height (so you can't just run through), the rest above
     for (let i = 0; i < n; i++)
-      if (i % 2 === 0) add(start + i * 30 + Math.random() * 10, FLYER_BOTTOM + 2 + Math.random() * 4, 1.5);
-      else add(start + i * 30 + Math.random() * 10, FLYER_BOTTOM - 10 - Math.random() * 28);
+      if (i % 2 === 0)
+        add(
+          start + i * 30 + Math.random() * 10,
+          FLYER_BOTTOM + 2 + Math.random() * 4,
+          1.5,
+        );
+      else
+        add(
+          start + i * 30 + Math.random() * 10,
+          FLYER_BOTTOM - 10 - Math.random() * 28,
+        );
     return start + (n - 1) * 30 + 54;
   };
   const n = () => 3 + ((Math.random() * 3) | 0); // 3–5
   let end;
   if (kind === "low") end = low(0, n());
   else if (kind === "high") end = high(0, n());
-  else end = low(high(0, 2 + (Math.random() < 0.5)) + jumpLen * (MIN_GAP.duck.jump + 0.1), 2 + (Math.random() < 0.5));
+  else
+    end = low(
+      high(0, 2 + (Math.random() < 0.5)) + jumpLen * (MIN_GAP.duck.jump + 0.1),
+      2 + (Math.random() < 0.5),
+    );
   sfx.flock();
   return end;
 }
@@ -973,12 +1199,18 @@ function spawnFlock(kind, jumpLen) {
 // and quick, normal or a breather.
 function gapBefore(prevMoves, upMoves, jumpLen) {
   let min = 0;
-  for (const p of prevMoves) for (const n of upMoves) min = Math.max(min, MIN_GAP[p][n]);
-  const quick = Math.min(QUICK_MAX, QUICK_START + (runTime / QUICK_RAMP_MS) * (QUICK_MAX - QUICK_START));
+  for (const p of prevMoves)
+    for (const n of upMoves) min = Math.max(min, MIN_GAP[p][n]);
+  const quick = Math.min(
+    QUICK_MAX,
+    QUICK_START + (runTime / QUICK_RAMP_MS) * (QUICK_MAX - QUICK_START),
+  );
   const r = Math.random();
   let k;
-  if (r < quick) k = min + Math.random() * 0.15; // right on top of each other
-  else if (r < quick + BREATHER) k = min + 1.6 + Math.random() * 0.8; // a breather
+  if (r < quick)
+    k = min + Math.random() * 0.15; // right on top of each other
+  else if (r < quick + BREATHER)
+    k = min + 1.6 + Math.random() * 0.8; // a breather
   else k = min + 0.35 + Math.random() * 1.1;
   return jumpLen * k;
 }
@@ -987,10 +1219,21 @@ function gapBefore(prevMoves, upMoves, jumpLen) {
 // Sometimes there's more up there: a flying book skimming along the top or a stack of books
 // sitting on it (jump them), or a bookmark floating high above to jump for. The low table can be
 // ducked under too (pages there as well). Returns { w, jumpy } (jumpy: something up there to jump).
-function spawnPlatform(kind = ENDLESS_FURNITURE[(Math.random() * ENDLESS_FURNITURE.length) | 0]) {
+function spawnPlatform(
+  kind = ENDLESS_FURNITURE[(Math.random() * ENDLESS_FURNITURE.length) | 0],
+) {
   if (kind === "loadedTable") return spawnLoadedTable();
   const { w, h } = PLATFORMS[kind];
-  const o = { type: "platform", kind, x: W + 10, y: FLOOR - h, w, h, books: [], seed: Math.random() * 1000 };
+  const o = {
+    type: "platform",
+    kind,
+    x: W + 10,
+    y: FLOOR - h,
+    w,
+    h,
+    books: [],
+    seed: Math.random() * 1000,
+  };
   obstacles.push(o);
   if (kind === "couch") {
     couchPages(o);
@@ -999,13 +1242,21 @@ function spawnPlatform(kind = ENDLESS_FURNITURE[(Math.random() * ENDLESS_FURNITU
   const r = Math.random();
   const skim = (!story || has("flyer")) && r < SKIM_CHANCE, // (only where there are flying books)
     topStack = !skim && r < SKIM_CHANCE + TOP_STACK_CHANCE,
-    perch = !skim && !topStack && r < SKIM_CHANCE + TOP_STACK_CHANCE + PERCH_CHANCE;
+    perch =
+      !skim && !topStack && r < SKIM_CHANCE + TOP_STACK_CHANCE + PERCH_CHANCE;
   if (topStack) {
     // a short stack of books sitting on top, past where you'd land
     const sw = 28,
       sx = o.x + w * (0.55 + Math.random() * 0.15),
       s = makeStack(sx, sw, 16 + Math.random() * 14, o.y);
-    obstacles.push({ type: "stack", x: sx, y: o.y - s.h, w: sw, h: s.h, books: s.books });
+    obstacles.push({
+      type: "stack",
+      x: sx,
+      y: o.y - s.h,
+      w: sw,
+      h: s.h,
+      books: s.books,
+    });
     addPickup(o.x + 30, o.y - 34);
     const fx = sx + sw / 2;
     addPickup(fx - 34, o.y - 100);
@@ -1036,12 +1287,15 @@ function spawnPlatform(kind = ENDLESS_FURNITURE[(Math.random() * ENDLESS_FURNITU
     // with pages leading up to it
     const cx = o.x + w * 0.6;
     addBookmark(cx, o.y - 140);
-    for (let cx2 = o.x + 30; cx2 < cx - 30; cx2 += PAGE_GAP) addPickup(cx2, o.y - 34);
+    for (let cx2 = o.x + 30; cx2 < cx - 30; cx2 += PAGE_GAP)
+      addPickup(cx2, o.y - 34);
   } else {
-    for (let cx = o.x + 30; cx < o.x + w - 20; cx += PAGE_GAP) addPickup(cx, o.y - 34);
+    for (let cx = o.x + 30; cx < o.x + w - 20; cx += PAGE_GAP)
+      addPickup(cx, o.y - 34);
   }
   if (kind === "table")
-    for (let cx = o.x + 34; cx < o.x + w - 24; cx += PAGE_GAP) addPickup(cx, FLOOR - 34); // under the table too
+    for (let cx = o.x + 34; cx < o.x + w - 24; cx += PAGE_GAP)
+      addPickup(cx, FLOOR - 34); // under the table too
   return { w, jumpy: skim || topStack };
 }
 
@@ -1050,11 +1304,29 @@ function spawnPlatform(kind = ENDLESS_FURNITURE[(Math.random() * ENDLESS_FURNITU
 // ducking.) A page waits underneath. Returns { w, jumpy }.
 function spawnLoadedTable() {
   const { w, h } = PLATFORMS.table;
-  const o = { type: "platform", kind: "table", loaded: true, x: W + 10, y: FLOOR - h, w, h, books: [], seed: Math.random() * 1000 };
+  const o = {
+    type: "platform",
+    kind: "table",
+    loaded: true,
+    x: W + 10,
+    y: FLOOR - h,
+    w,
+    h,
+    books: [],
+    seed: Math.random() * 1000,
+  };
   obstacles.push(o);
   for (let sx = o.x + 2; sx < o.x + w - 8; sx += 30) {
     const s = makeStack(sx, 28, 128 + Math.random() * 22, o.y); // (well past the top of a jump from the floor)
-    obstacles.push({ type: "stack", onTable: true, x: sx, y: o.y - s.h, w: 28, h: s.h, books: s.books });
+    obstacles.push({
+      type: "stack",
+      onTable: true,
+      x: sx,
+      y: o.y - s.h,
+      w: 28,
+      h: s.h,
+      books: s.books,
+    });
   }
   addPickup(o.x + w / 2, FLOOR - 34); // under the table
   return { w, jumpy: false };
@@ -1076,11 +1348,16 @@ function couchPages(o) {
     addPickup(o.x + 18, o.y - 34);
     addPickup(o.x + 18 + PAGE_GAP, o.y - 34);
   }
-  for (const k of marked ? [0.6, 1] : few ? [0.6, 1, 1.4] : [0.42, 0.75, 1, 1.25, 1.58]) {
+  for (const k of marked
+    ? [0.6, 1]
+    : few
+      ? [0.6, 1, 1.4]
+      : [0.42, 0.75, 1, 1.25, 1.58]) {
     const t = up * k,
       cx = takeoff + speed * t,
       cy = mid - (v * t - 0.5 * g * t * t); // the middle of the book, t ms after the bounce
-    if (k === 1 && marked) addStoryBookmark(cx, cy - 13); // (and its page on the way up)
+    if (k === 1 && marked)
+      addStoryBookmark(cx, cy - 13); // (and its page on the way up)
     else if (k === 1 && Math.random() < 0.5) addBookmark(cx, cy - 13);
     else addPickup(cx, cy - 13);
   }
@@ -1101,7 +1378,8 @@ function spawnTunnel() {
     color: SPINES[2],
     seed: Math.random() * 1000,
   });
-  for (let cx = W + 10 + 34; cx < W + 10 + w - 24; cx += PAGE_GAP) addPickup(cx, FLOOR - 34);
+  for (let cx = W + 10 + 34; cx < W + 10 + w - 24; cx += PAGE_GAP)
+    addPickup(cx, FLOOR - 34);
   return w;
 }
 
@@ -1175,9 +1453,17 @@ function puddleShape(w) {
   if (Math.random() < 0.4) {
     // a little splash of its own, near one end
     const rx = rand(3.5, 6);
-    lobes.push({ rx, ry: rand(1.8, 2.8), dx: (Math.random() < 0.5 ? -1 : 1) * (half - rx), dy: rand(1, 3) });
+    lobes.push({
+      rx,
+      ry: rand(1.8, 2.8),
+      dx: (Math.random() < 0.5 ? -1 : 1) * (half - rx),
+      dy: rand(1, 3),
+    });
   }
-  return { lobes, blue: PUDDLE_BLUES[(Math.random() * PUDDLE_BLUES.length) | 0] };
+  return {
+    lobes,
+    blue: PUDDLE_BLUES[(Math.random() * PUDDLE_BLUES.length) | 0],
+  };
 }
 
 // Running (or ducking) through a puddle: splash, lose a soggy page, and slip for a moment.
@@ -1269,7 +1555,8 @@ function wipeoutPose(t) {
     const s = Math.max(0, 1 - after / 180); // slammed flat, springing back
     sx = 1 - 0.3 * s; // (on its back, the book's own x runs up and down the screen)
     sy = 1 + 0.2 * s;
-    if (after > 60 && after < 320) bounce = Math.sin(((after - 60) / 260) * Math.PI) * 8; // a little bounce
+    if (after > 60 && after < 320)
+      bounce = Math.sin(((after - 60) / 260) * Math.PI) * 8; // a little bounce
   }
   // half its height on screen: 25 standing (legs too), 20 lying down (squashed a bit more)
   const half = k < 1 ? 25 - 5 * k : 20 * sx;
@@ -1298,7 +1585,8 @@ function hits(o) {
   if (o.type === "platform" && p.y + p.h <= o.y + 6) return false;
   const pad = 6; // forgiving hitbox
   // the low table is open underneath: only its top is solid
-  const bottom = o.type === "platform" && o.kind === "table" ? o.y + TABLE_SLAB : o.y + o.h;
+  const bottom =
+    o.type === "platform" && o.kind === "table" ? o.y + TABLE_SLAB : o.y + o.h;
   return (
     p.x + pad < o.x + o.w &&
     p.x + p.w - pad > o.x &&
@@ -1319,7 +1607,10 @@ let pageSpots = null;
 // and in Story Mode, one page only, at its best spot: the highest (the top of a jump's arc, the top
 // of a couch's bounce), or the middle of a row.
 function withPageAllowance(couch, place) {
-  pageAllowance = story && typeof storyPageAllowance === "function" ? storyPageAllowance(couch) : Infinity;
+  pageAllowance =
+    story && typeof storyPageAllowance === "function"
+      ? storyPageAllowance(couch)
+      : Infinity;
   pageSpots = story ? [] : null;
   try {
     return place();
@@ -1333,7 +1624,8 @@ function withPageAllowance(couch, place) {
         before = story.pagesThere;
       if (pick.bookmark) addBookmark(pick.cx, pick.y);
       else addPickup(pick.cx, pick.y);
-      if (couch && story.neededCouch) story.couchPages += story.pagesThere - before; // (from the pages kept back for couches: see storyPageAllowance)
+      if (couch && story.neededCouch)
+        story.couchPages += story.pagesThere - before; // (from the pages kept back for couches: see storyPageAllowance)
     }
     pageAllowance = Infinity;
   }
@@ -1343,7 +1635,8 @@ function addPickup(cx, y) {
   // (a level with a set number of pages: never past it, within what this thing's allowed, and no
   // bookmarks, which are worth BOOKMARK_PAGES)
   const capped = story && story.level.pages != null;
-  if (pageAllowance <= 0 || (capped && story.pagesThere >= story.level.pages)) return;
+  if (pageAllowance <= 0 || (capped && story.pagesThere >= story.level.pages))
+    return;
   pageAllowance--;
   const bookmark = !story && Math.random() < BOOKMARK_CHANCE; // (Story Mode's bookmarks are collectables, placed by its levels)
   if (story) story.pagesThere += bookmark ? BOOKMARK_PAGES : 1; // (the pages there were to find, for a level's stars)
@@ -1404,7 +1697,14 @@ function spawnPickups(o, airTime) {
 }
 function placePickups(o, airTime) {
   // (a level that introduces the book stack with a tip: its first stack is just a stack, nothing to grab)
-  if (o.type === "stack" && !o.toy && story && story.level.tips && story.level.tips.includes("stack") && !story.firstStackOut) {
+  if (
+    o.type === "stack" &&
+    !o.toy &&
+    story &&
+    story.level.tips &&
+    story.level.tips.includes("stack") &&
+    !story.firstStackOut
+  ) {
     story.firstStackOut = true;
     return;
   }
@@ -1415,12 +1715,16 @@ function placePickups(o, airTime) {
     return;
   }
   // (a level with a set number of pages, when it can have one here, always does: its pacing spreads them)
-  const r = story && story.level.pages != null && pageAllowance > 0 ? Math.random() * 0.7 : Math.random();
+  const r =
+    story && story.level.pages != null && pageAllowance > 0
+      ? Math.random() * 0.7
+      : Math.random();
   if (o.type === "flyer") {
     if (o.swoop || o.dart || o.charge) return; // nothing under the tricky ones, so nobody gets lured in
     // A pair tucked right under the flying book, a reward for ducking.
     if (r < 0.5)
-      for (let k = -0.5; k <= 0.5; k++) addPickup(o.x + o.w / 2 + k * PAGE_GAP, FLOOR - 28);
+      for (let k = -0.5; k <= 0.5; k++)
+        addPickup(o.x + o.w / 2 + k * PAGE_GAP, FLOOR - 28);
     return;
   }
   const tape =
@@ -1462,7 +1766,8 @@ function placePickups(o, airTime) {
         h: 26,
         phase: Math.random() * Math.PI * 2,
       });
-      powerWait = POWER_GAP_MS[0] + Math.random() * (POWER_GAP_MS[1] - POWER_GAP_MS[0]);
+      powerWait =
+        POWER_GAP_MS[0] + Math.random() * (POWER_GAP_MS[1] - POWER_GAP_MS[0]);
     } else addPickup(cx, GROUND_Y - 136);
     addPickup(cx + side, GROUND_Y - 100);
   } else if (r < 0.7) {
@@ -1505,7 +1810,12 @@ function updatePickups(dt) {
       sfx.page();
       burst(b.x + b.w / 2, b.y + b.h / 2, 5, PAPER, 3);
       // (+2 while speed reading). It starts just above the book's head, clear of its face.
-      plusOnes.push({ x: b.x + b.w / 2, y: Math.min(b.y, p.y) - 4, text: `+${mult}`, life: PLUS_MS });
+      plusOnes.push({
+        x: b.x + b.w / 2,
+        y: Math.min(b.y, p.y) - 4,
+        text: `+${mult}`,
+        life: PLUS_MS,
+      });
     } else if (b.kind === "repair") {
       heal(b);
     } else if (b.kind === "power") {
@@ -1516,7 +1826,12 @@ function updatePickups(dt) {
       sfx.bookmark();
       burst(b.x + b.w / 2, b.y + b.h / 2, 16, b.color);
       storyBookmarkFlight(b); // (it flies up to its slot in the top bar)
-      popups.push({ x: b.x + b.w / 2, y: b.y, text: `Bookmark found! ${story.bookmarksFound} of ${story.level.bookmarks.length}`, life: 1300 });
+      popups.push({
+        x: b.x + b.w / 2,
+        y: b.y,
+        text: `Bookmark found! ${story.bookmarksFound} of ${story.level.bookmarks.length}`,
+        life: 1300,
+      });
     } else {
       pages += BOOKMARK_PAGES * mult;
       sfx.bookmark();
@@ -1556,7 +1871,9 @@ function knockAway(o) {
   obstacles = obstacles.filter((x) => x !== o);
   const cx = o.x + o.w / 2,
     cy = o.y + o.h / 2;
-  const colors = o.books.length ? o.books.map((b) => b.color) : [o.color || "#f2c14e"];
+  const colors = o.books.length
+    ? o.books.map((b) => b.color)
+    : [o.color || "#f2c14e"];
   for (let i = 0; i < 14; i++) {
     particles.push({
       x: cx,
@@ -1701,9 +2018,11 @@ function update(dt) {
     if (hit) {
       // furniture and bookshelves (the book tunnels) are solid: running into one ends the run
       const solid = hit.type === "platform" || hit.type === "tunnel";
-      if (using === "speed" && hit.type === "flyer") knockAway(hit); // speed reading only clears flying books
+      if (using === "speed" && hit.type === "flyer")
+        knockAway(hit); // speed reading only clears flying books
       else if (using === "shield") blockHit();
-      else if (solid) smashInto(hit); // (the table's edge too: duck under it or hop up)
+      else if (solid)
+        smashInto(hit); // (the table's edge too: duck under it or hop up)
       else takeHit();
     }
   }
@@ -1727,7 +2046,15 @@ function smashInto(o) {
   sfx.thunk();
   for (let i = 0; i < 6; i++) {
     // little stars burst off the impact
-    particles.push({ x: o.x, y: b.y + 10 + Math.random() * 20, vx: -0.05 - Math.random() * 0.15, vy: -0.15 - Math.random() * 0.2, life: 500 + Math.random() * 200, color: i % 2 ? "#ffe27a" : "#fff6c8", size: 4 });
+    particles.push({
+      x: o.x,
+      y: b.y + 10 + Math.random() * 20,
+      vx: -0.05 - Math.random() * 0.15,
+      vy: -0.15 - Math.random() * 0.2,
+      life: 500 + Math.random() * 200,
+      color: i % 2 ? "#ffe27a" : "#fff6c8",
+      size: 4,
+    });
   }
   popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Thunk!", life: 900 });
   burst(b.x + b.w / 2, b.y + b.h / 2, 10, PAPER, 6);
@@ -1864,7 +2191,16 @@ let howtoMode = "story";
 // The start screen's buttons, in arrow-key order: the mode switch's two halves, Play and
 // How to play. Play is the one highlighted to begin with.
 const READY_PLAY = 2;
-const selected = { ready: READY_PLAY, paused: 0, howto: 0, over: 0, chars: 0, levels: 0, cleared: 0, tip: 0 }; // highlighted button on each screen
+const selected = {
+  ready: READY_PLAY,
+  paused: 0,
+  howto: 0,
+  over: 0,
+  chars: 0,
+  levels: 0,
+  cleared: 0,
+  tip: 0,
+}; // highlighted button on each screen
 // Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen's
 // highlight stays on Start except while another button is hovered.
 let keyNav = false;
@@ -1937,8 +2273,26 @@ const MENU = {
 };
 // Where each screen's buttons go: a row in the wide layout, a column in the tall one.
 const BUTTON_Y = {
-  wide: { ready: 178, chars: 234, paused: 196, howto: 260, over: 236, levels: 252, cleared: 230, tip: 260 },
-  tall: { ready: 340, chars: 494, paused: 288, howto: 532, over: 344, levels: 486, cleared: 356, tip: 556 },
+  wide: {
+    ready: 178,
+    chars: 234,
+    paused: 196,
+    howto: 260,
+    over: 236,
+    levels: 252,
+    cleared: 230,
+    tip: 260,
+  },
+  tall: {
+    ready: 340,
+    chars: 494,
+    paused: 288,
+    howto: 532,
+    over: 344,
+    levels: 486,
+    cleared: 356,
+    tip: 556,
+  },
 };
 let BUTTONS = {};
 function makeButtons() {
@@ -1960,7 +2314,15 @@ function makeButtons() {
     BUTTONS.ready = [
       ...modeSwitch(x, y, w, 56),
       { id: "play", label: "Play", play: true, x, y: y + 56 + 14, w, h: 64 },
-      { id: "howto", label: "How to play", help: true, x, y: y + 152, w, h: 48 },
+      {
+        id: "howto",
+        label: "How to play",
+        help: true,
+        x,
+        y: y + 152,
+        w,
+        h: 48,
+      },
     ];
     // the Characters screen: Back and Play side by side, big enough to tap, inside its card
     const bw = 170,
@@ -1968,7 +2330,14 @@ function makeButtons() {
       cy = BUTTON_Y.tall.chars;
     BUTTONS.chars = [
       { id: "go", label: "Play", x: W / 2 - bw - gap / 2, y: cy, w: bw, h: 54 },
-      { id: "charsBack", label: "Back", x: W / 2 + gap / 2, y: cy, w: bw, h: 54 },
+      {
+        id: "charsBack",
+        label: "Back",
+        x: W / 2 + gap / 2,
+        y: cy,
+        w: bw,
+        h: 54,
+      },
     ];
   } else {
     const sw = 242, // the switch
@@ -1978,8 +2347,24 @@ function makeButtons() {
       x1 = W / 2 - (sw + gap + pw) / 2;
     BUTTONS.ready = [
       ...modeSwitch(x1, 176, sw, 46),
-      { id: "play", label: "Play", play: true, x: x1 + sw + gap, y: 176, w: pw, h: 46 },
-      { id: "howto", label: "How to play", help: true, x: W / 2 - hw / 2, y: 232, w: hw, h: 46 },
+      {
+        id: "play",
+        label: "Play",
+        play: true,
+        x: x1 + sw + gap,
+        y: 176,
+        w: pw,
+        h: 46,
+      },
+      {
+        id: "howto",
+        label: "How to play",
+        help: true,
+        x: W / 2 - hw / 2,
+        y: 232,
+        w: hw,
+        h: 46,
+      },
     ];
   }
   // the pause screen: Resume, How to play and Quit in their places on its card (see drawPause)
@@ -1993,7 +2378,15 @@ function makeButtons() {
         { id: "next", label: "Next ›", x: x + 162, y, w: 200, h: 54 },
         { id: "prev", label: "‹ Back", x, y, w: 150, h: 54 },
         { id: "tips", label: "All tips", tips: true, ...tipsRect() },
-        { id: "back", label: "✕", close: true, x: W - 14 - 44, y: 18, w: 44, h: 44 },
+        {
+          id: "back",
+          label: "✕",
+          close: true,
+          x: W - 14 - 44,
+          y: 18,
+          w: 44,
+          h: 44,
+        },
         ...howtoSwitch(W / 2 - 130, y + 60, 260, 44), // (which mode the cards describe: under Back and Next)
       ];
     } else {
@@ -2001,7 +2394,15 @@ function makeButtons() {
         { id: "next", label: "Next ›", x: W / 2 + 302 - 110, y, w: 110, h: 42 },
         { id: "prev", label: "‹ Back", x: W / 2 - 302, y, w: 110, h: 42 },
         { id: "tips", label: "All tips", tips: true, ...tipsRect() },
-        { id: "back", label: "✕", close: true, x: W - 12 - 44, y: 8, w: 44, h: 44 },
+        {
+          id: "back",
+          label: "✕",
+          close: true,
+          x: W - 12 - 44,
+          y: 8,
+          w: 44,
+          h: 44,
+        },
         ...howtoSwitch(W / 2 - 120, y, 240, 42), // (which mode the cards describe: between Back and Next)
       ];
     }
@@ -2011,7 +2412,9 @@ function makeButtons() {
 // How to play's All tips: the top-left corner, matching ✕ in the top right. How to play is an
 // overlay, so it sits over the Sound button there (M still mutes; see pointerdown).
 function tipsRect() {
-  return tall() ? { x: 14, y: 18, w: 118, h: 44 } : { x: 12, y: 8, w: 124, h: 44 }; // (phone: narrow enough to clear the title)
+  return tall()
+    ? { x: 14, y: 18, w: 118, h: 44 }
+    : { x: 12, y: 8, w: 124, h: 44 }; // (phone: narrow enough to clear the title)
 }
 // The mode switch's two halves, inside its track (x, y, w, h). (The track itself is drawn with
 // the first half: see drawModeSegment.)
@@ -2021,19 +2424,75 @@ function modeSwitch(x, y, w, h) {
     half = (w - p * 2 - 2) / 2;
   const track = { x, y, w, h };
   return [
-    { id: "mode-story", label: "Story", seg: "story", track, x: x + p, y: y + p, w: half, h: h - p * 2 },
-    { id: "mode-endless", label: "Endless", seg: "endless", track, x: x + p + half + 2, y: y + p, w: half, h: h - p * 2 },
+    {
+      id: "mode-story",
+      label: "Story",
+      seg: "story",
+      track,
+      x: x + p,
+      y: y + p,
+      w: half,
+      h: h - p * 2,
+    },
+    {
+      id: "mode-endless",
+      label: "Endless",
+      seg: "endless",
+      track,
+      x: x + p + half + 2,
+      y: y + p,
+      w: half,
+      h: h - p * 2,
+    },
   ];
 }
 // How to play's own Story | Endless switch (which mode its cards describe: see howtoMode).
 function howtoSwitch(x, y, w, h) {
-  return modeSwitch(x, y, w, h).map((b) => ({ ...b, id: "how" + b.id, mode: () => howtoMode }));
+  return modeSwitch(x, y, w, h).map((b) => ({
+    ...b,
+    id: "how" + b.id,
+    mode: () => howtoMode,
+  }));
 }
-// The mode Play starts: remembered between visits.
-let playMode = safeGet("deweydash-mode") === "endless" ? "endless" : "story";
+// Test mode: the game was opened from a one-day test link (game.html sets TEST_MODE; see
+// testlink.js). Story Mode is locked: the switch stays on Endless, and Story wears a padlock.
+// Trying it shakes the button, buzzes, and floats up a "Locked in test mode" (see drawLockedPops).
+const storyLocked = () => window.TEST_MODE === true;
+const LOCK_SHAKE_MS = 320;
+const LOCK_POP_MS = 900;
+let lockShakeAt = -Infinity; // when Story was last tried
+let lockPops = []; // the floating messages: { x, y, at }, one per try
+let lastTap = { x: 0, y: 0, at: -Infinity }; // where the last tap or click was (see pointerdown)
+// How far the Story button is shaken right now (a quick, dying wobble)
+function lockShake() {
+  const age = performance.now() - lockShakeAt;
+  if (age > LOCK_SHAKE_MS) return 0;
+  return Math.sin(age * 0.09) * 4 * (1 - age / LOCK_SHAKE_MS);
+}
+function tryLockedStory() {
+  const now = performance.now();
+  lockShakeAt = now;
+  // an error buzz: two low, short notes, the second lower
+  tone(220, 200, 0.09, "square", 0.05);
+  tone(160, 140, 0.14, "square", 0.05, 0.1);
+  // the message floats up from the tap, or (from the keys) from the Story button
+  const b = BUTTONS.ready && BUTTONS.ready.find((x) => x.id === "mode-story");
+  const fromTap = now - lastTap.at < 300;
+  lockPops.push({
+    x: fromTap ? lastTap.x : b ? b.x + b.w / 2 : W / 2,
+    y: fromTap ? lastTap.y : b ? b.y : H / 2,
+    at: now,
+  });
+}
+// The mode Play starts: remembered between visits (but not changed by a test-mode visit).
+let playMode =
+  storyLocked() || safeGet("deweydash-mode") === "endless"
+    ? "endless"
+    : "story";
 function setMode(m) {
+  if (m === "story" && storyLocked()) return tryLockedStory();
   playMode = m;
-  safeSet("deweydash-mode", m);
+  if (!storyLocked()) safeSet("deweydash-mode", m);
 }
 const isMenu = () => state in BUTTONS;
 // Highlight button i on a menu screen, with a tick if that's a different button.
@@ -2127,10 +2586,16 @@ function drawTransition() {
   if (fadeOut !== null) {
     const [cx, cy, full] = irisCenter();
     let r;
-    if (fadeOut < IRIS_CLOSE_MS) r = IRIS_PAUSE_R + (full - IRIS_PAUSE_R) * (1 - ease(fadeOut / IRIS_CLOSE_MS));
+    if (fadeOut < IRIS_CLOSE_MS)
+      r =
+        IRIS_PAUSE_R +
+        (full - IRIS_PAUSE_R) * (1 - ease(fadeOut / IRIS_CLOSE_MS));
     else if (fadeOut < IRIS_CLOSE_MS + IRIS_PAUSE_MS) r = IRIS_PAUSE_R;
     else {
-      const p = Math.min(1, (fadeOut - IRIS_CLOSE_MS - IRIS_PAUSE_MS) / IRIS_SNAP_MS);
+      const p = Math.min(
+        1,
+        (fadeOut - IRIS_CLOSE_MS - IRIS_PAUSE_MS) / IRIS_SNAP_MS,
+      );
       r = IRIS_PAUSE_R * (1 - p * p); // speeding up as it shuts
     }
     drawIris(cx, cy, r);
@@ -2149,7 +2614,12 @@ function drawTransition() {
     // each number pops in big, settles, then fades as the next one comes
     const scale = 1 + Math.max(0, 0.5 - p * 2.5),
       alpha = p < 0.75 ? 1 : 1 - (p - 0.75) / 0.25;
-    countNumber(String(3 - Math.floor((countTime - COUNT_START_MS) / COUNT_STEP_MS)), cy, scale, alpha);
+    countNumber(
+      String(3 - Math.floor((countTime - COUNT_START_MS) / COUNT_STEP_MS)),
+      cy,
+      scale,
+      alpha,
+    );
   } else if (state === "running" && runTime < GO_MS) {
     const p = runTime / GO_MS;
     countNumber("Go!", cy, 1 + p * 0.4, 1 - p);
@@ -2171,7 +2641,8 @@ function irisCenter() {
   }
   const cx = Math.min(W - 40, Math.max(40, x)),
     cy = Math.min(H + TOP - 40, Math.max(40 - TOP, WORLD_Y + y));
-  const full = Math.hypot(Math.max(cx, W - cx), Math.max(cy + TOP, H + TOP - cy)) + 10; // past the farthest corner
+  const full =
+    Math.hypot(Math.max(cx, W - cx), Math.max(cy + TOP, H + TOP - cy)) + 10; // past the farthest corner
   return [cx, cy, full];
 }
 // Black everywhere except a circle of radius r around (cx, cy).
@@ -2213,7 +2684,16 @@ function choose(id) {
   if (state === "over" && overTime < overGraceMs()) return; // let the crash and the fade finish
   if (fadeOut !== null) return; // fading to another scene: the buttons are done
   // the blip for choosing (flipping How to play's screens has its own flick instead)
-  if (!(state === "howto" && (id === "next" || id === "prev") && (id === "prev" || howtoScreen < HOWTO_SCREENS.length - 1))) sfx.select();
+  if (
+    !(
+      state === "howto" &&
+      (id === "next" || id === "prev") &&
+      (id === "prev" || howtoScreen < HOWTO_SCREENS.length - 1)
+    ) &&
+    !(id === "mode-story" && storyLocked())
+  )
+    // (locked: an error buzz instead, see tryLockedStory)
+    sfx.select();
   if (id === "mode-story" || id === "mode-endless") {
     setMode(id.slice(5));
     if (!keyNav) selected.ready = READY_PLAY; // (with the keys, stay on the switch: Enter flips it, then on to Play)
@@ -2250,7 +2730,8 @@ function choose(id) {
       howtoDealAt = performance.now();
     }
   } else if (id === "next") {
-    if (howtoScreen < HOWTO_SCREENS.length - 1) showHowtoScreen(howtoScreen + 1);
+    if (howtoScreen < HOWTO_SCREENS.length - 1)
+      showHowtoScreen(howtoScreen + 1);
     else choose("back"); // (Done)
   } else if (id === "prev") showHowtoScreen(howtoScreen - 1);
   else if (id === "tips") openTips();
@@ -2274,7 +2755,10 @@ function goBack() {
 // applied on the start screen (and the screens opened from it), when paused, or on game over.
 // worldY: how far down the screen the library strip is drawn. In the tall layout it sits in the
 // middle, with a dark ceiling above (where the buttons and score go) and the floor below.
-const LAYOUTS = { wide: { w: 800, h: 320, worldY: 0 }, tall: { w: 450, h: 640, worldY: 140 } };
+const LAYOUTS = {
+  wide: { w: 800, h: 320, worldY: 0 },
+  tall: { w: 450, h: 640, worldY: 140 },
+};
 let layout = "wide";
 let WORLD_Y = 0;
 // Full screen (a phone held upright, with the game on its own page): the game takes over the
@@ -2295,7 +2779,10 @@ function wantedLayout() {
 function fullTop(name) {
   if (name !== "tall") return 0;
   const { w, h } = LAYOUTS.tall;
-  return Math.max(0, Math.round(((w * window.innerHeight) / window.innerWidth - h) / 2));
+  return Math.max(
+    0,
+    Math.round(((w * window.innerHeight) / window.innerWidth - h) / 2),
+  );
 }
 function applyLayout(name) {
   layout = name;
@@ -2333,7 +2820,10 @@ function fitCanvas() {
     canvas.style.width = canvas.style.height = "";
     return;
   }
-  const s = Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height);
+  const s = Math.min(
+    window.innerWidth / canvas.width,
+    window.innerHeight / canvas.height,
+  );
   canvas.style.width = canvas.width * s + "px";
   canvas.style.height = canvas.height * s + "px";
 }
@@ -2343,7 +2833,8 @@ function fitCanvas() {
 // point) doesn't make every frame too much work: about 3.2 million pixels at most.
 const MAX_CANVAS_PIXELS = 3.2e6;
 function fitRes() {
-  const shown = canvas.getBoundingClientRect().width * (window.devicePixelRatio || 1);
+  const shown =
+    canvas.getBoundingClientRect().width * (window.devicePixelRatio || 1);
   const cap = Math.sqrt(MAX_CANVAS_PIXELS / (W * (H + 2 * TOP)));
   const res = Math.min(3, cap, Math.max(1, Math.ceil((shown / W) * 4) / 4)); // (in quarter steps)
   if (res === RES) return;
@@ -2377,8 +2868,10 @@ function frame(now) {
     updateParticles(dt);
     overTime += dt;
   } else if (state === "book") updateBook(dt);
-  else if (state === "preview") updateStoryPreview(dt); // Story Mode: a look at the scene before the level's goals
-  else if (state === "route") updateRoute(dt); // Story Mode: the Bookmobile's drive between chapters
+  else if (state === "preview")
+    updateStoryPreview(dt); // Story Mode: a look at the scene before the level's goals
+  else if (state === "route")
+    updateRoute(dt); // Story Mode: the Bookmobile's drive between chapters
   else if (state === "cleared") updateCleared(dt);
   else if (onStartScreen()) {
     // start screen: the library drifts by slowly while the book jogs on the spot
@@ -3040,7 +3533,8 @@ function draw() {
   for (const o of obstacles) if (o.type === "puddle") drawPuddle(o); // on the floor, under everything
   for (const o of obstacles) {
     if (story && storyDrawObstacle(o)) continue; // (outdoors: hedges, birds and sprinklers)
-    if (o.type === "flyer") drawFlyingBook(o, o.skimY == null); // (no floor shadow when it's up on furniture)
+    if (o.type === "flyer")
+      drawFlyingBook(o, o.skimY == null); // (no floor shadow when it's up on furniture)
     else if (o.type === "tunnel") drawTunnel(o);
     else if (o.type === "sign") drawWetSign(o);
     else if (o.type === "platform") drawPlatform(o);
@@ -3113,7 +3607,13 @@ function draw() {
   // The cards shown during a run (pause, game over, a level's results) keep the top bar bright:
   // the run behind them is dimmed here, before the bar is drawn (and fades in with the card).
   const runDim =
-    state === "paused" ? 1 : state === "over" ? overFade() : state === "cleared" && typeof clearedFade === "function" ? clearedFade() : 0;
+    state === "paused"
+      ? 1
+      : state === "over"
+        ? overFade()
+        : state === "cleared" && typeof clearedFade === "function"
+          ? clearedFade()
+          : 0;
   if (runDim > 0) {
     ctx.save();
     ctx.globalAlpha = runDim;
@@ -3121,7 +3621,8 @@ function draw() {
     ctx.restore();
   }
   if (state === "ready") drawStartScreen();
-  else if (!onStartScreen()) drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, MUTE_BTN.y + (MUTE_BTN.h - 32) / 2); // (centred on the buttons)
+  else if (!onStartScreen())
+    drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, MUTE_BTN.y + (MUTE_BTN.h - 32) / 2); // (centred on the buttons)
   if (state === "running") drawPauseButton();
 
   // (the corner badges fade up with the rest of the start screen in the opening sequence)
@@ -3193,7 +3694,8 @@ function draw() {
     ctx.fillStyle = PAPER;
     ctx.fillText("× " + pages, SCORE.x + 32, sy + 22);
   }
-  if (story) drawStoryProgress(SCORE.x, sy); // the level, and how far through it the book is
+  if (story)
+    drawStoryProgress(SCORE.x, sy); // the level, and how far through it the book is
   else {
     ctx.fillStyle = GOLD;
     ctx.fillText("BEST " + best, SCORE.x + 108, sy + 22);
@@ -3301,7 +3803,8 @@ function cardRules(x, y, w) {
 const PRIMARY = new Set(["again", "continue", "go", "next", "resume", "tipgo"]),
   STARTS_PLAY = new Set(["again", "go", "replay", "resume"]),
   ON_ORANGE = "#2a1a0e"; // the letters on an orange button
-const ringInk = () => (state === "ready" || state === "howto" || state === "levels" ? PAPER : INK);
+const ringInk = () =>
+  state === "ready" || state === "howto" || state === "levels" ? PAPER : INK;
 function focusRing(x, y, w, h, r, color = ringInk(), gap = 5) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.5;
@@ -3345,12 +3848,22 @@ function drawButton(b, on, scale = 1) {
 
 // The current screen's buttons. On the start screen the selected one gently pulses.
 function drawButtons() {
+  drawButtonList();
+  if (state === "ready") drawLockedPops(); // (over the buttons)
+}
+function drawButtonList() {
   BUTTONS[state].forEach((b, i) => {
     const on = i === selected[state];
     if (b.help) return drawHelpButton(b, on);
     if (b.seg) return drawModeSegment(b, on);
-    if (b.play) return drawPlayButton(b, on, on ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1);
-    if (story && state === "over") b = { ...b, label: b.id === "again" ? "Try again" : "Chapters" };
+    if (b.play)
+      return drawPlayButton(
+        b,
+        on,
+        on ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1,
+      );
+    if (story && state === "over")
+      b = { ...b, label: b.id === "again" ? "Try again" : "Chapters" };
     if (b.close) return drawCloseButton(b, on);
     if (b.tips) return drawTipsButton(b, on);
     if (state === "howto" && b.id === "prev" && howtoScreen === 0) {
@@ -3361,7 +3874,12 @@ function drawButtons() {
       ctx.restore();
       return;
     }
-    if (b.id === "next" && state === "howto" && howtoScreen === HOWTO_SCREENS.length - 1) b = { ...b, label: "Done" };
+    if (
+      b.id === "next" &&
+      state === "howto" &&
+      howtoScreen === HOWTO_SCREENS.length - 1
+    )
+      b = { ...b, label: "Done" };
     drawButton(
       b,
       on,
@@ -3381,6 +3899,11 @@ function drawModeSegment(b, on) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
+  // test mode: the start screen's Story half shakes when tried, and wears a padlock (How to
+  // play's switch is left alone)
+  const locked = b.seg === "story" && !b.mode && storyLocked();
+  ctx.save();
+  if (locked) ctx.translate(lockShake(), 0);
   const chosen = (b.mode ? b.mode() : playMode) === b.seg, // (the start screen's mode, or How to play's)
     r = b.h / 2;
   if (chosen) {
@@ -3419,7 +3942,12 @@ function drawModeSegment(b, on) {
     ctx.quadraticCurveTo(ix + k * 0.5, cy - k * 0.85, ix, cy - k * 0.65);
     ctx.lineTo(ix, cy + k * 0.75);
     ctx.quadraticCurveTo(ix + k * 0.5, cy + k * 0.55, ix + k, cy + k * 0.85);
-    ctx.quadraticCurveTo(ix + k * 1.5, cy + k * 0.55, ix + k * 2, cy + k * 0.75);
+    ctx.quadraticCurveTo(
+      ix + k * 1.5,
+      cy + k * 0.55,
+      ix + k * 2,
+      cy + k * 0.75,
+    );
     ctx.lineTo(ix + k * 2, cy - k * 0.65);
     ctx.quadraticCurveTo(ix + k * 1.5, cy - k * 0.85, ix + k, cy - k * 0.55);
     ctx.lineTo(ix + k, cy + k * 0.85);
@@ -3437,6 +3965,65 @@ function drawModeSegment(b, on) {
   ctx.textAlign = "left";
   ctx.fillStyle = ink;
   ctx.fillText(label, ix + iw + 8, cy + (tall() ? 6 : 5.5));
+  if (locked) drawPadlock(b.x + b.w - 2, b.y + b.h + 1);
+  ctx.restore();
+}
+
+// A small padlock badge, centred on (x, y): just outside the Story button's bottom-right corner.
+function drawPadlock(x, y) {
+  const s = tall() ? 1.15 : 1;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.fillStyle = "#2a1a0e";
+  ctx.beginPath();
+  ctx.arc(0, 0, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // the shackle, then the body
+  ctx.strokeStyle = PAPER;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-3.5, -0.5);
+  ctx.lineTo(-3.5, -3);
+  ctx.arc(0, -3, 3.5, Math.PI, 0);
+  ctx.lineTo(3.5, -0.5);
+  ctx.stroke();
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(-5.5, -0.5, 11, 7.5);
+  ctx.fillStyle = "#2a1a0e";
+  ctx.fillRect(-0.75, 1.8, 1.5, 3); // the keyhole
+  ctx.restore();
+}
+
+// Test mode: each try at Story floats a quick "Locked in test mode" up from where it was tapped,
+// fading as it goes.
+function drawLockedPops() {
+  const now = performance.now();
+  lockPops = lockPops.filter((p) => now - p.at < LOCK_POP_MS);
+  for (const p of lockPops) {
+    const k = (now - p.at) / LOCK_POP_MS, // 0 → 1
+      y = p.y - 14 - 34 * (1 - (1 - k) * (1 - k)); // rises quickly, then eases
+    ctx.save();
+    ctx.globalAlpha *= k < 0.12 ? k / 0.12 : 1 - Math.max(0, (k - 0.45) / 0.55); // in fast, then fade
+    ctx.font = `bold ${tall() ? 16 : 14}px Georgia, serif`;
+    const text = "Locked in test mode",
+      w = ctx.measureText(text).width + 22,
+      h = tall() ? 28 : 24,
+      x = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, p.x)); // (kept on screen)
+    ctx.fillStyle = "rgba(20, 14, 10, 0.92)";
+    roundRect(x - w / 2, y - h / 2, w, h, h / 2);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.fillStyle = PAPER;
+    ctx.textAlign = "center";
+    ctx.fillText(text, x, y + (tall() ? 5.5 : 5));
+    ctx.restore();
+  }
 }
 
 // The start screen's Play button: always gold (it's the one to press), with a play triangle.
@@ -3554,11 +4141,15 @@ function drawRingButton(b, dim = false) {
 // one more line; the buttons; and a hint line at the very bottom. The ribbon hangs top right.
 // Cards shown during a run (pause, game over, level complete) sit under the top bar, which stays
 // bright (see draw: the run behind is dimmed before the bar is drawn).
-const MIDRUN_CARD = { wide: { y: 52, w: 432, h: 262 }, tall: { x: 16, y: 124, h: 486 } };
+const MIDRUN_CARD = {
+  wide: { y: 52, w: 432, h: 262 },
+  tall: { x: 16, y: 124, h: 486 },
+};
 // The hint line's words: for keys, for a controller, or for a touch screen.
 const hintFor = (keys, pad, touch) => (padUI() ? pad : HAS_KEYS ? keys : touch);
 // The story line, under a Story Mode card's heading.
-const storyLine = (lv) => `Chapter ${lv.chapter} · Level ${lv.num} · ${lv.name}`;
+const storyLine = (lv) =>
+  `Chapter ${lv.chapter} · Level ${lv.num} · ${lv.name}`;
 // The run's numbers in a row, each over its label, split by thin red lines. items: [value, label],
 // the value a number or words, or "hearts" for the hearts left. (y: the numbers' baseline.)
 function drawStatRow(cx, y, items) {
@@ -3661,13 +4252,21 @@ function drawPause() {
   // (the run behind was dimmed before the top bar was drawn)
   drawCard(c.x, c.y, c.w, c.h, "Bookmarked!");
   const lv = story && story.level;
-  cardSub(lv ? storyLine(lv) : "Your run will wait right here.", c.y + (big ? 74 : 68));
+  cardSub(
+    lv ? storyLine(lv) : "Your run will wait right here.",
+    c.y + (big ? 74 : 68),
+  );
   drawStatRow(W / 2, c.y + (big ? 118 : 106), [
     [pages, pages === 1 ? "page found" : "pages found"],
-    lv ? [`${Math.round(storyProgress() * 100)}%`, "of the level"] : [`${Math.floor(runDist * METERS_PER_PX)} m`, "distance"],
+    lv
+      ? [`${Math.round(storyProgress() * 100)}%`, "of the level"]
+      : [`${Math.floor(runDist * METERS_PER_PX)} m`, "distance"],
     ["hearts", lives === 1 ? "heart left" : "hearts left"],
   ]);
-  cardLine(lv ? "Your run will wait right here." : `Best: ${best} pages`, c.y + (big ? 162 : 144));
+  cardLine(
+    lv ? "Your run will wait right here." : `Best: ${best} pages`,
+    c.y + (big ? 162 : 144),
+  );
 
   // Resume, the card's main action (with its key, P, on a little paper keycap), and How to play
   drawButton(B[0], on("resume"));
@@ -3719,7 +4318,11 @@ function drawPause() {
   ctx.fillText(quitText, qx + 22, qy + 5);
 
   hint(
-    hintFor("Tab or arrows to choose · Enter to select · P or Esc to resume", "▲ ▼ to choose · A to select · Start to resume", "Tap Resume to keep reading"),
+    hintFor(
+      "Tab or arrows to choose · Enter to select · P or Esc to resume",
+      "▲ ▼ to choose · A to select · Start to resume",
+      "Tap Resume to keep reading",
+    ),
     c.y + c.h - (big ? 14 : 10),
   );
 }
@@ -3751,14 +4354,44 @@ const HOWTO_PAGES = [
     rows: () =>
       howtoMode === "story"
         ? [
-            { title: "Loose pages", how: "Each one you find counts toward the level's stars.", pic: "run", items: iconPage, count: 1 }, // (Story Mode's pages come one at a time)
-            { title: "Hidden bookmarks", how: "A few in every level, in hard-to-reach spots. Find them all!", pic: "icon", icon: iconBookmarkPick },
-            { title: "Reach the end", how: "Run all the way through to finish the level.", pic: "run" },
+            {
+              title: "Loose pages",
+              how: "Each one you find counts toward the level's stars.",
+              pic: "run",
+              items: iconPage,
+              count: 1,
+            }, // (Story Mode's pages come one at a time)
+            {
+              title: "Hidden bookmarks",
+              how: "A few in every level, in hard-to-reach spots. Find them all!",
+              pic: "icon",
+              icon: iconBookmarkPick,
+            },
+            {
+              title: "Reach the end",
+              how: "Run all the way through to finish the level.",
+              pic: "run",
+            },
           ]
         : [
-            { title: "Loose pages", how: "Every one you grab adds to your score.", pic: "run", items: iconPage, count: 3 },
-            { title: "Bookmarks", how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`, pic: "icon", icon: iconBookmarkPick },
-            { title: "Go the distance", how: "The farther you run, the trickier it gets.", pic: "run" },
+            {
+              title: "Loose pages",
+              how: "Every one you grab adds to your score.",
+              pic: "run",
+              items: iconPage,
+              count: 3,
+            },
+            {
+              title: "Bookmarks",
+              how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`,
+              pic: "icon",
+              icon: iconBookmarkPick,
+            },
+            {
+              title: "Go the distance",
+              how: "The farther you run, the trickier it gets.",
+              pic: "run",
+            },
           ],
   },
   {
@@ -3773,24 +4406,98 @@ const HOWTO_PAGES = [
     rows: () =>
       padUI()
         ? [
-            { title: "Jump", how: "A, or push ↑. Hold it to jump higher.", pic: "jump", over: "stack", keys: ["A", "↑"] },
-            { title: "Duck", how: "B, or pull ↓, and hold. Mid-air, it drops you fast.", pic: "duck", over: iconFlyer, keys: ["B", "↓"] },
-            { title: "Pause", how: "The Start button (≡).", pic: "icon", icon: iconPauseBars, badge: true, keys: ["Start"] },
-            { title: "Sound", how: "The View button (⧉) turns it on and off.", pic: "icon", icon: iconSound, badge: true, keys: ["View"] },
+            {
+              title: "Jump",
+              how: "A, or push ↑. Hold it to jump higher.",
+              pic: "jump",
+              over: "stack",
+              keys: ["A", "↑"],
+            },
+            {
+              title: "Duck",
+              how: "B, or pull ↓, and hold. Mid-air, it drops you fast.",
+              pic: "duck",
+              over: iconFlyer,
+              keys: ["B", "↓"],
+            },
+            {
+              title: "Pause",
+              how: "The Start button (≡).",
+              pic: "icon",
+              icon: iconPauseBars,
+              badge: true,
+              keys: ["Start"],
+            },
+            {
+              title: "Sound",
+              how: "The View button (⧉) turns it on and off.",
+              pic: "icon",
+              icon: iconSound,
+              badge: true,
+              keys: ["View"],
+            },
           ]
         : touchUI
-        ? [
-            { title: "Jump", how: "Tap. Hold your tap to jump higher.", pic: "jump", over: "stack" },
-            { title: "Duck", how: "Swipe down and hold. Mid-air, it drops you fast.", pic: "duck", over: iconFlyer },
-            { title: "Pause", how: "The pause button at the top.", pic: "icon", icon: iconPauseBars, badge: true },
-            { title: "Sound", how: "The Sound button at the top left.", pic: "icon", icon: iconSound, badge: true },
-          ]
-        : [
-            { title: "Jump", how: "Space or ↑. Hold it to jump higher.", pic: "jump", over: "stack", keys: ["Space", "↑"] },
-            { title: "Duck", how: "↓ or S, and hold. Mid-air, it drops you fast.", pic: "duck", over: iconFlyer, keys: ["↓", "S"] },
-            { title: "Pause", how: "P or Esc.", pic: "icon", icon: iconPauseBars, badge: true, keys: ["P", "Esc"] },
-            { title: "Sound", how: "M turns it on and off.", pic: "icon", icon: iconSound, badge: true, keys: ["M"] },
-          ],
+          ? [
+              {
+                title: "Jump",
+                how: "Tap. Hold your tap to jump higher.",
+                pic: "jump",
+                over: "stack",
+              },
+              {
+                title: "Duck",
+                how: "Swipe down and hold. Mid-air, it drops you fast.",
+                pic: "duck",
+                over: iconFlyer,
+              },
+              {
+                title: "Pause",
+                how: "The pause button at the top.",
+                pic: "icon",
+                icon: iconPauseBars,
+                badge: true,
+              },
+              {
+                title: "Sound",
+                how: "The Sound button at the top left.",
+                pic: "icon",
+                icon: iconSound,
+                badge: true,
+              },
+            ]
+          : [
+              {
+                title: "Jump",
+                how: "Space or ↑. Hold it to jump higher.",
+                pic: "jump",
+                over: "stack",
+                keys: ["Space", "↑"],
+              },
+              {
+                title: "Duck",
+                how: "↓ or S, and hold. Mid-air, it drops you fast.",
+                pic: "duck",
+                over: iconFlyer,
+                keys: ["↓", "S"],
+              },
+              {
+                title: "Pause",
+                how: "P or Esc.",
+                pic: "icon",
+                icon: iconPauseBars,
+                badge: true,
+                keys: ["P", "Esc"],
+              },
+              {
+                title: "Sound",
+                how: "M turns it on and off.",
+                pic: "icon",
+                icon: iconSound,
+                badge: true,
+                keys: ["M"],
+              },
+            ],
   },
   {
     name: "Hearts",
@@ -3798,42 +4505,114 @@ const HOWTO_PAGES = [
     rows: () => [
       {
         title: `You have ${LIVES} hearts`,
-        how: howtoMode === "story" ? "Each bump costs a heart. Your pages are safe." : `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages.`,
+        how:
+          howtoMode === "story"
+            ? "Each bump costs a heart. Your pages are safe."
+            : `Each bump costs a heart and ${PAGES_LOST_ON_HIT} pages.`,
         pic: "row",
         item: iconHeart,
         count: LIVES,
       },
-      { title: "Book tape", how: "Shows up when you're hurt: grab it for +1 heart.", pic: "run", items: iconTape, count: 1 },
+      {
+        title: "Book tape",
+        how: "Shows up when you're hurt: grab it for +1 heart.",
+        pic: "run",
+        items: iconTape,
+        count: 1,
+      },
     ],
   },
   {
     name: "Obstacles",
     tip: "Things on the floor and in the way. Jump or duck!",
     rows: () => [
-      { title: "Book stacks", how: "Jump over them. Some come two or three wide.", pic: "jump", over: "stack2" },
-      { title: "Wet floors", how: "Jump the sign and the puddles: puddles make you slip.", pic: "jump", over: "wet" },
-      { title: "Book tunnels", how: "Duck in and hold it. Hit it and the run's over!", pic: "duck", around: "tunnel" },
+      {
+        title: "Book stacks",
+        how: "Jump over them. Some come two or three wide.",
+        pic: "jump",
+        over: "stack2",
+      },
+      {
+        title: "Wet floors",
+        how: "Jump the sign and the puddles: puddles make you slip.",
+        pic: "jump",
+        over: "wet",
+      },
+      {
+        title: "Book tunnels",
+        how: "Duck in and hold it. Hit it and the run's over!",
+        pic: "duck",
+        around: "tunnel",
+      },
     ],
   },
   {
     name: "Furniture",
     tip: "Jump on top and run along it. Never run into its side!",
     rows: () => [
-      { title: "Carts, benches & chairs", how: "Hop up. Hitting the side ends your run!", pic: "jump", over: "cart" },
-      { title: "Reading tables", how: "Hop on top, or duck and slide under.", pic: "duck", around: "table" },
-      { title: "Things on top", how: "Stacks and flying books up there: jump!", pic: "icon", icon: iconTopStack },
-      { title: "Bookmarks up high", how: "Jump from the furniture to grab them.", pic: "icon", icon: iconPerch },
+      {
+        title: "Carts, benches & chairs",
+        how: "Hop up. Hitting the side ends your run!",
+        pic: "jump",
+        over: "cart",
+      },
+      {
+        title: "Reading tables",
+        how: "Hop on top, or duck and slide under.",
+        pic: "duck",
+        around: "table",
+      },
+      {
+        title: "Things on top",
+        how: "Stacks and flying books up there: jump!",
+        pic: "icon",
+        icon: iconTopStack,
+      },
+      {
+        title: "Bookmarks up high",
+        how: "Jump from the furniture to grab them.",
+        pic: "icon",
+        icon: iconPerch,
+      },
     ],
   },
   {
     name: "Enemies",
     tip: "Flying books! Duck most of them. Each kind moves its own way.",
     rows: () => [
-      { title: "Flying books", how: "Duck under them, or jump clean over.", pic: "duck", over: iconFlyerOf("plain") },
-      { title: "Orange swoopers", how: "They rise and dive: run under, duck or jump.", pic: "duck", over: iconFlyerOf("swoop"), swoop: true },
-      { title: "Blue darters", how: "Faster than the floor. Duck early!", pic: "duck", over: iconFlyerOf("dart"), fast: true },
-      { title: "Red chargers", how: "They shake and flash a “!”, then charge!", pic: "duck", over: iconFlyerOf("charge"), fast: true },
-      { title: "A murder of books", how: "Skimming the floor? Jump! Up high? Duck!", pic: "icon", icon: iconFlock },
+      {
+        title: "Flying books",
+        how: "Duck under them, or jump clean over.",
+        pic: "duck",
+        over: iconFlyerOf("plain"),
+      },
+      {
+        title: "Orange swoopers",
+        how: "They rise and dive: run under, duck or jump.",
+        pic: "duck",
+        over: iconFlyerOf("swoop"),
+        swoop: true,
+      },
+      {
+        title: "Blue darters",
+        how: "Faster than the floor. Duck early!",
+        pic: "duck",
+        over: iconFlyerOf("dart"),
+        fast: true,
+      },
+      {
+        title: "Red chargers",
+        how: "They shake and flash a “!”, then charge!",
+        pic: "duck",
+        over: iconFlyerOf("charge"),
+        fast: true,
+      },
+      {
+        title: "A murder of books",
+        how: "Skimming the floor? Jump! Up high? Duck!",
+        pic: "icon",
+        icon: iconFlock,
+      },
     ],
   },
   {
@@ -3842,9 +4621,24 @@ const HOWTO_PAGES = [
     rows: () => {
       const secs = (type) => POWERS[type].ms / 1000;
       return [
-        { title: "Bookmark magnet", how: `Pages fly to you for ${secs("magnet")} seconds.`, pic: "power", power: "magnet" },
-        { title: "Hardcover", how: `Takes your next bump. Lasts up to ${secs("shield")} seconds.`, pic: "power", power: "shield" },
-        { title: "Speed reading", how: `${secs("speed")} seconds: double pages, flying books bounce off!`, pic: "power", power: "speed" },
+        {
+          title: "Bookmark magnet",
+          how: `Pages fly to you for ${secs("magnet")} seconds.`,
+          pic: "power",
+          power: "magnet",
+        },
+        {
+          title: "Hardcover",
+          how: `Takes your next bump. Lasts up to ${secs("shield")} seconds.`,
+          pic: "power",
+          power: "shield",
+        },
+        {
+          title: "Speed reading",
+          how: `${secs("speed")} seconds: double pages, flying books bounce off!`,
+          pic: "power",
+          power: "speed",
+        },
       ];
     },
   },
@@ -3911,8 +4705,25 @@ function wrapLines(text, width) {
 
 // Where things go on the How to play screen, in each layout.
 const HOWTO_LAYOUT = {
-  wide: { nameY: 30, tipY: 48, segY: 58, segW: 28, cardsY: 76, cardH: 172, picH: 80 },
-  tall: { nameY: 70, tipY: 96, segY: 132, segW: 34, cardsY: 152, cardH: 120, picH: 100, gap: 10 },
+  wide: {
+    nameY: 30,
+    tipY: 48,
+    segY: 58,
+    segW: 28,
+    cardsY: 76,
+    cardH: 172,
+    picH: 80,
+  },
+  tall: {
+    nameY: 70,
+    tipY: 96,
+    segY: 132,
+    segW: 34,
+    cardsY: 152,
+    cardH: 120,
+    picH: 100,
+    gap: 10,
+  },
 };
 
 function drawHowTo() {
@@ -3926,7 +4737,10 @@ function drawHowTo() {
     rows = page.rows().slice(scr.from, scr.to),
     now = performance.now();
 
-  drawHowtoHeading(page.name, typeof page.tip === "function" ? page.tip() : page.tip);
+  drawHowtoHeading(
+    page.name,
+    typeof page.tip === "function" ? page.tip() : page.tip,
+  );
 
   // the progress bar: one segment per section (done in gold, this one in cream). Tap to jump.
   const n = HOWTO_PAGES.length,
@@ -3935,7 +4749,12 @@ function drawHowTo() {
   howtoSegs = [];
   for (let i = 0; i < n; i++) {
     const x = sx + i * (L.segW + gap);
-    ctx.fillStyle = i < scr.page ? GOLD : i === scr.page ? PAPER : "rgba(243, 234, 215, 0.25)";
+    ctx.fillStyle =
+      i < scr.page
+        ? GOLD
+        : i === scr.page
+          ? PAPER
+          : "rgba(243, 234, 215, 0.25)";
     roundRect(x, L.segY, L.segW, tall() ? 5 : 4, 2);
     howtoSegs.push({ x: x - gap / 2, y: L.segY - 10, w: L.segW + gap, h: 24 }); // (a bigger target than it looks)
   }
@@ -3972,7 +4791,9 @@ function drawHowtoHeading(name, line) {
   ctx.fillText(name, W / 2, L.nameY);
   ctx.fillStyle = "#e8dcc0";
   ctx.font = `${tall() ? 15 : 12}px Georgia, serif`;
-  wrapLines(line, W - 60).forEach((l, i) => ctx.fillText(l, W / 2, L.tipY + i * 19));
+  wrapLines(line, W - 60).forEach((l, i) =>
+    ctx.fillText(l, W / 2, L.tipY + i * 19),
+  );
 }
 // How to play's tip cards (also Story Mode's pop-ups'): side by side (wide) or stacked (tall),
 // dealt in one after another from dealAt (performance.now()).
@@ -4036,14 +4857,17 @@ function drawHowtoCard(r, x, y, w, h, now) {
   const ts = tall() ? 20 : 15;
   ctx.font = `bold ${ts}px Georgia, serif`;
   const tw = ctx.measureText(r.title).width;
-  if (tw > room) ctx.font = `bold ${Math.max(11, (ts * room) / tw)}px Georgia, serif`;
+  if (tw > room)
+    ctx.font = `bold ${Math.max(11, (ts * room) / tw)}px Georgia, serif`;
   ctx.fillText(r.title, tx, ty);
   ctx.fillStyle = INK_SOFT;
   const hs = tall() ? 15 : 12;
   ctx.font = `${hs}px Georgia, serif`;
   wrapLines(r.how, room)
     .slice(0, 3)
-    .forEach((l, i) => ctx.fillText(l, tx, ty + (tall() ? 24 : 17) + i * (hs + 4)));
+    .forEach((l, i) =>
+      ctx.fillText(l, tx, ty + (tall() ? 24 : 17) + i * (hs + 4)),
+    );
 }
 
 // A card's little picture, in the box (x, y, w, h): a bit of floor, and the book doing the thing.
@@ -4092,9 +4916,19 @@ function drawHowtoPic(r, x, y, w, h, now) {
     // running on the spot, speed lines behind, things to grab floating ahead
     const bx = x + w * 0.28;
     ctx.fillStyle = "rgba(122, 106, 85, 0.45)";
-    for (const [dy, len] of [[-30, 14], [-22, 20], [-14, 11]]) {
+    for (const [dy, len] of [
+      [-30, 14],
+      [-22, 20],
+      [-14, 11],
+    ]) {
       const off = loop(500) * 6;
-      roundRect(bx - 22 * s - len * s - off, floorY + dy * s, len * s, 2.5 * s, 1.2 * s);
+      roundRect(
+        bx - 22 * s - len * s - off,
+        floorY + dy * s,
+        len * s,
+        2.5 * s,
+        1.2 * s,
+      );
     }
     book(bx, floorY, bk, { run: true });
     if (r.items) {
@@ -4113,7 +4947,13 @@ function drawHowtoPic(r, x, y, w, h, now) {
       const stacks = r.over === "stack2" ? [-15, 15] : [0];
       for (const dx of stacks)
         for (let j = 0; j < 3; j++)
-          drawLyingBook({ x: cx + dx * s - 14 * ok + (j % 2) * 2 * ok, y: floorY - (j + 1) * 7 * ok, w: 28 * ok - (j % 2) * 4 * ok, h: 7 * ok, color: SPINES[(j + (dx > 0 ? 3 : 0)) % SPINES.length] });
+          drawLyingBook({
+            x: cx + dx * s - 14 * ok + (j % 2) * 2 * ok,
+            y: floorY - (j + 1) * 7 * ok,
+            w: 28 * ok - (j % 2) * 4 * ok,
+            h: 7 * ok,
+            color: SPINES[(j + (dx > 0 ? 3 : 0)) % SPINES.length],
+          });
       topH = 21 * ok;
     } else if (r.over === "wet") {
       oval(cx - 26 * s, floorY + 2 * s, 12 * s, 3 * s, "#7fb7e0");
@@ -4155,7 +4995,13 @@ function drawHowtoPic(r, x, y, w, h, now) {
     roundRect(cx0 + 2 * ck, top + 5 * ck, cw - 4 * ck, ch - 7 * ck, 3 * ck); // base
     for (let i = 0; i < 3; i++) {
       ctx.fillStyle = "#3fa2a8"; // seat cushions
-      roundRect(cx0 + 6 * ck + i * ((cw - 12 * ck) / 3), top, (cw - 12 * ck) / 3 - 2 * ck, 7 * ck, 3 * ck);
+      roundRect(
+        cx0 + 6 * ck + i * ((cw - 12 * ck) / 3),
+        top,
+        (cw - 12 * ck) / 3 - 2 * ck,
+        7 * ck,
+        3 * ck,
+      );
     }
     ctx.fillStyle = "#2f8088";
     roundRect(cx0 - 2 * ck, top - 5 * ck, 9 * ck, ch + 3 * ck, 4 * ck); // arms
@@ -4205,7 +5051,14 @@ function drawHowtoPic(r, x, y, w, h, now) {
       // a bookcase on posts, with a low gap to duck through
       const top = floorY - 50 * s;
       R(cx - 34 * s, top, 68 * s, 18 * s, "#5a381c");
-      for (let i = 0; i < 9; i++) R(cx - 31 * s + i * 7 * s, top + 2 * s, 5 * s, 13 * s, SPINES[i % SPINES.length]);
+      for (let i = 0; i < 9; i++)
+        R(
+          cx - 31 * s + i * 7 * s,
+          top + 2 * s,
+          5 * s,
+          13 * s,
+          SPINES[i % SPINES.length],
+        );
       R(cx - 34 * s, top + 18 * s, 68 * s, 4 * s, "#a87a48");
       book(cx, floorY, bk, { duck: true });
       R(cx - 34 * s, top + 22 * s, 4 * s, floorY - top - 22 * s, "#c9a77a");
@@ -4223,7 +5076,8 @@ function drawHowtoPic(r, x, y, w, h, now) {
       book(cx, floorY, bk, { duck: true });
       const p = loop(r.fast ? 1100 : 1800),
         fx = x + w + 30 * s - (w + 60 * s) * p,
-        fy = floorY - 40 * s + (r.swoop ? Math.sin(p * Math.PI * 2) * 8 * s : 0);
+        fy =
+          floorY - 40 * s + (r.swoop ? Math.sin(p * Math.PI * 2) * 8 * s : 0);
       big(r.over, fx, fy, 0.85 * s);
     }
     // a little "duck!" arrow (where there's room for it)
@@ -4253,7 +5107,13 @@ function drawHowtoPic(r, x, y, w, h, now) {
   } else if (r.pic === "row") {
     const n = r.count || 1,
       step = 30 * s;
-    for (let i = 0; i < n; i++) big(r.item, cx - ((n - 1) * step) / 2 + i * step, y + (h - 12) / 2 + Math.sin(now * 0.004 + i * 0.8) * 2 * s, 1.3 * s);
+    for (let i = 0; i < n; i++)
+      big(
+        r.item,
+        cx - ((n - 1) * step) / 2 + i * step,
+        y + (h - 12) / 2 + Math.sin(now * 0.004 + i * 0.8) * 2 * s,
+        1.3 * s,
+      );
   } else if (r.pic === "power") {
     drawPowerIcon(r.power, cx, y + (h - 12) / 2, 22 * s);
   }
@@ -4267,7 +5127,9 @@ function drawHowtoPic(r, x, y, w, h, now) {
       const label = r.keys[i],
         face = PAD_FACES[label],
         kh = 18 * s,
-        kw = face ? kh : Math.max(18 * s, ctx.measureText(label).width + 10 * s),
+        kw = face
+          ? kh
+          : Math.max(18 * s, ctx.measureText(label).width + 10 * s),
         ky = y + 6 * s;
       kx -= kw;
       ctx.textAlign = "center";
@@ -4377,7 +5239,12 @@ function drawTipsIndex() {
     ctx.fillStyle = here ? CARD_RED : INK_SOFT;
     ctx.fillText("›", r.x + r.w - 12, cy);
   });
-  hint(touchUI ? "Tap a section to jump to it" : "Arrow keys to choose · Enter to open · Esc to go back", py + ph - 12);
+  hint(
+    touchUI
+      ? "Tap a section to jump to it"
+      : "Arrow keys to choose · Enter to open · Esc to go back",
+    py + ph - 12,
+  );
 }
 
 // The All tips button: three lines (a list), then the label. Quiet like the start screen's
@@ -4428,10 +5295,42 @@ function drawCloseButton(b, on) {
 
 // Little pictures for the Controls and Objective pages, each centered on (x, y).
 function iconArrowUp(x, y) {
-  poly(PAPER, x, y - 11, x + 9, y, x + 4, y, x + 4, y + 10, x - 4, y + 10, x - 4, y, x - 9, y);
+  poly(
+    PAPER,
+    x,
+    y - 11,
+    x + 9,
+    y,
+    x + 4,
+    y,
+    x + 4,
+    y + 10,
+    x - 4,
+    y + 10,
+    x - 4,
+    y,
+    x - 9,
+    y,
+  );
 }
 function iconArrowDown(x, y) {
-  poly(PAPER, x, y + 11, x + 9, y, x + 4, y, x + 4, y - 10, x - 4, y - 10, x - 4, y, x - 9, y);
+  poly(
+    PAPER,
+    x,
+    y + 11,
+    x + 9,
+    y,
+    x + 4,
+    y,
+    x + 4,
+    y - 10,
+    x - 4,
+    y - 10,
+    x - 4,
+    y,
+    x - 9,
+    y,
+  );
 }
 function iconPauseBars(x, y) {
   R(x - 7, y - 9, 5, 18, PAPER);
@@ -4459,7 +5358,8 @@ function iconWetFloor(x, y) {
 }
 
 // How faded-in the game-over card is: 0 not yet (the crash is still playing) … 1 showing.
-const overFade = () => Math.min(1, Math.max(0, (overTime - deathMs) / OVER_FADE_MS));
+const overFade = () =>
+  Math.min(1, Math.max(0, (overTime - deathMs) / OVER_FADE_MS));
 function drawGameOver() {
   // wait for the crash to finish, then fade in (rising slightly as it appears)
   const fade = overFade();
@@ -4496,13 +5396,26 @@ function drawGameOver() {
     ctx.restore();
   }
   cardRules(c.x, stampY + 30, c.w);
-  cardSub(lv ? storyLine(lv) : "Out of hearts! Your run has ended.", stampY + 52);
+  cardSub(
+    lv ? storyLine(lv) : "Out of hearts! Your run has ended.",
+    stampY + 52,
+  );
   drawStatRow(W / 2, stampY + (big ? 98 : 88), [
     [pages, pages === 1 ? "page found" : "pages found"],
-    lv ? [`${Math.round(storyProgress() * 100)}%`, "of the level"] : [`${Math.floor(runDist * METERS_PER_PX)} m`, "distance"],
+    lv
+      ? [`${Math.round(storyProgress() * 100)}%`, "of the level"]
+      : [`${Math.floor(runDist * METERS_PER_PX)} m`, "distance"],
   ]);
   const beat = !lv && newBest && best > 0;
-  cardLine(lv ? "So close! Try it again." : beat ? "★ New best! ★" : `Best: ${best} pages`, stampY + (big ? 146 : 130), beat);
+  cardLine(
+    lv
+      ? "So close! Try it again."
+      : beat
+        ? "★ New best! ★"
+        : `Best: ${best} pages`,
+    stampY + (big ? 146 : 130),
+    beat,
+  );
 
   drawButtons();
   const where = lv ? "chapters" : "menu";
@@ -4510,7 +5423,9 @@ function drawGameOver() {
     hintFor(
       `Tab or ← → to choose · Enter to select · Esc for the ${where}`,
       `◀ ▶ to choose · A to select · B for the ${where}`,
-      lv ? "Chapters goes back to the chapter book" : "Main menu goes back to the start screen",
+      lv
+        ? "Chapters goes back to the chapter book"
+        : "Main menu goes back to the start screen",
     ),
     c.y + c.h - (big ? 14 : 10),
   );
@@ -4743,7 +5658,12 @@ function drawSmash() {
       hy = gy - 26;
     for (let i = 0; i < 3; i++) {
       const a = t * 0.008 + (i * Math.PI * 2) / 3;
-      sparkle(hx + Math.cos(a) * 14, hy + Math.sin(a) * 5, 4, i === 1 ? "#fff6c8" : "#ffe27a");
+      sparkle(
+        hx + Math.cos(a) * 14,
+        hy + Math.sin(a) * 5,
+        4,
+        i === 1 ? "#fff6c8" : "#ffe27a",
+      );
     }
   }
 }
@@ -4757,7 +5677,13 @@ function drawWipeout() {
   const after = t - WIPEOUT.flipMs; // ms since the slam (negative: still in the air)
   // its shadow on the floor, shrinking as it goes up
   const height = Math.max(0, wipeout.groundY - 25 - cy);
-  oval(cx, FLOOR - 1, Math.max(8, 24 - height * 0.12), 4, "rgba(0, 0, 0, 0.22)");
+  oval(
+    cx,
+    FLOOR - 1,
+    Math.max(8, 24 - height * 0.12),
+    4,
+    "rgba(0, 0, 0, 0.22)",
+  );
   // the halo: a ring of stars round its head (on the left, lying on its back), popping in one by
   // one. The ring is tipped toward us, so stars on the far side go behind the book.
   const halo = [];
@@ -4765,7 +5691,10 @@ function drawWipeout() {
     const hx = cx - 14, // above its head end (it's 20 tall, lying down)
       hy = cy - 30;
     for (let i = 0; i < WIPEOUT.stars; i++) {
-      const p = Math.min(1, (after - WIPEOUT.starsAt - i * WIPEOUT.starEvery) / 160);
+      const p = Math.min(
+        1,
+        (after - WIPEOUT.starsAt - i * WIPEOUT.starEvery) / 160,
+      );
       if (p <= 0) break;
       const pop = 1 + 2.7 * (p - 1) ** 3 + 1.7 * (p - 1) ** 2; // overshoots a little, then settles
       const a = after * 0.004 + (i * Math.PI * 2) / WIPEOUT.stars;
@@ -4785,7 +5714,12 @@ function drawWipeout() {
   ctx.rotate(ang);
   ctx.scale(sx, sy);
   const look = { wear: LIVES - lives };
-  if (after < 0) look.flail = [Math.sin(t * 0.045) * 1.1 - 0.5, Math.sin(t * 0.045 + 2.2) * 1.1 - 0.5]; // kicking
+  if (after < 0)
+    look.flail = [
+      Math.sin(t * 0.045) * 1.1 - 0.5,
+      Math.sin(t * 0.045 + 2.2) * 1.1 - 0.5,
+    ];
+  // kicking
   else if (after > 350) look.step = Math.sin(t * 0.03) * 4; // legs wiggling in the air
   drawCharacter(c, -20, -25, 40, 44, look); // (centered: the body, and its legs below)
   ctx.restore();
@@ -4835,7 +5769,8 @@ function drawCouch(o) {
     ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
     roundRect(ax + 5, y - 10, 16, 4, 2);
   }
-  for (const fx of [x + 14, x + w / 2 - 4, x + w - 22]) R(fx, FLOOR - 8, 8, 8, "#4a2c17"); // little feet
+  for (const fx of [x + 14, x + w / 2 - 4, x + w - 22])
+    R(fx, FLOOR - 8, 8, 8, "#4a2c17"); // little feet
 }
 
 // A black two-shelf book cart, like the ones in the picture books: thin black uprights, black
@@ -4849,13 +5784,20 @@ function drawCart(o) {
   for (let bx = x + 8, i = 0; bx < x + w - 12; i++) {
     const bw = 7 + ((hash(i, o.seed) * 6) | 0),
       bh = shelf - y - 12 - hash(i + 3, o.seed) * 16;
-    R(bx, shelf - bh, bw, bh, SPINES[(hash(i + 7, o.seed) * SPINES.length) | 0]);
+    R(
+      bx,
+      shelf - bh,
+      bw,
+      bh,
+      SPINES[(hash(i + 7, o.seed) * SPINES.length) | 0],
+    );
     R(bx + 1, shelf - bh + 3, bw - 2, 1.5, "rgba(255, 255, 255, 0.35)");
     bx += bw + 1;
   }
   R(x, shelf, w, 5, "#1f1f22"); // the lower shelf
   // the uprights at each end (and one in the middle, on a cart this long)
-  for (const ux of [x, x + w / 2 - 2, x + w - 5]) R(ux, y, 5, FLOOR - 7 - y, "#2a2a2e");
+  for (const ux of [x, x + w / 2 - 2, x + w - 5])
+    R(ux, y, 5, FLOOR - 7 - y, "#2a2a2e");
   for (const wx of [x + 8, x + w / 2, x + w - 8]) {
     oval(wx, FLOOR - 5, 5, 5, "#111"); // wheels
     oval(wx, FLOOR - 5, 1.6, 1.6, "#555");
@@ -4867,13 +5809,15 @@ function drawCart(o) {
 // A long padded reading bench with button tufting, on wooden legs.
 function drawBench(o) {
   const { x, y, w } = o;
-  for (const lx of [x + 10, x + w / 2 - 3, x + w - 16]) R(lx, y + 18, 6, FLOOR - y - 18, "#6e4520"); // legs
+  for (const lx of [x + 10, x + w / 2 - 3, x + w - 16])
+    R(lx, y + 18, 6, FLOOR - y - 18, "#6e4520"); // legs
   R(x + 4, y + 12, w - 8, 8, "#8a5a2b"); // frame
   ctx.fillStyle = "#3d4c8c"; // cushion
   roundRect(x, y, w, 14, 6);
   ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
   roundRect(x + 4, y + 1, w - 8, 3, 2);
-  for (let bx = x + 18; bx < x + w - 10; bx += 26) oval(bx, y + 8, 1.6, 1.6, "#2b3768"); // buttons
+  for (let bx = x + 18; bx < x + w - 10; bx += 26)
+    oval(bx, y + 8, 1.6, 1.6, "#2b3768"); // buttons
 }
 
 // A big comfy reading chair, seen from the front: a tall back behind, a deep seat to run along,
@@ -4912,7 +5856,13 @@ function drawReadingTable(o) {
     R(cx, y - 34, 34, 6, "#5a381c");
     R(cx + 3, y - 22, 28, 4, "#5a381c");
   }
-  R(x + 6, y + TABLE_SLAB, w - 12, FLOOR - y - TABLE_SLAB, "rgba(0, 0, 0, 0.16)"); // the shade underneath
+  R(
+    x + 6,
+    y + TABLE_SLAB,
+    w - 12,
+    FLOOR - y - TABLE_SLAB,
+    "rgba(0, 0, 0, 0.16)",
+  ); // the shade underneath
   R(x + 8, y + TABLE_SLAB, 7, FLOOR - y - TABLE_SLAB, "#2a1a0d"); // legs, set back at the ends
   R(x + w - 15, y + TABLE_SLAB, 7, FLOOR - y - TABLE_SLAB, "#2a1a0d");
   R(x + 6, y + 8, w - 12, TABLE_SLAB - 8, "#4a2e18"); // the apron under the top
@@ -4948,8 +5898,20 @@ function drawTunnel(o) {
         bx += bw + 4; // a gap where a book's been borrowed
         continue;
       }
-      R(bx, ry + rowH - 4 - bh, bw, bh, SPINES[(hash(i + 2, row + o.seed) * SPINES.length) | 0]);
-      R(bx + 1, ry + rowH - 4 - bh + 3, bw - 2, 1.5, "rgba(255, 255, 255, 0.3)");
+      R(
+        bx,
+        ry + rowH - 4 - bh,
+        bw,
+        bh,
+        SPINES[(hash(i + 2, row + o.seed) * SPINES.length) | 0],
+      );
+      R(
+        bx + 1,
+        ry + rowH - 4 - bh + 3,
+        bw - 2,
+        1.5,
+        "rgba(255, 255, 255, 0.3)",
+      );
       bx += bw + 1;
     }
     R(x + 8, ry + rowH - 4, w - 16, 4, "#6b4423"); // the shelf board
@@ -5008,7 +5970,14 @@ function drawPuddle(o) {
     my = FLOOR + 6; // on the walking surface
   const [water, light] = o.blue;
   // a wet, darker edge around every lobe, then the water over the top (so the lobes merge)
-  for (const l of o.lobes) oval(mx + l.dx, my + l.dy + 1, l.rx + 2, l.ry + 1.5, "rgba(20, 40, 70, 0.35)");
+  for (const l of o.lobes)
+    oval(
+      mx + l.dx,
+      my + l.dy + 1,
+      l.rx + 2,
+      l.ry + 1.5,
+      "rgba(20, 40, 70, 0.35)",
+    );
   for (const l of o.lobes) oval(mx + l.dx, my + l.dy, l.rx, l.ry, water);
   // the main pool: a lighter middle, a rim catching the light, and a shimmer
   const m = o.lobes[0],
@@ -5017,7 +5986,8 @@ function drawPuddle(o) {
     rx = m.rx,
     ry = m.ry;
   oval(cx - 3, cy - 1, rx * 0.72, ry * 0.6, light);
-  for (const l of o.lobes.slice(1)) oval(mx + l.dx - 1, my + l.dy - 0.5, l.rx * 0.6, l.ry * 0.5, light);
+  for (const l of o.lobes.slice(1))
+    oval(mx + l.dx - 1, my + l.dy - 0.5, l.rx * 0.6, l.ry * 0.5, light);
   ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
   ctx.lineWidth = 1.2;
   ctx.beginPath();
@@ -5025,7 +5995,13 @@ function drawPuddle(o) {
   ctx.stroke();
   const shimmer = Math.sin(runTime * 0.006 + o.phase) * rx * 0.18;
   R(cx - rx * 0.45 + shimmer, cy - 3, rx * 0.4, 2, "rgba(255, 255, 255, 0.85)");
-  R(cx + rx * 0.2 - shimmer, cy + 1, rx * 0.22, 1.5, "rgba(255, 255, 255, 0.7)");
+  R(
+    cx + rx * 0.2 - shimmer,
+    cy + 1,
+    rx * 0.22,
+    1.5,
+    "rgba(255, 255, 255, 0.7)",
+  );
   if (o.soaked) {
     // ripples after a splash
     ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
@@ -5116,7 +6092,8 @@ function drawFlyingBook(o, shadow = true, trails = true) {
     winding = ch && ch.winding,
     charging = ch && ch.charging;
   ctx.save();
-  if (winding && !o.still) ctx.translate(Math.sin(runTime * 0.09) * 2.2, Math.sin(runTime * 0.13) * 1); // shaking, about to go
+  if (winding && !o.still)
+    ctx.translate(Math.sin(runTime * 0.09) * 2.2, Math.sin(runTime * 0.13) * 1); // shaking, about to go
   if (trails && o.swoop) {
     // little speed marks above and below, so it reads as a book on the move
     ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
@@ -5136,15 +6113,30 @@ function drawFlyingBook(o, shadow = true, trails = true) {
     ctx.lineCap = "round";
     ctx.beginPath();
     const reach = charging ? 34 : 22;
-    for (const [dy, k] of [[-22, 0], [-12, 1], [-3, 2]]) {
-      const len = reach + Math.sin(runTime * 0.03 + k * 2 + o.phase) * 6 - k * 3;
+    for (const [dy, k] of [
+      [-22, 0],
+      [-12, 1],
+      [-3, 2],
+    ]) {
+      const len =
+        reach + Math.sin(runTime * 0.03 + k * 2 + o.phase) * 6 - k * 3;
       ctx.moveTo(cx + 24, bottom + dy);
       ctx.lineTo(cx + 24 + len, bottom + dy);
     }
     ctx.stroke();
     ctx.lineCap = "butt";
   }
-  const flapRate = winding ? 0.08 : charging ? 0.06 : o.flock ? 0.05 : o.dart ? 0.045 : o.swoop ? 0.04 : 0.025;
+  const flapRate = winding
+    ? 0.08
+    : charging
+      ? 0.06
+      : o.flock
+        ? 0.05
+        : o.dart
+          ? 0.045
+          : o.swoop
+            ? 0.04
+            : 0.025;
   const flap = o.still ? 3 : Math.sin(runTime * flapRate + o.phase) * 7; // (`still`: How to play's pictures hold one pose)
   const sx = cx,
     sy = bottom - 3; // spine
@@ -5300,7 +6292,7 @@ function drawPowerAura() {
   if (power.type === "magnet") {
     // rings pulsing outward, like a magnet's pull
     for (let k = 0; k < 2; k++) {
-      const t = ((runTime / 900 + k / 2) % 1);
+      const t = (runTime / 900 + k / 2) % 1;
       ctx.strokeStyle = `rgba(224, 69, 63, ${0.8 * (1 - t)})`;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
@@ -5327,7 +6319,7 @@ function drawPowerAura() {
     ctx.strokeStyle = "rgba(242, 193, 78, 0.8)";
     ctx.lineCap = "round";
     for (let k = 0; k < 4; k++) {
-      const yy = b.y + 6 + k * (b.h - 12) / 3,
+      const yy = b.y + 6 + (k * (b.h - 12)) / 3,
         len = 30 + Math.sin(runTime * 0.03 + k * 1.7) * 12 + k * 4;
       ctx.lineWidth = 3 - k * 0.4;
       ctx.beginPath();
@@ -5462,7 +6454,7 @@ function drawPlayer() {
     ctx.lineCap = "butt";
     // a few droplets kicked up by the feet
     for (let i = 0; i < 3; i++) {
-      const p = ((t / 380 + i / 3) % 1),
+      const p = (t / 380 + i / 3) % 1,
         dx = px + pw * 0.6 + p * 14 - i * 6,
         dy = floorY - 4 - Math.sin(p * Math.PI) * 12;
       oval(dx, dy, 1.6, 1.6, `rgba(127, 184, 224, ${0.9 * (1 - p)})`);
@@ -5853,7 +6845,12 @@ const CHARACTERS = [
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(ax, ay);
-      ctx.quadraticCurveTo((ax + rimX) / 2 + 2 * a, (ay + rimY) / 2 + 3 * a, rimX, rimY);
+      ctx.quadraticCurveTo(
+        (ax + rimX) / 2 + 2 * a,
+        (ay + rimY) / 2 + 3 * a,
+        rimX,
+        rimY,
+      );
       ctx.stroke();
       if (wear >= 2) crackedLens(mx, my);
     },
@@ -6044,7 +7041,11 @@ const TITLE_FADE_MS = 250, // the books fading in…
   TITLE_WAVE_START = TITLE_FADE_MS, // …then hopping
   TITLE_HOP_GAP = 90, // each book hops this long after the one before
   TITLE_HOP_MS = 320, // one hop
-  DASH_START = TITLE_WAVE_START + (TITLE_BOOKS.length - 1) * TITLE_HOP_GAP + TITLE_HOP_MS - 80, // as the last book lands
+  DASH_START =
+    TITLE_WAVE_START +
+    (TITLE_BOOKS.length - 1) * TITLE_HOP_GAP +
+    TITLE_HOP_MS -
+    80, // as the last book lands
   DASH_FLY_MS = 380;
 let titleTime = 0; // ms the title has been animating (see frame)
 const TITLE_DONE = DASH_START + DASH_FLY_MS; // "Dash" has landed
@@ -6089,7 +7090,10 @@ let intro = true, // still playing?
 // How faded-up the library, buttons and badges are: 0 hidden … 1 showing (always 1 after the intro).
 function introUI() {
   if (!intro) return 1;
-  return Math.min(1, Math.max(0, (titleTime - TITLE_DONE - INTRO_UI_DELAY) / INTRO_UI_MS));
+  return Math.min(
+    1,
+    Math.max(0, (titleTime - TITLE_DONE - INTRO_UI_DELAY) / INTRO_UI_MS),
+  );
 }
 function updateIntro(dt) {
   introTime += dt;
@@ -6111,7 +7115,10 @@ function drawPeek(x0) {
   const ease = (v) => v * v * (3 - 2 * v);
   const out = ease(Math.min(1, t / PEEK_OUT_MS));
   const p = peekTime / PEEK_MS;
-  const hello = p > 0 && p < 1 ? Math.sin(p * Math.PI * 4) * 0.1 * Math.sin(p * Math.PI) : 0; // two wiggles, easing in and out
+  const hello =
+    p > 0 && p < 1
+      ? Math.sin(p * Math.PI * 4) * 0.1 * Math.sin(p * Math.PI)
+      : 0; // two wiggles, easing in and out
   const sway = Math.sin(runTime * 0.002) * 0.03; // just standing there, leaning on the D
   const k = 0.95, // its size (a little shorter than the D book)
     bw = 40 * k;
@@ -6142,7 +7149,9 @@ function drawTitle(cx, shelfY) {
   // On a phone, centre everything you see, Dewey's spot on the shelf to the left included.
   const deweyRoom = tall() ? 40 : 0;
   const total = stacked ? booksW : booksW + space + dashW; // (the row with the books in it)
-  const widest = stacked ? Math.max(total + deweyRoom, dashW + space + TITLE_DASH_SHIFT * 2) : total + deweyRoom;
+  const widest = stacked
+    ? Math.max(total + deweyRoom, dashW + space + TITLE_DASH_SHIFT * 2)
+    : total + deweyRoom;
   const s = Math.min(stacked ? TITLE_STACK_SCALE : 1, (W - 48) / widest); // shrink to fit a narrow screen
   ctx.save();
   ctx.translate(cx, shelfY);
@@ -6198,7 +7207,8 @@ function drawTitle(cx, shelfY) {
     ctx.save();
     ctx.shadowColor = "transparent";
     ctx.fillStyle = "rgba(243, 234, 215, 0.55)";
-    for (const y of [-32, -21, -10]) roundRect(dx - 6 - tail, by + y, tail, 3, 1.5);
+    for (const y of [-32, -21, -10])
+      roundRect(dx - 6 - tail, by + y, tail, 3, 1.5);
     ctx.restore();
   } else {
     // landed: short speed lines in the gap, fading in
@@ -6206,7 +7216,11 @@ function drawTitle(cx, shelfY) {
     ctx.shadowColor = "transparent";
     ctx.globalAlpha = Math.min(1, (fp - 1) * 4);
     ctx.fillStyle = "rgba(243, 234, 215, 0.75)";
-    for (const [y, len] of [[-32, 14], [-21, 20], [-10, 12]]) {
+    for (const [y, len] of [
+      [-32, 14],
+      [-21, 20],
+      [-10, 12],
+    ]) {
       const flick = Math.sin(runTime * 0.012 + y) * 2; // a little flicker, as if moving
       roundRect(dx - 4 - len + flick, by + y, len, 3, 1.5);
     }
@@ -6240,8 +7254,15 @@ function drawFullLogo(cx, top, h) {
   const w = h * FULL_LOGO_RATIO,
     pad = h * FULL_LOGO_PAD;
   ctx.fillStyle = "#ffffff";
-  roundRect(cx - w / 2 - pad, top, w + pad * 2, h + pad * 2, Math.min(8, pad * 1.5));
-  if (FULL_LOGO.complete && FULL_LOGO.naturalWidth) ctx.drawImage(FULL_LOGO, cx - w / 2, top + pad, w, h);
+  roundRect(
+    cx - w / 2 - pad,
+    top,
+    w + pad * 2,
+    h + pad * 2,
+    Math.min(8, pad * 1.5),
+  );
+  if (FULL_LOGO.complete && FULL_LOGO.naturalWidth)
+    ctx.drawImage(FULL_LOGO, cx - w / 2, top + pad, w, h);
 }
 const SPLASH_LOGO_H = 80; // the studio card's logo height (fits the phone layout's width too)
 
@@ -6292,7 +7313,13 @@ function drawStartScreen() {
   ctx.font = "13px Georgia, serif";
   if (!tall())
     // (no room under the buttons on a phone)
-    ctx.fillText(padUI() ? "Stick or D-pad to choose · A to select" : "Tab or ← → to choose · Enter or Space to select", tx, 302);
+    ctx.fillText(
+      padUI()
+        ? "Stick or D-pad to choose · A to select"
+        : "Tab or ← → to choose · Enter or Space to select",
+      tx,
+      302,
+    );
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
@@ -6309,7 +7336,8 @@ function drawSplash() {
     cy = top + plateH / 2;
   const p = Math.min(1, introTime / SPLASH_DROP_MS);
   if (p <= 0) return;
-  const fade = 1 - Math.min(1, Math.max(0, (introTime - SPLASH_OUT_AT) / SPLASH_OUT_MS));
+  const fade =
+    1 - Math.min(1, Math.max(0, (introTime - SPLASH_OUT_AT) / SPLASH_OUT_MS));
   if (fade <= 0) return;
   ctx.save();
   ctx.globalAlpha = fade;
@@ -6370,7 +7398,15 @@ function iconStack(x, y) {
 }
 function iconFlyer(x, y) {
   drawFlyingBook(
-    { x: x - 22, y: y - 14, w: 44, h: 22, color: SPINES[3], phase: 0, still: true },
+    {
+      x: x - 22,
+      y: y - 14,
+      w: 44,
+      h: 22,
+      color: SPINES[3],
+      phase: 0,
+      still: true,
+    },
     false,
   );
 }
@@ -6387,7 +7423,14 @@ function iconTable(x, y) {
 function iconTunnel(x, y) {
   R(x - 13, y - 13, 26, 17, "#5a381c");
   for (let row = 0; row < 2; row++)
-    for (let i = 0; i < 5; i++) R(x - 11 + i * 4.6, y - 11 + row * 7, 3.5, 6, SPINES[(i + row * 3) % SPINES.length]);
+    for (let i = 0; i < 5; i++)
+      R(
+        x - 11 + i * 4.6,
+        y - 11 + row * 7,
+        3.5,
+        6,
+        SPINES[(i + row * 3) % SPINES.length],
+      );
   R(x - 13, y + 2, 26, 3, "#a87a48");
   R(x - 13, y + 5, 2.5, 8, "#c9a77a");
   R(x + 10.5, y + 5, 2.5, 8, "#c9a77a");
@@ -6408,11 +7451,27 @@ function iconPerch(x, y) {
 }
 // A murder of books: three dark little ones bunched together.
 function iconFlock(x, y) {
-  for (const [dx, dy, i] of [[-8, -7, 0], [9, -3, 1], [-1, 7, 2]]) {
+  for (const [dx, dy, i] of [
+    [-8, -7, 0],
+    [9, -3, 1],
+    [-1, 7, 2],
+  ]) {
     ctx.save();
     ctx.translate(x + dx, y + dy);
     ctx.scale(0.5, 0.5);
-    drawFlyingBook({ x: -22, y: -8, w: 44, h: 22, phase: 0, still: true, color: FLOCK_COLORS[i] }, false, false);
+    drawFlyingBook(
+      {
+        x: -22,
+        y: -8,
+        w: 44,
+        h: 22,
+        phase: 0,
+        still: true,
+        color: FLOCK_COLORS[i],
+      },
+      false,
+      false,
+    );
     ctx.restore();
   }
 }
@@ -6426,7 +7485,9 @@ const iconFlyerOf = (kind) => (x, y) =>
       h: 22,
       phase: 0,
       still: true,
-      color: { swoop: SWOOP_COLOR, dart: DART_COLOR, charge: CHARGE_COLOR }[kind] || SPINES[3],
+      color:
+        { swoop: SWOOP_COLOR, dart: DART_COLOR, charge: CHARGE_COLOR }[kind] ||
+        SPINES[3],
       swoop: kind === "swoop",
       dart: kind === "dart",
       charge: kind === "charge" ? { t: 100, at: 0 } : undefined,
@@ -6472,7 +7533,8 @@ document.addEventListener("keydown", (e) => {
   if (state === "route") return routeKey(e); // skipping (or leaving) the Bookmobile's route map
   // During the opening sequence, any key skips to the start screen.
   if (intro && state === "ready") {
-    if (e.code === "Space" || e.code === "Enter" || e.code.startsWith("Arrow")) e.preventDefault();
+    if (e.code === "Space" || e.code === "Enter" || e.code.startsWith("Arrow"))
+      e.preventDefault();
     skipIntro();
     return;
   }
@@ -6499,9 +7561,15 @@ document.addEventListener("keydown", (e) => {
         // All tips: arrows move through the tips, Enter opens one, Esc / T / M as usual
         e.preventDefault();
         const n = tipsItems().length;
-        if (["ArrowUp", "ArrowLeft", "KeyW", "KeyA"].includes(k) || (k === "Tab" && e.shiftKey)) focusTip((tipsIndex.focus + n - 1) % n);
-        else if (["ArrowDown", "ArrowRight", "KeyS", "KeyD", "Tab"].includes(k)) focusTip((tipsIndex.focus + 1) % n);
-        else if ((k === "Enter" || k === "Space") && !e.repeat) pickTip(tipsIndex.focus);
+        if (
+          ["ArrowUp", "ArrowLeft", "KeyW", "KeyA"].includes(k) ||
+          (k === "Tab" && e.shiftKey)
+        )
+          focusTip((tipsIndex.focus + n - 1) % n);
+        else if (["ArrowDown", "ArrowRight", "KeyS", "KeyD", "Tab"].includes(k))
+          focusTip((tipsIndex.focus + 1) % n);
+        else if ((k === "Enter" || k === "Space") && !e.repeat)
+          pickTip(tipsIndex.focus);
         else if (k === "Escape" || k === "KeyT") closeTips();
         else if (k === "KeyM") toggleMute();
         return;
@@ -6531,7 +7599,10 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       keyNav = true;
       const step = back ? -1 : 1;
-      highlight(state, (selected[state] + step + buttons.length) % buttons.length);
+      highlight(
+        state,
+        (selected[state] + step + buttons.length) % buttons.length,
+      );
     } else if ((e.code === "Enter" || e.code === "Space") && !e.repeat) {
       e.preventDefault();
       choose(buttons[selected[state]].id);
@@ -6624,13 +7695,18 @@ canvas.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "mouse" && e.button !== 0) return; // …and only the left button plays
   // A browser that also turns the controller's A button into a mouse click (Edge on Xbox can)
   // would do everything twice: the click is ignored, as the controller has already done it.
-  if (e.pointerType === "mouse" && performance.now() - pad.lastPress < 150) return;
+  if (e.pointerType === "mouse" && performance.now() - pad.lastPress < 150)
+    return;
   if (intro && state === "ready") return skipIntro(); // a tap skips the opening sequence
   if (state === "book") return bookTap(e); // a tap turns the page
   if (state === "route") return routeTap(e); // a tap skips the drive, then goes on
   const [cx, cy] = toCanvas(e);
+  lastTap = { x: cx, y: cy, at: performance.now() }; // (a locked Story's message floats up from here)
   // (How to play's All tips sits over the Sound button: there, a tap is for All tips)
-  const overSound = state === "howto" && !tipsIndex.open && BUTTONS.howto.some((b) => inside(cx, cy, b));
+  const overSound =
+    state === "howto" &&
+    !tipsIndex.open &&
+    BUTTONS.howto.some((b) => inside(cx, cy, b));
   if (inside(cx, cy, MUTE_BTN) && !overSound) return toggleMute();
   if (isMenu()) {
     keyNav = false;
@@ -6638,7 +7714,11 @@ canvas.addEventListener("pointerdown", (e) => {
       // All tips: a tip jumps to its screen; ✕, or a tap off the card, goes back to the cards
       const t = tipsIndex.items.findIndex((r) => r && inside(cx, cy, r));
       if (t >= 0) pickTip(t);
-      else if (inside(cx, cy, tipsIndex.close) || !inside(cx, cy, tipsIndex.card)) closeTips();
+      else if (
+        inside(cx, cy, tipsIndex.close) ||
+        !inside(cx, cy, tipsIndex.card)
+      )
+        closeTips();
       return;
     }
     if (state === "howto") {
@@ -6646,7 +7726,8 @@ canvas.addEventListener("pointerdown", (e) => {
       const seg = howtoSegs.findIndex((r) => inside(cx, cy, r));
       if (seg >= 0) return showHowtoPage(seg);
       // anywhere else (not a button) might be the start of a swipe
-      if (!BUTTONS.howto.some((b) => inside(cx, cy, b))) howtoSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      if (!BUTTONS.howto.some((b) => inside(cx, cy, b)))
+        howtoSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
     }
     if (state === "chars") {
       const c = CHARACTERS.findIndex((_, i) => inside(cx, cy, cardRect(i)));
@@ -6716,7 +7797,8 @@ function pointerRelease(e) {
     const rect = canvas.getBoundingClientRect(),
       dx = ((e.clientX - sw.x) / rect.width) * W, // (in game units)
       dy = ((e.clientY - sw.y) / rect.height) * canvas.height;
-    if (state === "howto" && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) showHowtoScreen(howtoScreen + (dx < 0 ? 1 : -1));
+    if (state === "howto" && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy))
+      showHowtoScreen(howtoScreen + (dx < 0 ? 1 : -1));
     return;
   }
   if (gesture) return endGesture(e);
@@ -6762,19 +7844,36 @@ if ("gamepadInputEmulation" in navigator) {
   } catch {}
 }
 function padKey(type, code, repeat = false) {
-  document.dispatchEvent(new KeyboardEvent(type, { code, key: code, repeat, bubbles: true, cancelable: true }));
+  document.dispatchEvent(
+    new KeyboardEvent(type, {
+      code,
+      key: code,
+      repeat,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
 }
 // The key a control presses, which depends on where you are when you press it.
 function padCode(control) {
   const playing = state === "running" || state === "countdown";
   if (control === "a") return "Space";
-  if (control === "b") return playing ? "ArrowDown" : state === "book" ? "ArrowLeft" : "Escape";
-  if (control === "start") return playing || state === "paused" ? "KeyP" : "Enter";
+  if (control === "b")
+    return playing ? "ArrowDown" : state === "book" ? "ArrowLeft" : "Escape";
+  if (control === "start")
+    return playing || state === "paused" ? "KeyP" : "Enter";
   if (control === "view") return "KeyM";
-  return { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" }[control];
+  return {
+    up: "ArrowUp",
+    down: "ArrowDown",
+    left: "ArrowLeft",
+    right: "ArrowRight",
+  }[control];
 }
 function pollPad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = navigator.getGamepads
+    ? [...navigator.getGamepads()].filter(Boolean)
+    : [];
   const now = performance.now();
   // what's down, on any controller plugged in
   const down = {};
@@ -6792,7 +7891,16 @@ function pollPad() {
     down.left ||= btn(p, 14) || stick("left", -x);
     down.right ||= btn(p, 15) || stick("right", x);
   }
-  for (const control of ["a", "b", "start", "view", "up", "down", "left", "right"]) {
+  for (const control of [
+    "a",
+    "b",
+    "start",
+    "view",
+    "up",
+    "down",
+    "left",
+    "right",
+  ]) {
     const h = pad.held[control];
     if (down[control] && !h) {
       const code = padCode(control);
@@ -6802,12 +7910,18 @@ function pollPad() {
     } else if (!down[control] && h) {
       delete pad.held[control];
       padKey("keyup", h.code);
-    } else if (h && isMenu() && ["up", "down", "left", "right"].includes(control) && now >= h.next) {
+    } else if (
+      h &&
+      isMenu() &&
+      ["up", "down", "left", "right"].includes(control) &&
+      now >= h.next
+    ) {
       h.next = now + PAD_REPEAT_MS;
       padKey("keydown", h.code, true);
     }
   }
-  if (pads.length || Object.keys(pad.held).length) requestAnimationFrame(pollPad);
+  if (pads.length || Object.keys(pad.held).length)
+    requestAnimationFrame(pollPad);
   else pad.polling = false; // unplugged: stop until one comes back
 }
 // (browsers only say a controller is there once one of its buttons is pressed on the page)
