@@ -3965,37 +3965,58 @@ function drawModeSegment(b, on) {
   ctx.textAlign = "left";
   ctx.fillStyle = ink;
   ctx.fillText(label, ix + iw + 8, cy + (tall() ? 6 : 5.5));
-  if (locked) drawPadlock(b.x + b.w - 2, b.y + b.h + 1);
+  if (locked) drawPadlock(b.x + b.w - 20, b.y + b.h + 2); // (well clear of Endless)
   ctx.restore();
 }
 
-// A small padlock badge, centred on (x, y): just outside the Story button's bottom-right corner.
+// A small brass padlock, centred on (x, y): at the Story button's bottom-right, hanging below it.
 function drawPadlock(x, y) {
   const s = tall() ? 1.15 : 1;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
-  ctx.fillStyle = "#2a1a0e";
-  ctx.beginPath();
-  ctx.arc(0, 0, 11, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = GOLD;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  // the shackle, then the body
-  ctx.strokeStyle = PAPER;
-  ctx.lineWidth = 1.8;
   ctx.lineCap = "round";
+  // the shackle: a thick steel loop, with a dark edge so it reads on any background
   ctx.beginPath();
-  ctx.moveTo(-3.5, -0.5);
-  ctx.lineTo(-3.5, -3);
-  ctx.arc(0, -3, 3.5, Math.PI, 0);
-  ctx.lineTo(3.5, -0.5);
+  ctx.moveTo(-5, -1);
+  ctx.lineTo(-5, -6);
+  ctx.arc(0, -6, 5, Math.PI, 0);
+  ctx.lineTo(5, -1);
+  ctx.strokeStyle = "#2a1a0e";
+  ctx.lineWidth = 4.6;
   ctx.stroke();
-  ctx.fillStyle = PAPER;
-  ctx.fillRect(-5.5, -0.5, 11, 7.5);
+  ctx.strokeStyle = "#c9ccd1";
+  ctx.lineWidth = 2.6;
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; // a glint along it
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.arc(0, -6, 5, Math.PI * 1.15, Math.PI * 1.55);
+  ctx.stroke();
+  // the body: brass, shaded top to bottom, with rounded corners
+  const g = ctx.createLinearGradient(0, -2, 0, 10);
+  g.addColorStop(0, "#f0c860");
+  g.addColorStop(0.55, "#d4a64a");
+  g.addColorStop(1, "#9a6f22");
+  ctx.fillStyle = g;
+  roundRect(-8, -2, 16, 12, 2.5);
+  ctx.strokeStyle = "#2a1a0e";
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.35)"; // a highlight across its top
+  ctx.fillRect(-6, -0.5, 12, 1.2);
+  // the keyhole: a round top and a slot below
   ctx.fillStyle = "#2a1a0e";
-  ctx.fillRect(-0.75, 1.8, 1.5, 3); // the keyhole
+  ctx.beginPath();
+  ctx.arc(0, 2.8, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-1, 3.5);
+  ctx.lineTo(1, 3.5);
+  ctx.lineTo(1.5, 7.5);
+  ctx.lineTo(-1.5, 7.5);
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
 }
 
