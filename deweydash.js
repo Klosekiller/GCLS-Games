@@ -1781,6 +1781,8 @@ function makeButtons() {
       { id: "howto", label: "How to play", help: true, x: W / 2 - hw / 2, y: 232, w: hw, h: 46 },
     ];
   }
+  // the pause screen's How to play looks like the start screen's: the quieter "?" pill
+  for (const b of BUTTONS.paused) if (b.id === "howto") b.help = true;
   // How to play: Back and Next at the bottom, either side of where you are; ✕ in the top right
   {
     const y = BUTTON_Y[layout].howto;
@@ -3167,6 +3169,9 @@ function drawPlayButton(b, on, scale) {
 // The start screen's How to play button: a "?" in a ring, then the label. Quiet (a dark pill,
 // not a filled button) until it's selected, so Play stays the one that stands out.
 function drawHelpButton(b, on) {
+  // (a solid dark base first, so it looks the same on the dark start screen and the cream pause card)
+  ctx.fillStyle = "#211812";
+  roundRect(b.x, b.y, b.w, b.h, b.h / 2);
   ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : "rgba(20, 14, 10, 0.7)";
   roundRect(b.x, b.y, b.w, b.h, b.h / 2);
   ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
@@ -3248,7 +3253,7 @@ function drawPause() {
   ctx.fillText("Your run will wait right here.", W / 2, py + 92);
   ctx.fillStyle = CARD_RED;
   ctx.font = "bold 15px Georgia, serif";
-  ctx.fillText("Press P or Esc to keep reading", W / 2, py + 120);
+  ctx.fillText(HAS_KEYS ? "Press P or Esc to keep reading" : "Tap Resume to keep reading", W / 2, py + 120); // (keys only where there are keys)
   drawButtons();
   hint(
     tall()
