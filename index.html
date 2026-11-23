@@ -8,6 +8,10 @@
 </head>
 <body>
 
+  <div class="topbar">
+    <button type="button" id="test-open" class="test-open">Get Test Link</button>
+  </div>
+
   <header>
     <h1>Library Games</h1>
     <p>Pick a game to play. No sign-in, just click and go!</p>
@@ -757,10 +761,10 @@
   <footer>Made for our library. Your best scores are saved on this device.</footer>
 
   <!-- Asks for the password before opening a game (see pass.js) -->
-  <dialog id="pass-dialog" aria-labelledby="pass-title">
+  <dialog id="pass-dialog" class="modal" aria-labelledby="pass-title">
     <form id="pass-form">
       <h2 id="pass-title">Enter the password</h2>
-      <p id="pass-game"></p>
+      <p id="pass-game" class="modal-sub"></p>
       <p id="pass-error" class="pass-error" role="alert" hidden></p>
       <label for="pass-input">Password</label>
       <input id="pass-input" type="password" autocomplete="off" required />
@@ -771,8 +775,114 @@
     </form>
   </dialog>
 
+  <!-- "Get Test Link": password, then pick a game, then copy a one-day link (see testlink.js) -->
+  <dialog id="test-dialog" class="modal" aria-labelledby="test-title">
+    <form id="test-pass-step">
+      <h2 id="test-title">Get a test link</h2>
+      <p class="modal-sub">Test links work for one game, today only.</p>
+      <p id="test-error" class="pass-error" role="alert" hidden></p>
+      <label for="test-pass">Password</label>
+      <input id="test-pass" type="password" autocomplete="off" required />
+      <div class="pass-buttons">
+        <button type="button" class="pass-cancel" data-close>Cancel</button>
+        <button type="submit" class="pass-go">Next →</button>
+      </div>
+    </form>
+    <form id="test-game-step" hidden>
+      <h2>Which game is it for?</h2>
+      <label for="test-game">Game</label>
+      <select id="test-game"></select>
+      <div class="pass-buttons">
+        <button type="button" class="pass-cancel" data-close>Cancel</button>
+        <button type="submit" class="pass-go">Make link →</button>
+      </div>
+    </form>
+    <form id="test-link-step" hidden>
+      <h2>Your test link</h2>
+      <p id="test-for" class="modal-sub"></p>
+      <label for="test-link">Link (works until midnight tonight)</label>
+      <input id="test-link" type="text" readonly />
+      <p id="test-copied" class="test-copied" role="status"></p>
+      <div class="pass-buttons">
+        <button type="button" class="pass-cancel" data-close>Done</button>
+        <button type="submit" class="pass-go">Copy link</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="pass.js"></script>
-  <script src="testlink.js"></script> <!-- for makeTestLink("game") in the console -->
+  <script src="testlink.js"></script>
+  <script>
+    // The "Get Test Link" button and its dialog
+    (function () {
+      const dialog = document.getElementById("test-dialog");
+      const passStep = document.getElementById("test-pass-step");
+      const gameStep = document.getElementById("test-game-step");
+      const linkStep = document.getElementById("test-link-step");
+      const passInput = document.getElementById("test-pass");
+      const error = document.getElementById("test-error");
+      const select = document.getElementById("test-game");
+      const linkInput = document.getElementById("test-link");
+      const copied = document.getElementById("test-copied");
+
+      // the game list comes from the cards on this page: ?g= value and title
+      document.querySelectorAll("a.game").forEach((link) => {
+        const opt = document.createElement("option");
+        opt.value = new URL(link.href).searchParams.get("g");
+        opt.textContent = link.querySelector("h3").textContent;
+        select.appendChild(opt);
+      });
+
+      function show(step, focus) {
+        for (const s of [passStep, gameStep, linkStep]) s.hidden = s !== step;
+        focus.focus();
+      }
+
+      document.getElementById("test-open").addEventListener("click", () => {
+        passInput.value = "";
+        error.hidden = true;
+        dialog.showModal();
+        show(passStep, passInput);
+      });
+
+      dialog.querySelectorAll("[data-close]").forEach((b) =>
+        b.addEventListener("click", () => dialog.close()));
+
+      passStep.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (passInput.value !== GAME_PASS) {
+          error.textContent = "That password wasn't right. Try again.";
+          error.hidden = false;
+          passInput.select();
+          return;
+        }
+        show(gameStep, select);
+      });
+
+      gameStep.addEventListener("submit", (e) => {
+        e.preventDefault();
+        linkInput.value = makeTestLink(select.value);
+        document.getElementById("test-for").textContent =
+          select.options[select.selectedIndex].textContent;
+        copied.textContent = "";
+        show(linkStep, linkInput);
+        linkInput.select();
+      });
+
+      linkStep.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        linkInput.select();
+        let ok = false;
+        try {
+          await navigator.clipboard.writeText(linkInput.value);
+          ok = true;
+        } catch {
+          try { ok = document.execCommand("copy"); } catch {} // older browsers / file://
+        }
+        copied.textContent = ok ? "Copied!" : "Couldn't copy. Select the link and press Ctrl+C.";
+      });
+    })();
+  </script>
   <script>
     (function () {
       const dialog = document.getElementById("pass-dialog");

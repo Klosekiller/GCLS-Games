@@ -2,7 +2,8 @@
 // The token is made from the game and today's date, so a link only works on the
 // day it was made (by the clicker's clock, midnight to midnight).
 //
-// To make a link: open index.html, open the browser console (F12) and run
+// To make a link: click "Get Test Link" at the top of index.html.
+// Or open index.html, open the browser console (F12) and run
 //   makeTestLink("deweydash")
 // It prints the link to send. Game names are the ?g= values on index.html.
 //
