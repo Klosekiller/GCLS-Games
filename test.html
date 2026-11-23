@@ -7,24 +7,37 @@
   <link rel="stylesheet" href="index.css" />
 </head>
 <body>
-  <!-- One-day test links: test.html?g=<game>&t=<token>, made with makeTestLink()
-       (see testlink.js). A link from today opens the game with no password;
-       anything else shows the message below. The games themselves live in game.html. -->
+  <!-- Test links: test.html?g=<game>&t=<token>, made with "Get Test Link" on index.html or
+       makeTestLink() (see testlink.js). Until it expires, a link opens its game with no
+       password; after that, or if the link was changed, it shows the message below.
+       The games themselves live in game.html. -->
   <header id="expired" hidden>
-    <h1>This test link has expired</h1>
-    <p>Test links only work on the day they were sent. Please ask for a new one.</p>
+    <h1 id="expired-title">This test link has expired</h1>
+    <p id="expired-why">Test links only work for a limited time. Please ask for a new one.</p>
     <p><a href="index.html">Back to Library Games</a></p>
   </header>
 
   <script src="testlink.js"></script>
   <script>
     (function () {
-      const params = new URLSearchParams(location.search);
-      if (validTestToken(params.get("g"), params.get("t"))) {
+      const params = new URLSearchParams(location.search),
+        game = params.get("g"),
+        token = params.get("t");
+      if (validTestToken(game, token)) {
         location.replace("game.html" + location.search); // play it, no password
-      } else {
-        document.getElementById("expired").hidden = false;
+        return;
       }
+      const expires = testTokenExpiry(game, token);
+      if (expires === null) {
+        // not a real link (incomplete, or edited)
+        document.getElementById("expired-title").textContent = "This test link isn't valid";
+        document.getElementById("expired-why").textContent =
+          "It may have been copied only partly. Please ask for a new one.";
+      } else {
+        document.getElementById("expired-why").textContent =
+          "It stopped working at " + formatTestExpiry(expires) + ". Please ask for a new one.";
+      }
+      document.getElementById("expired").hidden = false;
     })();
   </script>
 </body>

@@ -779,7 +779,7 @@
   <dialog id="test-dialog" class="modal" aria-labelledby="test-title">
     <form id="test-pass-step">
       <h2 id="test-title">Get a test link</h2>
-      <p class="modal-sub">Test links work for one game, today only.</p>
+      <p class="modal-sub">A test link opens one game, for as long as you choose.</p>
       <p id="test-error" class="pass-error" role="alert" hidden></p>
       <label for="test-pass">Password</label>
       <input id="test-pass" type="password" autocomplete="off" required />
@@ -792,6 +792,8 @@
       <h2>Which game is it for?</h2>
       <label for="test-game">Game</label>
       <select id="test-game"></select>
+      <label for="test-expiry">Link stops working after</label>
+      <select id="test-expiry"></select>
       <div class="pass-buttons">
         <button type="button" class="pass-cancel" data-close>Cancel</button>
         <button type="submit" class="pass-go">Make link →</button>
@@ -800,7 +802,7 @@
     <form id="test-link-step" hidden>
       <h2>Your test link</h2>
       <p id="test-for" class="modal-sub"></p>
-      <label for="test-link">Link (works until midnight tonight)</label>
+      <label for="test-link" id="test-link-label">Link</label>
       <input id="test-link" type="text" readonly />
       <p id="test-copied" class="test-copied" role="status"></p>
       <div class="pass-buttons">
@@ -833,6 +835,16 @@
         select.appendChild(opt);
       });
 
+      // how long the link lasts (see TEST_EXPIRY in testlink.js); midnight tonight to begin with
+      const expirySelect = document.getElementById("test-expiry");
+      for (const o of TEST_EXPIRY) {
+        const opt = document.createElement("option");
+        opt.value = o.id;
+        opt.textContent = o.label;
+        opt.selected = o.id === "today";
+        expirySelect.appendChild(opt);
+      }
+
       function show(step, focus) {
         for (const s of [passStep, gameStep, linkStep]) s.hidden = s !== step;
         focus.focus();
@@ -861,7 +873,10 @@
 
       gameStep.addEventListener("submit", (e) => {
         e.preventDefault();
-        linkInput.value = makeTestLink(select.value);
+        const expires = testExpiryTime(expirySelect.value); // (fixed now, from this moment)
+        linkInput.value = makeTestLink(select.value, expires);
+        document.getElementById("test-link-label").textContent =
+          "Link (works until " + formatTestExpiry(expires) + ")";
         document.getElementById("test-for").textContent =
           select.options[select.selectedIndex].textContent;
         copied.textContent = "";

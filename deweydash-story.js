@@ -413,7 +413,7 @@ function storyChoose(id) {
   if (state === "levels") {
     if (id === "home") {
       state = "ready";
-      if (!keyNav) selected.ready = READY_PLAY;
+      if (!keyNav) selected.ready = -1; // (nothing highlighted)
       return true;
     }
     if (id.startsWith("level-")) {
