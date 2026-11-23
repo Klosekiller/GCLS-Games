@@ -3503,7 +3503,7 @@ function drawTallFloor() {
     roundRect(W / 2 - 170, FLOOR + 96, 340, 64, 12);
     ctx.fillStyle = PAPER;
     ctx.font = "bold 17px Georgia, serif";
-    ctx.fillText("Tap to jump", W / 2, FLOOR + 122);
+    ctx.fillText("Tap or swipe up to jump", W / 2, FLOOR + 122);
     ctx.font = "15px Georgia, serif";
     ctx.fillText("Swipe down & hold to duck", W / 2, FLOOR + 146);
     ctx.globalAlpha = 1;
@@ -4462,7 +4462,7 @@ const HOWTO_PAGES = [
           ? [
               {
                 title: "Jump",
-                how: "Tap. Hold your tap to jump higher.",
+                how: "Tap, or swipe up. Hold it to jump higher.",
                 pic: "jump",
                 over: "stack",
               },
@@ -7673,7 +7673,8 @@ const inside = (x, y, b) =>
   x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 
 // Touch / mouse. On menus only the buttons respond, so a stray tap doesn't do anything.
-// During a run, on a touch screen: tap to jump (hold for higher), swipe down and hold to duck.
+// During a run, on a touch screen: tap to jump (hold for higher), swipe down and hold to duck,
+// and swipe up (finger still down) to jump, say straight out of a duck.
 // Every swipe starts as a touch, so a touch waits a moment (DECIDE_MS) to see which it is:
 // if the finger moves down SWIPE_PX it's a duck, otherwise it's a jump when the wait ends or
 // the finger lifts, whichever comes first. A mouse click just jumps straight away.
@@ -7768,6 +7769,8 @@ canvas.addEventListener("pointerdown", (e) => {
   gesture = {
     id: e.pointerId,
     y0: e.clientY,
+    top: e.clientY, // the finger's highest and lowest points since its last duck or jump
+    low: e.clientY,
     t0: performance.now(),
     decided: null,
     lag: 0,
@@ -7782,9 +7785,20 @@ canvas.addEventListener("pointerdown", (e) => {
 canvas.addEventListener("pointermove", (e) => {
   const g = gesture;
   if (g && e.pointerId === g.id) {
-    if (e.clientY - g.y0 > SWIPE_PX) {
+    // (measured from the finger's highest and lowest points since its last duck or jump, so
+    // it can go down, up, down again… without lifting)
+    g.top = Math.min(g.top, e.clientY);
+    g.low = Math.max(g.low, e.clientY);
+    if (e.clientY - g.top > SWIPE_PX) {
       if (!g.decided) decide("duck");
       else if (state === "running") startDuck(); // swiping down after a jump: drop fast, then duck
+      g.top = e.clientY;
+    } else if (g.low - e.clientY > SWIPE_PX && g.decided) {
+      swipeJump(g); // swiping back up: stand up and jump
+      g.low = e.clientY;
+    } else if (g.low - e.clientY > SWIPE_PX) {
+      decide("jump"); // a quick flick up, before the tap has been decided: a jump
+      g.low = e.clientY;
     }
     return;
   }
@@ -7805,6 +7819,16 @@ canvas.addEventListener("pointermove", (e) => {
 canvas.addEventListener("pointerleave", () => {
   if (state === "ready" && !keyNav) selected.ready = READY_PLAY;
 });
+// Swiping up with the finger still down (often out of a duck): stand up and jump. Like a tap,
+// the jump goes higher the longer the finger stays down, and lifting it ends the climb.
+function swipeJump(g) {
+  duckHeld = false;
+  if (state !== "running") return;
+  g.decided = "jump";
+  g.lag = 0; // (it starts right away: nothing to make up when the finger lifts)
+  jump();
+  g.jumpId = jumpCount;
+}
 function startDuck() {
   if (!duckHeld && state === "running") sfx.duck();
   duckHeld = true;
