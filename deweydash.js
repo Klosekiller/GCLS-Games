@@ -1710,14 +1710,14 @@ const MENU = {
   ready: [], // (the mode switch, Play and How to play: see makeButtons)
   levels: [["home", "Back"]], // Story Mode's chapter book (its buttons are replaced by levelButtons, in deweydash-story.js)
   cleared: [
-    ["continue", "Continue"],
+    ["continue", "Continue ›"],
     ["replay", "Play again"],
-    ["map", "Levels"],
+    ["map", "Chapters"],
   ],
   chars: [
-    ["charsBack", "Back"],
     ["go", "Play"],
-  ], // (Endless: pick your book, then Play starts the run)
+    ["charsBack", "Back"],
+  ], // (Endless: pick your book, then Play starts the run. Main action first, leaving last.)
   paused: [
     ["resume", "Resume"],
     ["howto", "How to play"],
@@ -1728,7 +1728,7 @@ const MENU = {
     ["prev", "‹ Back"],
     ["tips", "All tips"],
     ["back", "✕"],
-  ], // (placed in makeButtons: Back, All tips and Next at the bottom, ✕ in the top right corner)
+  ], // (placed in makeButtons: Back and Next at the bottom, All tips top left, ✕ top right)
   over: [
     ["again", "Play again"],
     ["menu", "Main menu"],
@@ -1736,8 +1736,8 @@ const MENU = {
 };
 // Where each screen's buttons go: a row in the wide layout, a column in the tall one.
 const BUTTON_Y = {
-  wide: { ready: 178, chars: 234, paused: 196, howto: 266, over: 196, levels: 252, cleared: 226 },
-  tall: { ready: 340, chars: 494, paused: 288, howto: 540, over: 330, levels: 486, cleared: 318 },
+  wide: { ready: 178, chars: 234, paused: 196, howto: 260, over: 196, levels: 252, cleared: 226 },
+  tall: { ready: 340, chars: 494, paused: 288, howto: 532, over: 330, levels: 486, cleared: 318 },
 };
 let BUTTONS = {};
 function makeButtons() {
@@ -1766,8 +1766,8 @@ function makeButtons() {
       gap = 16,
       cy = BUTTON_Y.tall.chars;
     BUTTONS.chars = [
-      { id: "charsBack", label: "Back", x: W / 2 - bw - gap / 2, y: cy, w: bw, h: 54 },
-      { id: "go", label: "Play", x: W / 2 + gap / 2, y: cy, w: bw, h: 54 },
+      { id: "go", label: "Play", x: W / 2 - bw - gap / 2, y: cy, w: bw, h: 54 },
+      { id: "charsBack", label: "Back", x: W / 2 + gap / 2, y: cy, w: bw, h: 54 },
     ];
   } else {
     const sw = 242, // the switch
@@ -1791,19 +1791,24 @@ function makeButtons() {
       BUTTONS.howto = [
         { id: "next", label: "Next ›", x: x + 162, y, w: 200, h: 54 },
         { id: "prev", label: "‹ Back", x, y, w: 150, h: 54 },
-        { id: "tips", label: "All tips", tips: true, x: W / 2 - 80, y: y + 62, w: 160, h: 36 },
+        { id: "tips", label: "All tips", tips: true, ...tipsRect() },
         { id: "back", label: "✕", close: true, x: W - 14 - 44, y: 18, w: 44, h: 44 },
       ];
     } else {
       BUTTONS.howto = [
-        { id: "next", label: "Next ›", x: W / 2 + 302 - 110, y, w: 110, h: 36 },
-        { id: "prev", label: "‹ Back", x: W / 2 - 302, y, w: 110, h: 36 },
-        { id: "tips", label: "All tips", tips: true, x: W / 2 - 62, y, w: 124, h: 36 },
-        { id: "back", label: "✕", close: true, x: W - 16 - 34, y: 14, w: 34, h: 34 },
+        { id: "next", label: "Next ›", x: W / 2 + 302 - 110, y, w: 110, h: 42 },
+        { id: "prev", label: "‹ Back", x: W / 2 - 302, y, w: 110, h: 42 },
+        { id: "tips", label: "All tips", tips: true, ...tipsRect() },
+        { id: "back", label: "✕", close: true, x: W - 12 - 44, y: 8, w: 44, h: 44 },
       ];
     }
   }
   if (typeof storyButtons === "function") storyButtons(); // (once deweydash-story.js has loaded)
+}
+// How to play's All tips: the top-left corner, matching ✕ in the top right. How to play is an
+// overlay, so it sits over the Sound button there (M still mutes; see pointerdown).
+function tipsRect() {
+  return tall() ? { x: 14, y: 18, w: 140, h: 44 } : { x: 12, y: 8, w: 124, h: 44 };
 }
 // The mode switch's two halves, inside its track (x, y, w, h). (The track itself is drawn with
 // the first half: see drawModeSegment.)
@@ -2010,7 +2015,7 @@ function choose(id) {
   if (id === "play" && playMode === "endless") {
     // Endless: choose your book first (Play on that screen starts the run)
     state = "chars";
-    selected.chars = 1; // Play, so Enter / Space start the run
+    selected.chars = 0; // Play, so Enter / Space start the run
     return;
   }
   if (id === "play") id = "story"; // the level list
@@ -2907,7 +2912,7 @@ function draw() {
   if (!onStartScreen()) drawProfile();
 
   if (onStartScreen()) {
-    if (barShown && state !== "levels") drawBestBadge(); // (Endless Mode's best: not on Story Mode's chapter book)
+    if (barShown && state !== "levels" && state !== "howto") drawBestBadge(); // (not on the chapter book, or under How to play's buttons)
     ctx.globalAlpha = 1;
     if (state === "howto") drawHowTo();
     if (state === "chars") drawCharacters();
@@ -3039,22 +3044,57 @@ function cardRules(x, y, w) {
 }
 
 // One button; the selected one is gold. `scale` makes it pulse.
+// The button rules (the design canvas's Buttons page):
+// - Two shapes. Boxes for the actions on a card (drawButton); dark pills with a gold ring for the
+//   quieter buttons and getting around (How to play, ‹ Back, Skip, All tips, ✕, Sound, Pause).
+// - Colour says what a button is, not where the cursor is: each card's main action (PRIMARY) is
+//   orange with dark letters, whatever's highlighted; the rest are navy.
+// - The highlight is a ring just outside the button (focusRing): dark on the cream cards, cream on
+//   dark screens.
+// - ▶ marks the buttons that start playing (STARTS_PLAY). ‹ goes back, › goes on to a new screen.
+const PRIMARY = new Set(["again", "continue", "go", "next", "resume"]),
+  STARTS_PLAY = new Set(["again", "go", "replay", "resume"]),
+  ON_ORANGE = "#2a1a0e"; // the letters on an orange button
+const ringInk = () => (state === "ready" || state === "howto" || state === "levels" ? PAPER : INK);
+function focusRing(x, y, w, h, r, color = ringInk(), gap = 5) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  roundRectPath(x - gap, y - gap, w + gap * 2, h + gap * 2, r + gap);
+  ctx.stroke();
+}
+// A box: orange if it's its card's main action, navy if not.
 function drawButton(b, on, scale = 1) {
   const w = b.w * scale,
     h = b.h * scale,
     x = b.x + (b.w - w) / 2,
-    y = b.y + (b.h - h) / 2;
+    y = b.y + (b.h - h) / 2,
+    primary = PRIMARY.has(b.id),
+    ink = primary ? ON_ORANGE : PAPER;
   ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
   roundRect(x + 2, y + 3, w, h, 10);
-  ctx.fillStyle = on ? MAPLE : NAVY;
+  ctx.fillStyle = primary ? MAPLE : NAVY;
   roundRect(x, y, w, h, 10);
-  ctx.strokeStyle = on ? PAPER : GOLD;
-  ctx.lineWidth = on ? 2 : 1.5;
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
+  if (on) focusRing(x, y, w, h, 10);
+  const size = tall() ? 20 : 18, // (a touch bigger on a phone)
+    cy = b.y + b.h / 2;
+  ctx.font = `bold ${size}px Georgia, serif`;
+  if (STARTS_PLAY.has(b.id)) {
+    // ▶ and the label, centred together
+    const tri = size * 0.6,
+      total = tri + 8 + ctx.measureText(b.label).width,
+      tx = b.x + b.w / 2 - total / 2;
+    poly(ink, tx, cy - tri / 2, tx + tri * 0.9, cy, tx, cy + tri / 2);
+    ctx.textAlign = "left";
+    ctx.fillStyle = ink;
+    ctx.fillText(b.label, tx + tri + 8, cy + (tall() ? 7 : 6));
+    return;
+  }
   ctx.textAlign = "center";
-  ctx.fillStyle = on ? "#fff" : PAPER;
-  ctx.font = `bold ${tall() ? 20 : 18}px Georgia, serif`; // (a touch bigger on a phone)
-  ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + (tall() ? 7 : 6));
+  ctx.fillStyle = ink;
+  ctx.fillText(b.label, b.x + b.w / 2, cy + (tall() ? 7 : 6));
 }
 
 // The current screen's buttons. On the start screen the selected one gently pulses.
@@ -3064,7 +3104,7 @@ function drawButtons() {
     if (b.help) return drawHelpButton(b, on);
     if (b.seg) return drawModeSegment(b, on);
     if (b.play) return drawPlayButton(b, on, on ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1);
-    if (story && state === "over") b = { ...b, label: b.id === "again" ? "Try again" : "Levels" };
+    if (story && state === "over") b = { ...b, label: b.id === "again" ? "Try again" : "Chapters" };
     if (b.close) return drawCloseButton(b, on);
     if (b.tips) return drawTipsButton(b, on);
     if (state === "howto" && b.id === "prev" && howtoScreen === 0) {
@@ -3169,18 +3209,19 @@ function drawPlayButton(b, on, scale) {
   ctx.fillStyle = MAPLE;
   roundRect(x, y, w, h, h / 2);
   ctx.restore();
-  ctx.strokeStyle = on ? PAPER : GOLD;
-  ctx.lineWidth = on ? 2.5 : 1.5;
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
+  if (on) focusRing(x, y, w, h, h / 2);
   const size = tall() ? 28 : 22;
   ctx.font = `bold ${size}px Georgia, serif`;
   const tri = size * 0.72,
     total = tri + 10 + ctx.measureText(b.label).width,
     cy = b.y + b.h / 2,
     tx = b.x + b.w / 2 - total / 2;
-  poly("#2a1a0e", tx, cy - tri / 2, tx + tri * 0.9, cy, tx, cy + tri / 2);
+  poly(ON_ORANGE, tx, cy - tri / 2, tx + tri * 0.9, cy, tx, cy + tri / 2);
   ctx.textAlign = "left";
-  ctx.fillStyle = "#2a1a0e";
+  ctx.fillStyle = ON_ORANGE;
   ctx.fillText(b.label, tx + tri + 10, cy + size * 0.35);
 }
 
@@ -3190,12 +3231,11 @@ function drawHelpButton(b, on) {
   // (a solid dark base first, so it looks the same on the dark start screen and the cream pause card)
   ctx.fillStyle = "#211812";
   roundRect(b.x, b.y, b.w, b.h, b.h / 2);
-  ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : "rgba(20, 14, 10, 0.7)";
-  roundRect(b.x, b.y, b.w, b.h, b.h / 2);
-  ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
-  ctx.lineWidth = on ? 2 : 1.5;
+  ctx.strokeStyle = PILL_EDGE;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
-  ctx.font = `${tall() ? 17 : 15}px Georgia, serif`; // (the same highlighted or not: only the colours change)
+  if (on) focusRing(b.x, b.y, b.w, b.h, b.h / 2);
+  ctx.font = `bold ${tall() ? 17 : 15}px Georgia, serif`;
   const label = b.label,
     r = tall() ? 13 : 11,
     gap = 8,
@@ -3211,7 +3251,7 @@ function drawHelpButton(b, on) {
   ctx.fillStyle = GOLD;
   ctx.fillText("?", rx, cy + (tall() ? 6 : 5));
   ctx.textAlign = "left";
-  ctx.fillStyle = on ? "#fff" : PAPER;
+  ctx.fillStyle = PAPER;
   ctx.fillText(label, rx + r + gap, cy + (tall() ? 6 : 5));
 }
 
@@ -3251,10 +3291,12 @@ function drawPauseButton() {
 }
 // The top bar's buttons (Sound and pause): a dark shape with a gold ring, like the menus' quieter
 // buttons. Rounded into a pill, or a circle when it's as wide as it is tall. `dim`: a fainter ring.
+// A pill's gold ring (Sound, Pause, How to play, ‹ Back, Skip, All tips, ✕).
+const PILL_EDGE = "rgba(212, 166, 74, 0.75)";
 function drawRingButton(b, dim = false) {
   ctx.fillStyle = "rgba(20, 14, 10, 0.7)";
   roundRect(b.x, b.y, b.w, b.h, b.h / 2);
-  ctx.strokeStyle = dim ? "rgba(212, 166, 74, 0.4)" : "rgba(212, 166, 74, 0.7)";
+  ctx.strokeStyle = dim ? "rgba(212, 166, 74, 0.4)" : PILL_EDGE;
   ctx.lineWidth = 1.5;
   ctx.stroke();
 }
@@ -3289,7 +3331,7 @@ function pauseLayout() {
     info: { x: card.x + 72, y: card.y, w: 210 },
     divX: card.x + 288,
     resume: { x, y: card.y + 26, w, h: 50 },
-    howto: { x, y: card.y + 88, w, h: 38 },
+    howto: { x, y: card.y + 86, w, h: 44 },
     ruleY: card.y + 168,
     quit: { x, y: card.y + 174, w, h: 32 },
     hintY: card.y + card.h - 14,
@@ -3301,7 +3343,7 @@ function pauseButtons() {
   const L = pauseLayout();
   return [
     { id: "resume", label: "Resume", ...L.resume },
-    { id: "howto", label: "How to play", ...L.howto },
+    { id: "howto", label: "How to play", help: true, ...L.howto },
     { id: "quit", label: "Quit", ...L.quit },
   ];
 }
@@ -3325,31 +3367,25 @@ function drawPause() {
   }
   drawPauseInfo(L);
 
-  // Resume: the big one (dark letters: white on the gold is hard to read), picked to start with
+  // Resume: the card's main action, a big orange box (see the button rules, at drawButton)
   const r = L.resume;
-  if (on("resume")) {
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 2;
-    roundRectPath(r.x - 5, r.y - 5, r.w + 10, r.h + 10, 15);
-    ctx.stroke();
-  }
-  ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
-  roundRect(r.x, r.y + 4, r.w, r.h, 11);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+  roundRect(r.x + 2, r.y + 3, r.w, r.h, 10);
   ctx.fillStyle = MAPLE;
-  roundRect(r.x, r.y, r.w, r.h, 11);
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 2;
-  roundRectPath(r.x, r.y, r.w, r.h, 11);
+  roundRect(r.x, r.y, r.w, r.h, 10);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
+  if (on("resume")) focusRing(r.x, r.y, r.w, r.h, 10, INK);
   const keycap = HAS_KEYS && !padUI();
   ctx.font = `bold ${L.tall ? 22 : 19}px Georgia, serif`;
   const tw = ctx.measureText("Resume").width,
     total = 16 + 10 + tw + (keycap ? 28 : 0),
     tx = r.x + r.w / 2 - total / 2,
     cy = r.y + r.h / 2;
-  poly("#2a1d14", tx + 2, cy - 7, tx + 14, cy, tx + 2, cy + 7);
+  poly(ON_ORANGE, tx + 2, cy - 7, tx + 14, cy, tx + 2, cy + 7);
   ctx.textAlign = "left";
-  ctx.fillStyle = "#2a1d14";
+  ctx.fillStyle = ON_ORANGE;
   ctx.fillText("Resume", tx + 26, cy + 7);
   if (keycap) {
     // the key that does it, as a little paper keycap
@@ -3365,50 +3401,15 @@ function drawPause() {
     ctx.fillText("P", kx + 10, ky + 14);
   }
 
-  // How to play
-  const h = L.howto;
-  if (on("howto")) {
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 2;
-    roundRectPath(h.x - 4, h.y - 4, h.w + 8, h.h + 8, 13);
-    ctx.stroke();
-  }
-  ctx.fillStyle = NAVY;
-  roundRect(h.x, h.y, h.w, h.h, 9);
-  ctx.strokeStyle = GOLD;
-  ctx.lineWidth = 1.5;
-  roundRectPath(h.x, h.y, h.w, h.h, 9);
-  ctx.stroke();
-  ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
-  const hw = ctx.measureText("How to play").width,
-    hx = h.x + h.w / 2 - (22 + 8 + hw) / 2,
-    hy = h.y + h.h / 2;
-  ctx.strokeStyle = GOLD;
-  ctx.beginPath();
-  ctx.arc(hx + 11, hy, 10, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.textAlign = "center";
-  ctx.fillStyle = GOLD;
-  ctx.font = `bold ${L.tall ? 13 : 12}px Georgia, serif`;
-  ctx.fillText("?", hx + 11, hy + 4);
-  ctx.textAlign = "left";
-  ctx.fillStyle = PAPER;
-  ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
-  ctx.fillText("How to play", hx + 30, hy + 5);
+  // How to play: the same "?" pill as everywhere else
+  drawHelpButton(B[1], on("howto"));
 
   // Quit: on its own under a rule, quieter, and it says where it goes
   const q = L.quit;
   ctx.fillStyle = "rgba(58, 42, 30, 0.18)";
   ctx.fillRect(q.x, L.ruleY, q.w, 1);
-  if (on("quit")) {
-    ctx.fillStyle = "rgba(168, 56, 47, 0.1)";
-    roundRect(q.x, q.y, q.w, q.h, 8);
-    ctx.strokeStyle = CARD_RED;
-    ctx.lineWidth = 1.5;
-    roundRectPath(q.x, q.y, q.w, q.h, 8);
-    ctx.stroke();
-  }
-  const quitText = story ? "Back to the chapters" : "Quit to the start screen";
+  if (on("quit")) focusRing(q.x, q.y, q.w, q.h, 8, INK, 2);
+  const quitText = story ? "Back to the chapters" : "Quit to the main menu";
   ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
   const qw = ctx.measureText(quitText).width,
     qx = q.x + q.w / 2 - (14 + 8 + qw) / 2,
@@ -3786,7 +3787,7 @@ function drawHowTo() {
             ? "swipe to flip · ✕ to close"
             : "← → to flip · Tab for the buttons · T for all tips · Esc to close"),
       W / 2,
-      BUTTON_Y.wide.howto + 50,
+      BUTTON_Y.wide.howto + 56,
     );
   }
 }
@@ -4115,20 +4116,21 @@ function drawTipsIndex() {
 // The All tips button: three lines (a list), then the label. Quiet like the start screen's
 // How to play button.
 function drawTipsButton(b, on) {
-  ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : "rgba(20, 14, 10, 0.7)";
+  ctx.fillStyle = "#211812";
   roundRect(b.x, b.y, b.w, b.h, b.h / 2);
-  ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
-  ctx.lineWidth = on ? 2 : 1.5;
+  ctx.strokeStyle = PILL_EDGE;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
-  ctx.font = `${tall() ? 16 : 14}px Georgia, serif`; // (the same highlighted or not)
+  if (on) focusRing(b.x, b.y, b.w, b.h, b.h / 2);
   const iw = 14,
-    gap = 8,
-    total = iw + gap + ctx.measureText(b.label).width,
+    gap = 8;
+  ctx.font = `bold ${tall() ? 17 : 15}px Georgia, serif`;
+  const total = iw + gap + ctx.measureText(b.label).width,
     cy = b.y + b.h / 2,
     ix = b.x + b.w / 2 - total / 2;
   for (let i = -1; i <= 1; i++) R(ix, cy + i * 5 - 1, iw, 2, GOLD);
   ctx.textAlign = "left";
-  ctx.fillStyle = on ? "#fff" : PAPER;
+  ctx.fillStyle = PAPER;
   ctx.fillText(b.label, ix + iw + gap, cy + 5);
 }
 
@@ -4137,13 +4139,14 @@ function drawCloseButton(b, on) {
   const r = b.w / 2,
     cx = b.x + r,
     cy = b.y + r;
-  ctx.fillStyle = on ? "rgba(215, 163, 94, 0.45)" : "rgba(20, 14, 10, 0.7)";
+  ctx.fillStyle = "#211812";
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = on ? PAPER : "rgba(212, 166, 74, 0.7)";
-  ctx.lineWidth = on ? 2 : 1.5;
+  ctx.strokeStyle = PILL_EDGE;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
+  if (on) focusRing(b.x, b.y, b.w, b.h, r);
   const a = r * 0.36;
   ctx.strokeStyle = PAPER;
   ctx.lineWidth = 2.2;
@@ -4259,7 +4262,7 @@ function drawGameOver() {
   drawButtons();
   hint(
     tall()
-      ? story ? "Levels goes back to the list of levels" : "Main menu goes back to the start screen"
+      ? story ? "Chapters goes back to the chapter book" : "Main menu goes back to the start screen"
       : "Tab or ← → to choose · Enter to select · Esc for the menu",
     py + ph - 14,
   );
@@ -6343,7 +6346,9 @@ canvas.addEventListener("pointerdown", (e) => {
   if (state === "book") return bookTap(e); // a tap turns the page
   if (state === "route") return routeTap(e); // a tap skips the drive, then goes on
   const [cx, cy] = toCanvas(e);
-  if (inside(cx, cy, MUTE_BTN)) return toggleMute();
+  // (How to play's All tips sits over the Sound button: there, a tap is for All tips)
+  const overSound = state === "howto" && !tipsIndex.open && BUTTONS.howto.some((b) => inside(cx, cy, b));
+  if (inside(cx, cy, MUTE_BTN) && !overSound) return toggleMute();
   if (isMenu()) {
     keyNav = false;
     if (state === "howto" && tipsIndex.open) {

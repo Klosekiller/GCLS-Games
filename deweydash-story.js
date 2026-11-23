@@ -482,12 +482,7 @@ function drawLevels() {
   ctx.fillText("Dewey Dash", W / 2, L.titleY); // (the story's title, like the name on a book's cover)
   const bk = B[B.length - 1];
   drawRingButton(bk, false);
-  if (focus.back) {
-    ctx.strokeStyle = PAPER;
-    ctx.lineWidth = 2;
-    roundRectPath(bk.x, bk.y, bk.w, bk.h, bk.h / 2);
-    ctx.stroke();
-  }
+  if (focus.back) focusRing(bk.x, bk.y, bk.w, bk.h, bk.h / 2, PAPER);
   ctx.fillStyle = PAPER;
   ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
   ctx.fillText("‹ Back", bk.x + bk.w / 2, bk.y + bk.h / 2 + 5);
@@ -683,10 +678,15 @@ function drawContentsLine(b, on) {
       ph = Math.min(28, b.h - 10),
       px = right - pw + 4,
       py = b.y + (b.h - ph) / 2;
-    ctx.fillStyle = NAVY;
-    roundRect(px, py, pw, ph, ph / 2);
-    poly(PAPER, px + 14, py + ph / 2 - 6, px + 24, py + ph / 2, px + 14, py + ph / 2 + 6);
-    ctx.fillStyle = PAPER;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+    roundRect(px + 1, py + 2, pw, ph, 8);
+    ctx.fillStyle = MAPLE;
+    roundRect(px, py, pw, ph, 8);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    poly(ON_ORANGE, px + 14, py + ph / 2 - 6, px + 24, py + ph / 2, px + 14, py + ph / 2 + 6);
+    ctx.fillStyle = ON_ORANGE;
     ctx.font = "bold 14px Georgia, serif";
     ctx.fillText("Play", px + 28, py + ph / 2 + 5);
     // (its stars move up beside the caption)
@@ -727,12 +727,7 @@ function drawChapterShelf(L, B, focus) {
       ctx.fillText(String(c), b.x + b.w / 2, y + h / 2 + 5);
     } else if (last) starShape(b.x + b.w / 2, y + h / 2, 6, GOLD);
     else padlock(b.x + b.w / 2, y + h / 2 - 1, 0.55, "#a89c8c");
-    if (out || b === focus) {
-      ctx.strokeStyle = b === focus ? GOLD : PAPER;
-      ctx.lineWidth = 2;
-      roundRectPath(b.x - 1, y - 1, b.w + 2, h + 2, 4);
-      ctx.stroke();
-    }
+    if (b === focus) focusRing(b.x, y, b.w, h, 3, PAPER, 3); // (a tighter ring: the spines stand close together)
   }
   // the shelf itself
   const first = B.find((b) => b.spine === 1),
@@ -2229,20 +2224,22 @@ function drawRouteCard(c, t) {
   const by = c.y + c.h - (tall() ? 46 : 52);
   if (arrived) {
     const k = Math.min(1, (t - ROUTE_DONE_AT) / ROUTE_READY_MS),
-      bw = 150,
-      bh = 36,
-      bx = c.x + c.w / 2 - bw / 2;
+      bw = 160,
+      bh = 42,
+      bx = c.x + c.w / 2 - bw / 2,
+      bty = by - 4;
     ctx.save();
     ctx.globalAlpha = k;
-    ctx.fillStyle = NAVY;
-    roundRect(bx, by, bw, bh, bh / 2);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    roundRect(bx + 2, bty + 3, bw, bh, 10);
+    ctx.fillStyle = MAPLE;
+    roundRect(bx, bty, bw, bh, 10);
     ctx.strokeStyle = GOLD;
     ctx.lineWidth = 1.5;
-    roundRectPath(bx, by, bw, bh, bh / 2);
     ctx.stroke();
-    ctx.fillStyle = PAPER;
-    ctx.font = "bold 16px Georgia, serif";
-    ctx.fillText("Continue ›", c.x + c.w / 2, by + bh / 2 + 6);
+    ctx.fillStyle = ON_ORANGE;
+    ctx.font = "bold 18px Georgia, serif";
+    ctx.fillText("Continue ›", c.x + c.w / 2, bty + bh / 2 + 6);
     ctx.restore();
   } else {
     ctx.fillStyle = INK_SOFT;
@@ -2498,19 +2495,19 @@ function bookLayout() {
       page,
       art: { x: page.x + 12, y: page.y + 12, w: page.w - 24, h: 270 },
       text: { x: page.x + 24, y: page.y + 296, w: page.w - 48, h: 222 },
-      skip: { x: W - 106, y: 598, w: 92, h: 34 },
-      back: { x: 14, y: 598, w: 92, h: 34 },
-      dotsY: 615,
+      skip: { x: W - 110, y: 592, w: 96, h: 44 },
+      back: { x: 14, y: 592, w: 96, h: 44 },
+      dotsY: 614,
     };
   }
-  const page = { x: 18, y: 10, w: W - 36, h: 266 };
+  const page = { x: 18, y: 10, w: W - 36, h: 254 };
   return {
     page,
     art: { x: page.x + 12, y: page.y + 12, w: 404, h: page.h - 24 },
     text: { x: page.x + 444, y: page.y + 16, w: page.w - 444 - 22, h: page.h - 32 },
-    skip: { x: W - 104, y: 284, w: 86, h: 28 },
-    back: { x: 18, y: 284, w: 86, h: 28 },
-    dotsY: 298,
+    skip: { x: W - 112, y: 270, w: 94, h: 44 },
+    back: { x: 18, y: 270, w: 94, h: 44 },
+    dotsY: 292,
   };
 }
 function drawBook() {
@@ -2560,15 +2557,16 @@ function drawBook() {
   bookButton(L.skip, book.i < n - 1 ? "Skip ›" : book.intoLevel ? "Go! ›" : "Done ›");
   if (book.i > 0) bookButton(L.back, "‹ Back");
 }
+// A picture book's Skip / Back: a pill, like every other button for getting around.
 function bookButton(b, text) {
-  ctx.fillStyle = "rgba(243, 234, 215, 0.14)";
+  ctx.fillStyle = "#211812";
   roundRect(b.x, b.y, b.w, b.h, b.h / 2);
-  ctx.strokeStyle = "rgba(212, 166, 74, 0.7)";
+  ctx.strokeStyle = PILL_EDGE;
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.textAlign = "center";
   ctx.fillStyle = PAPER;
-  ctx.font = `bold ${tall() ? 16 : 14}px Georgia, serif`;
+  ctx.font = `bold ${tall() ? 17 : 15}px Georgia, serif`;
   ctx.fillText(text, b.x + b.w / 2, b.y + b.h / 2 + 5);
 }
 function drawBookPage(pg, L, t) {
