@@ -2117,14 +2117,14 @@ function fitCanvas() {
   canvas.style.height = canvas.height * s + "px";
 }
 // Match the canvas's resolution to the screen pixels it covers (its size on the page times the
-// screen's pixel ratio, which Windows display scaling and browser zoom both change), so the game
-// is never stretched. Phones held upright keep one pixel per layout pixel.
+// screen's pixel ratio, which phone screens, Windows display scaling and browser zoom all change),
+// so the game is never stretched and blurry. Capped, so a big phone screen (tall, at 3 pixels per
+// point) doesn't make every frame too much work: about 3.2 million pixels at most.
+const MAX_CANVAS_PIXELS = 3.2e6;
 function fitRes() {
-  let res = 1;
-  if (!tall()) {
-    const shown = canvas.getBoundingClientRect().width * (window.devicePixelRatio || 1);
-    res = Math.min(3, Math.max(1, Math.ceil((shown / W) * 4) / 4)); // (in quarter steps)
-  }
+  const shown = canvas.getBoundingClientRect().width * (window.devicePixelRatio || 1);
+  const cap = Math.sqrt(MAX_CANVAS_PIXELS / (W * (H + 2 * TOP)));
+  const res = Math.min(3, cap, Math.max(1, Math.ceil((shown / W) * 4) / 4)); // (in quarter steps)
   if (res === RES) return;
   RES = res;
   canvas.width = Math.round(W * RES);
