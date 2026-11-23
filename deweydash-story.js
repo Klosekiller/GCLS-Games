@@ -251,6 +251,14 @@ function storyChoose(id) {
       pickLevel(Number(id.slice(6)));
       return true;
     }
+    if (id.startsWith("chapter-")) {
+      const c = Number(id.slice(8));
+      if (c !== viewChapter) {
+        showChapter(c);
+        tone(700, 420, 0.07, "triangle", 0.04); // a page turn
+      }
+      return true;
+    }
   }
   if (state === "cleared") {
     if (clearedTime < CLEARED_GRACE_MS) return true;
@@ -281,9 +289,10 @@ function storyGoBack() {
   }
   return false;
 }
-function openLevels() {
+// The level list, open at chapter c (or, if not given, the chapter of the furthest level you can play).
+function openLevels(c) {
   state = "levels";
-  selected.levels = Math.min(progress.unlocked, LEVELS.length - 1); // the furthest level you can play
+  showChapter(c || LEVELS[Math.min(progress.unlocked, LEVELS.length - 1)].chapter);
 }
 // To the level list, through the iris.
 function toLevels() {
@@ -293,7 +302,7 @@ function toLevels() {
     openLevels();
   });
 }
-let lockedShake = null; // { i, at }: a locked level's tile, shaking its head
+let lockedShake = null; // { i, at }: a locked level's line in the contents, shaking its head
 function pickLevel(i) {
   if (i > progress.unlocked) {
     lockedShake = { i, at: runTime };
@@ -308,49 +317,442 @@ function playLevel(i, withIntro) {
   if (withIntro && lv.intro) fadeTo(() => openBook([lv.intro], () => beginLevel(i)));
   else fadeTo(() => beginLevel(i));
 }
-// Continue from a level's results: its outro and the next level's intro, then the next level
-// (or back to the list after the last one).
+// Continue from a level's results: its outro and the next level's intro, then the next level.
+// The end of a chapter: its outro, then the Bookmobile's drive on the route map to the next
+// library, then that chapter's first level (or, if it isn't written yet, the level list open at it).
 function continueStory() {
   const ni = story.index + 1,
-    next = LEVELS[ni];
-  const books = [story.level.outro, next && next.intro].filter(Boolean);
-  const then = next
-    ? () => beginLevel(ni)
+    next = LEVELS[ni],
+    here = story.level.chapter;
+  if (next && next.chapter === here) {
+    const books = [story.level.outro, next.intro].filter(Boolean);
+    fadeTo(books.length ? () => openBook(books, () => beginLevel(ni)) : () => beginLevel(ni));
+    return;
+  }
+  const after = next
+    ? () => (next.intro ? openBook([next.intro], () => beginLevel(ni)) : beginLevel(ni))
     : () => {
         leaveStory();
         reset();
-        openLevels();
+        openLevels(here + 1);
       };
-  fadeTo(books.length ? () => openBook(books, then, !!next) : then);
+  const drive = () => openRoute(here, here + 1, after);
+  fadeTo(story.level.outro ? () => openBook([story.level.outro], drive, false) : drive);
 }
 
-// ---------- The level list ----------
-// One tile per level (added to the "levels" screen's buttons, before its Back button).
+// ---------- The chapters ----------
+// One chapter per library: Hughes Main first, then the branches, then the finale back at Main.
+// Only the chapters with levels are written so far; the rest are on the shelf as locked spines.
+// A chapter: `place`, a `teaser` line, `at` (where the library is on the county map, from Hughes
+// Main: see COUNTY_SPOTS) and `art` (its picture on the chapter's title page: a scene drawn into an
+// 800 × 320 world, framed around `focus`, `focusY`, showing `span` of the world's height).
+const CHAPTER_COUNT = 14; // Hughes Main, the 12 branches, and the finale back at Main
+const CHAPTERS = {
+  1: {
+    place: "Hughes Main Library",
+    teaser: "Where Dewey's pages went missing.",
+    at: [0, 0],
+    art: { focus: 620, focusY: 150, span: 270, draw: () => sceneRotunda(0, 1200) },
+  },
+};
+const chapterLevels = (c) => LEVELS.map((lv, i) => ({ lv, i })).filter((e) => e.lv.chapter === c);
+const chapterOpen = (c) => chapterLevels(c).some((e) => e.i <= progress.unlocked);
+function chapterStars(c) {
+  const ls = chapterLevels(c);
+  return [ls.reduce((s, e) => s + (progress.stars[e.lv.id] || 0), 0), ls.length * 3];
+}
+
+// ---------- The level list: a chapter book ----------
+// The story's book, lying open at a chapter: on the left page the chapter's title page (its
+// library, a picture, how many stars you have), on the right its contents, one line per level.
+// Under it, a shelf with a spine for every chapter: pull one out to open the book there. Locked
+// chapters keep their library a secret until Dewey gets there.
+// Keys: ← → flip chapters, ↑ ↓ pick a level (or the spine, or Back), Enter plays.
+let viewChapter = 1; // the chapter the book is open at
+// Where everything goes, in this layout.
+function levelsLayout() {
+  const back = { w: tall() ? 92 : 86, h: MUTE_BTN.h, y: MUTE_BTN.y };
+  back.x = W - 12 - back.w;
+  if (tall()) {
+    const page = { x: 18, y: 92, w: W - 36, h: 452 };
+    return {
+      tall: true,
+      back,
+      titleY: 72,
+      page,
+      left: { x: page.x, y: page.y, w: page.w, h: 228 },
+      right: { x: page.x, y: page.y + 228, w: page.w, h: page.h - 228 },
+      rowsY: page.y + 274,
+      rowH: 50,
+      rowGap: 8,
+      spineW: 24,
+      spineH: 40,
+      shelfY: 604,
+    };
+  }
+  const page = { x: 100, y: 46, w: 600, h: 206 };
+  return {
+    tall: false,
+    back,
+    titleY: MUTE_BTN.y + MUTE_BTN.h / 2 + 7,
+    page,
+    left: { x: page.x, y: page.y, w: page.w / 2, h: page.h },
+    right: { x: page.x + page.w / 2, y: page.y, w: page.w / 2, h: page.h },
+    rowsY: page.y + 38,
+    rowH: 42,
+    rowGap: 6,
+    spineW: 22,
+    spineH: 30,
+    shelfY: 294,
+  };
+}
+// The screen's buttons: a line per level in the open chapter, a spine per chapter, and Back.
+function levelButtons() {
+  const L = levelsLayout(),
+    r = L.right,
+    pad = L.tall ? 16 : 14;
+  const rows = chapterLevels(viewChapter).map((e, k) => ({
+    id: "level-" + e.i,
+    label: chapterLevelName(e.lv),
+    row: e.i,
+    x: r.x + pad,
+    y: L.rowsY + k * (L.rowH + L.rowGap),
+    w: r.w - pad * 2,
+    h: L.rowH,
+  }));
+  const gap = 4,
+    total = CHAPTER_COUNT * L.spineW + (CHAPTER_COUNT - 1) * gap;
+  const spines = [];
+  for (let c = 1; c <= CHAPTER_COUNT; c++)
+    spines.push({ id: "chapter-" + c, label: "Chapter " + c, spine: c, x: W / 2 - total / 2 + (c - 1) * (L.spineW + gap), y: L.shelfY - L.spineH - 6, w: L.spineW, h: L.spineH + 6 });
+  BUTTONS.levels = [...rows, ...spines, { id: "home", label: "Back", back: true, ...L.back }];
+}
 function storyButtons() {
-  const tiles = LEVELS.map((lv, i) => ({ id: "level-" + i, label: chapterLevelName(lv), tile: i, ...levelTileRect(i) }));
-  BUTTONS.levels = [...tiles, ...BUTTONS.levels];
+  levelButtons();
 }
-function levelTileRect(i) {
-  if (tall()) return { x: W / 2 - 150, y: 152 + i * 104, w: 300, h: 92 };
-  const tw = 178,
-    gap = 16,
-    total = LEVELS.length * tw + (LEVELS.length - 1) * gap;
-  return { x: W / 2 - total / 2 + i * (tw + gap), y: 108, w: tw, h: 122 };
+// Open the book at chapter c, with the furthest level you can play there picked (or its spine).
+function showChapter(c) {
+  viewChapter = Math.max(1, Math.min(CHAPTER_COUNT, c));
+  levelButtons();
+  const B = BUTTONS.levels;
+  let pick = -1;
+  B.forEach((b, i) => {
+    if (b.row != null && b.row <= progress.unlocked) pick = i;
+  });
+  if (pick < 0) pick = B.findIndex((b) => b.spine === viewChapter);
+  selected.levels = pick;
 }
+function flipChapter(step) {
+  const c = Math.max(1, Math.min(CHAPTER_COUNT, viewChapter + step));
+  if (c === viewChapter) return;
+  showChapter(c);
+  tone(700, 420, 0.07, "triangle", 0.04); // a page turn
+}
+// ← → flip chapters; ↑ ↓ go between Back, the levels and the open chapter's spine. (Tab, Enter
+// and Esc work as on every menu.) True if it was one of those keys.
+function storyLevelsKey(e) {
+  const k = e.code;
+  const horiz = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1 }[k],
+    vert = { ArrowUp: -1, KeyW: -1, ArrowDown: 1, KeyS: 1 }[k];
+  if (!horiz && !vert) return false;
+  e.preventDefault();
+  keyNav = true;
+  if (horiz) {
+    flipChapter(horiz);
+    return true;
+  }
+  const B = BUTTONS.levels,
+    order = [B.findIndex((b) => b.back), ...B.flatMap((b, i) => (b.row != null ? [i] : [])), B.findIndex((b) => b.spine === viewChapter)];
+  const at = Math.max(0, order.indexOf(selected.levels));
+  highlight("levels", order[(at + vert + order.length) % order.length]);
+  return true;
+}
+
 function drawLevels() {
+  const L = levelsLayout(),
+    B = BUTTONS.levels,
+    focus = B[selected.levels] || {};
   dimBehindCard();
-  const pw = tall() ? 420 : 640,
-    ph = tall() ? 528 : 296,
-    px = W / 2 - pw / 2,
-    py = tall() ? 36 : 12;
-  drawCard(px, py, pw, ph, "Dewey's Due Date");
+  ctx.fillStyle = "rgba(10, 6, 4, 0.25)";
+  fillScreen();
+  // the story's name, and Back
+  ctx.textAlign = "center";
+  ctx.fillStyle = PAPER;
+  ctx.font = `bold italic ${L.tall ? 26 : 21}px Georgia, serif`;
+  ctx.fillText("Dewey's Due Date", W / 2, L.titleY);
+  const bk = B[B.length - 1];
+  drawRingButton(bk, false);
+  if (focus.back) {
+    ctx.strokeStyle = PAPER;
+    ctx.lineWidth = 2;
+    roundRectPath(bk.x, bk.y, bk.w, bk.h, bk.h / 2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = PAPER;
+  ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
+  ctx.fillText("‹ Back", bk.x + bk.w / 2, bk.y + bk.h / 2 + 5);
+
+  // the book: its cover peeking out around the pages, then the pages
+  const p = L.page;
+  ctx.save();
+  ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
+  ctx.shadowBlur = 20;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = "#5e3f24";
+  roundRect(p.x - 7, p.y + 3, p.w + 14, p.h + 5, 9);
+  ctx.restore();
+  ctx.fillStyle = "#d9cdb0"; // page edges
+  roundRect(p.x - 2, p.y + 3, p.w + 4, p.h, 6);
+  const paper = ctx.createLinearGradient(p.x, 0, p.x + p.w, 0);
+  if (L.tall) {
+    paper.addColorStop(0, "#f7f0df");
+    paper.addColorStop(1, "#f3ead7");
+  } else {
+    // shading toward the fold in the middle
+    paper.addColorStop(0, "#f7f0df");
+    paper.addColorStop(0.42, "#f3ead7");
+    paper.addColorStop(0.5, "#d8caa9");
+    paper.addColorStop(0.58, "#f3ead7");
+    paper.addColorStop(1, "#f7f0df");
+  }
+  ctx.fillStyle = paper;
+  roundRect(p.x, p.y, p.w, p.h, 5);
+  drawRibbon(p.x + p.w - 40, p.y);
+
+  drawChapterTitlePage(L.left, L.tall);
+  if (L.tall) {
+    ctx.fillStyle = "rgba(58, 42, 30, 0.18)";
+    ctx.fillRect(p.x + 18, L.right.y, p.w - 36, 1);
+  }
+  drawChapterContents(L, B, focus);
+  drawChapterShelf(L, B, focus);
+
+  if (!L.tall) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#c9bc9f";
+    ctx.font = "12px Georgia, serif";
+    ctx.fillText(
+      padUI()
+        ? "◀ ▶ chapters · ▲ ▼ levels · A to play · B to go back"
+        : touchUI
+          ? "Tap a level to play it · tap a spine to open its chapter"
+          : "← → chapters · ↑ ↓ levels · Enter to play · Esc to go back",
+      W / 2,
+      H - 5,
+    );
+  }
+}
+// A rounded rectangle's outline, to stroke (roundRect fills).
+function roundRectPath(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+// The left page (the top half, on a phone): CHAPTER n, the library, its picture, a line, the stars.
+function drawChapterTitlePage(box, isTall) {
+  const c = viewChapter,
+    ch = CHAPTERS[c],
+    open = ch && chapterOpen(c),
+    cx = box.x + box.w / 2;
+  let y = box.y + (isTall ? 30 : 24);
+  ctx.textAlign = "center";
+  ctx.fillStyle = CARD_RED;
+  ctx.font = "bold 11px Georgia, serif";
+  ctx.fillText(c === CHAPTER_COUNT ? "THE LAST CHAPTER" : `CHAPTER ${c}`, cx, y);
+  y += isTall ? 27 : 24;
+  ctx.fillStyle = open ? INK : INK_SOFT;
+  ctx.font = `bold ${isTall ? 23 : 20}px Georgia, serif`;
+  ctx.fillText(open ? ch.place : "???", cx, y);
+  // two red rules, like a book's chapter heading
+  y += 9;
+  ctx.fillStyle = CARD_RED;
+  ctx.fillRect(cx - 60, y, 120, 1.5);
+  ctx.fillRect(cx - 60, y + 4, 120, 1.5);
+  // the picture
+  const fw = isTall ? 300 : 220,
+    fh = isTall ? 92 : 84,
+    frame = { x: cx - fw / 2, y: y + 12, w: fw, h: fh };
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(frame.x, frame.y, frame.w, frame.h);
+  ctx.clip();
+  if (open) {
+    const a = ch.art,
+      s = frame.h / a.span;
+    ctx.translate(frame.x + frame.w / 2 - a.focus * s, frame.y + frame.h / 2 - a.focusY * s);
+    ctx.scale(s, s);
+    const realW = W;
+    W = 1400; // (scenes draw their ground across the screen's width: make it reach the whole picture)
+    try {
+      a.draw();
+    } finally {
+      W = realW;
+    }
+  } else {
+    // not there yet: a foggy map with a question mark on it
+    ctx.fillStyle = "#ddd2b8";
+    ctx.fillRect(frame.x, frame.y, frame.w, frame.h);
+    ctx.strokeStyle = "rgba(122, 106, 85, 0.25)";
+    ctx.lineWidth = 2;
+    for (let gx = frame.x + 10; gx < frame.x + frame.w; gx += 28) {
+      ctx.beginPath();
+      ctx.moveTo(gx, frame.y);
+      ctx.lineTo(gx - 12, frame.y + frame.h);
+      ctx.stroke();
+    }
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(90, 70, 50, 0.55)";
+    ctx.font = "bold 46px Georgia, serif";
+    ctx.fillText("?", cx, frame.y + frame.h / 2 + 16);
+  }
+  ctx.restore();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(frame.x, frame.y, frame.w, frame.h);
+  y = frame.y + frame.h + (isTall ? 22 : 19);
   ctx.textAlign = "center";
   ctx.fillStyle = INK_SOFT;
-  ctx.font = "italic 14px Georgia, serif";
-  const lv = LEVELS[Math.min(selected.levels, LEVELS.length - 1)] || LEVELS[0]; // (the highlighted level's chapter)
-  ctx.fillText(`Chapter ${lv.chapter} · ${lv.place}`, W / 2, py + (tall() ? 84 : 78));
-  drawButtons();
-  if (!tall()) hint("Tab or ← → to choose · Enter to play · Esc to go back", py + ph - 6);
+  ctx.font = "italic 13px Georgia, serif";
+  const teaser = open ? ch.teaser : ch ? `Finish Chapter ${c - 1} to get here.` : "Dewey hasn't found the way here yet.";
+  ctx.fillText(teaser, cx, y);
+  if (!open) return;
+  // the chapter's stars
+  const [got, of] = chapterStars(c),
+    text = `${got} of ${of} stars`;
+  ctx.font = "bold 13px Georgia, serif";
+  const tw = ctx.measureText(text).width;
+  y += isTall ? 22 : 0;
+  const sy = isTall ? y : box.y + box.h - 14;
+  starShape(cx - tw / 2 - 4, sy - 5, 7, GOLD);
+  ctx.fillStyle = "#5c4a3a";
+  ctx.fillText(text, cx + 8, sy);
+}
+// The right page (the bottom half, on a phone): CONTENTS, and a line for each level.
+function drawChapterContents(L, B, focus) {
+  const r = L.right,
+    cx = r.x + r.w / 2;
+  ctx.textAlign = "center";
+  ctx.fillStyle = CARD_RED;
+  ctx.font = "bold 11px Georgia, serif";
+  ctx.fillText("CONTENTS", cx, r.y + (L.tall ? 30 : 24));
+  const rows = B.filter((b) => b.row != null);
+  if (!rows.length) {
+    // a chapter that isn't written yet
+    padlock(cx, r.y + r.h / 2 - 16, 1.3, "#a89c8c");
+    ctx.textAlign = "center";
+    ctx.fillStyle = INK_SOFT;
+    ctx.font = "italic 14px Georgia, serif";
+    ctx.fillText("This chapter is still being written.", cx, r.y + r.h / 2 + 22);
+    ctx.fillText("Check back soon!", cx, r.y + r.h / 2 + 42);
+    return;
+  }
+  for (const b of rows) drawContentsLine(b, b === focus);
+}
+function drawContentsLine(b, on) {
+  const i = b.row,
+    lv = LEVELS[i],
+    locked = i > progress.unlocked,
+    stars = progress.stars[lv.id] || 0,
+    fresh = !locked && !stars;
+  let x = b.x;
+  if (lockedShake && lockedShake.i === i) {
+    const t = runTime - lockedShake.at;
+    if (t < 350) x += Math.sin(t * 0.09) * 5 * (1 - t / 350);
+    else lockedShake = null;
+  }
+  if (on) {
+    ctx.fillStyle = "rgba(58, 42, 30, 0.2)";
+    roundRect(x, b.y + 3, b.w, b.h, 8);
+    ctx.fillStyle = locked ? "#e4dccb" : "#f0d9a8";
+    roundRect(x, b.y, b.w, b.h, 8);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.5;
+    roundRectPath(x, b.y, b.w, b.h, 8);
+    ctx.stroke();
+  }
+  const tx = x + 10,
+    capY = b.y + b.h / 2 - 5,
+    nameY = b.y + b.h / 2 + 12;
+  ctx.textAlign = "left";
+  ctx.font = "bold 10px Georgia, serif";
+  ctx.fillStyle = fresh ? "#8a3a2a" : locked ? "#a89c8c" : INK_SOFT;
+  const cap = `LEVEL ${lv.num}${fresh ? " · NEW" : ""}`;
+  ctx.fillText(cap, tx, capY);
+  ctx.font = "bold 15px Georgia, serif";
+  ctx.fillStyle = locked ? "#a89c8c" : INK;
+  ctx.fillText(lv.name, tx, nameY);
+  const nameEnd = tx + ctx.measureText(lv.name).width;
+  const right = x + b.w - 10;
+  if (on && !locked) {
+    // Play
+    const pw = 62,
+      ph = Math.min(28, b.h - 10),
+      px = right - pw + 4,
+      py = b.y + (b.h - ph) / 2;
+    ctx.fillStyle = NAVY;
+    roundRect(px, py, pw, ph, ph / 2);
+    poly(PAPER, px + 14, py + ph / 2 - 6, px + 24, py + ph / 2, px + 14, py + ph / 2 + 6);
+    ctx.fillStyle = PAPER;
+    ctx.font = "bold 14px Georgia, serif";
+    ctx.fillText("Play", px + 28, py + ph / 2 + 5);
+    // (its stars move up beside the caption)
+    if (stars) {
+      ctx.font = "bold 10px Georgia, serif";
+      const sx = tx + ctx.measureText(cap).width + 10;
+      for (let k = 0; k < 3; k++) starShape(sx + k * 11, capY - 4, 4.5, k < stars ? "#c8962f" : "rgba(58, 42, 30, 0.2)");
+    }
+    return;
+  }
+  // the dotted leader out to the stars (or the padlock), like a contents page
+  const endX = locked ? right - 14 : right - 40;
+  ctx.fillStyle = "rgba(58, 42, 30, 0.35)";
+  for (let dx = nameEnd + 8; dx < endX - 6; dx += 5) ctx.fillRect(dx, nameY - 2, 2, 2);
+  if (locked) padlock(right - 6, nameY - 6, 0.7, "#a89c8c");
+  else for (let k = 0; k < 3; k++) starShape(right - 32 + k * 13, nameY - 5, 5.5, k < stars ? "#c8962f" : "rgba(58, 42, 30, 0.2)");
+}
+// The shelf of chapters: a spine for each. The open chapter's is pulled up; locked ones are grey
+// with a padlock (the last chapter, the way home, has a gold star instead).
+function drawChapterShelf(L, B, focus) {
+  for (const b of B) {
+    if (b.spine == null) continue;
+    const c = b.spine,
+      open = CHAPTERS[c] && chapterOpen(c),
+      out = c === viewChapter,
+      h = L.spineH + (out ? 6 : 0),
+      y = L.shelfY - h,
+      last = c === CHAPTER_COUNT;
+    ctx.fillStyle = open ? SPINES[(c * 3) % SPINES.length] : last ? "#3d4f63" : "#4a4038";
+    roundRect(b.x, y, b.w, h, 3);
+    ctx.fillStyle = open ? GOLD : last ? GOLD : "#6b6055";
+    ctx.fillRect(b.x + 2, y + 3, b.w - 4, 2);
+    ctx.fillRect(b.x + 2, y + h - 6, b.w - 4, 2);
+    if (open) {
+      ctx.textAlign = "center";
+      ctx.fillStyle = PAPER;
+      ctx.font = `bold ${L.tall ? 15 : 13}px Georgia, serif`;
+      ctx.fillText(String(c), b.x + b.w / 2, y + h / 2 + 5);
+    } else if (last) starShape(b.x + b.w / 2, y + h / 2, 6, GOLD);
+    else padlock(b.x + b.w / 2, y + h / 2 - 1, 0.55, "#a89c8c");
+    if (out || b === focus) {
+      ctx.strokeStyle = b === focus ? GOLD : PAPER;
+      ctx.lineWidth = 2;
+      roundRectPath(b.x - 1, y - 1, b.w + 2, h + 2, 4);
+      ctx.stroke();
+    }
+  }
+  // the shelf itself
+  const first = B.find((b) => b.spine === 1),
+    lastB = B.find((b) => b.spine === CHAPTER_COUNT),
+    sx = first.x - 14,
+    sw = lastB.x + lastB.w + 14 - sx;
+  ctx.fillStyle = "#5e3f24";
+  roundRect(sx, L.shelfY, sw, 8, 2);
+  ctx.fillStyle = "#8a6238";
+  ctx.fillRect(sx, L.shelfY, sw, 2);
 }
 // A five-pointed star centered on (cx, cy).
 function starShape(cx, cy, r, color) {
@@ -374,56 +776,6 @@ function padlock(cx, cy, s, color) {
   ctx.fillStyle = color;
   roundRect(cx - 8 * s, cy - 3 * s, 16 * s, 12 * s, 2.5 * s);
 }
-function drawLevelTile(b, on) {
-  const i = b.tile,
-    lv = LEVELS[i],
-    locked = i > progress.unlocked,
-    stars = progress.stars[lv.id] || 0;
-  let x = b.x;
-  if (lockedShake && lockedShake.i === i) {
-    const t = runTime - lockedShake.at;
-    if (t < 350) x += Math.sin(t * 0.09) * 5 * (1 - t / 350);
-    else lockedShake = null;
-  }
-  ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
-  roundRect(x + 2, b.y + 3, b.w, b.h, 12);
-  ctx.fillStyle = locked ? "#857c6f" : on ? MAPLE : NAVY;
-  roundRect(x, b.y, b.w, b.h, 12);
-  ctx.strokeStyle = on ? PAPER : locked ? "#a59b8b" : GOLD;
-  ctx.lineWidth = on ? 2 : 1.5;
-  ctx.stroke();
-  const ink = locked ? "#d8d0c2" : on ? "#fff" : PAPER;
-  ctx.textAlign = "center";
-  if (tall()) {
-    // the level's number on the left (under a small "LEVEL"), name and stars on the right
-    ctx.fillStyle = ink;
-    ctx.font = "bold 11px Georgia, serif";
-    ctx.fillText("LEVEL", x + 50, b.y + 30);
-    ctx.font = "bold 36px Georgia, serif";
-    ctx.fillText(String(lv.num), x + 50, b.y + 68);
-    ctx.textAlign = "left";
-    ctx.font = "bold 16px Georgia, serif";
-    ctx.fillText(lv.name, x + 100, b.y + 38);
-    if (locked) {
-      padlock(x + 112, b.y + 62, 0.9, ink);
-      ctx.font = "14px Georgia, serif";
-      ctx.fillText("Locked", x + 128, b.y + 68);
-    } else starRow(x + 128, b.y + 63, 10, stars, GOLD, "rgba(255, 255, 255, 0.22)");
-    return;
-  }
-  ctx.fillStyle = ink;
-  ctx.font = "bold 28px Georgia, serif";
-  ctx.fillText(levelName(lv), x + b.w / 2, b.y + 40);
-  ctx.font = "bold 14px Georgia, serif";
-  ctx.fillText(lv.name, x + b.w / 2, b.y + 66);
-  if (locked) {
-    padlock(x + b.w / 2 - 26, b.y + 96, 0.9, ink);
-    ctx.font = "14px Georgia, serif";
-    ctx.textAlign = "left";
-    ctx.fillText("Locked", x + b.w / 2 - 12, b.y + 102);
-  } else starRow(x + b.w / 2, b.y + 96, 11, stars, GOLD, "rgba(255, 255, 255, 0.22)");
-}
-
 // ---------- During a level ----------
 // The score bar's right half: the level, and a bar for how far through it the book is.
 function drawStoryProgress(x, sy) {
@@ -1600,6 +1952,12 @@ function roadScene(t, sunset) {
   for (let xx = -200 - ((t * 0.4) % 80); xx < 1000; xx += 80) R(xx, 274, 40, 3, "#e8e4d4");
   R(-200, 300, 1200, 30, sunset ? "#56713f" : "#5d9741");
 }
+// Greenville County, roughly: its outline, and where each branch library is, from Hughes Main
+// (in the middle, at 0, 0). Used by the picture books' county map and the Bookmobile's route map.
+// (The spots are only roughly right: north is up, Travelers Rest at the top, Fountain Inn at the
+// bottom. A chapter's library picks its spot in CHAPTERS.)
+const COUNTY_OUTLINE = [[-70, -150], [10, -146], [70, -120], [110, -60], [130, 10], [120, 70], [96, 120], [60, 150], [10, 140], [-30, 100], [-70, 60], [-110, 10], [-120, -50], [-100, -110]];
+const COUNTY_SPOTS = [[-22, -82], [26, -92], [70, -26], [30, -26], [-48, -8], [-6, 18], [-34, 14], [42, 6], [22, 40], [56, 40], [36, 78], [52, 122]];
 // The county, with a dot for each library (Hughes Main a star), and pages scattered among them.
 function countyMap(t) {
   R(-200, -100, 1200, 520, "#efe4c8");
@@ -1610,8 +1968,7 @@ function countyMap(t) {
   ctx.strokeStyle = "#8a6f45";
   ctx.lineWidth = 3;
   ctx.beginPath();
-  const outline = [[-70, -150], [10, -146], [70, -120], [110, -60], [130, 10], [120, 70], [96, 120], [60, 150], [10, 140], [-30, 100], [-70, 60], [-110, 10], [-120, -50], [-100, -110]];
-  outline.forEach(([a, b], i) => (i ? ctx.lineTo(mx + a, my + b) : ctx.moveTo(mx + a, my + b)));
+  COUNTY_OUTLINE.forEach(([a, b], i) => (i ? ctx.lineTo(mx + a, my + b) : ctx.moveTo(mx + a, my + b)));
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
@@ -1625,14 +1982,283 @@ function countyMap(t) {
     ctx.stroke();
   }
   // the libraries (roughly where they are)
-  const branches = [[-22, -82], [26, -92], [70, -26], [30, -26], [-48, -8], [-6, 18], [-34, 14], [42, 6], [22, 40], [56, 40], [36, 78], [52, 122]];
-  branches.forEach(([a, b], i) => {
+  COUNTY_SPOTS.forEach(([a, b], i) => {
     oval(mx + a, my + b, 6, 6, "#2f6db5");
     oval(mx + a, my + b, 3, 3, "#fff");
     if (i % 2 === 0) drawPage(mx + a + 6, my + b - 22 + Math.sin(t * 0.003 + i) * 2, 9, 12, Math.sin(t * 0.002 + i) * 0.3);
   });
   starShape(mx, my, 11, "#c92a2f");
   label("Hughes Main", mx, my + 26, 11, "#5a4630", "Georgia, serif");
+}
+
+// ---------- The Bookmobile's route map ----------
+// Between chapters: the county map, and the Bookmobile driving from the library Dewey is leaving
+// to the next one, a gold trail behind it. Libraries Dewey has been to are gold pins with their
+// names; the rest are grey "?" pins, so the route stays a surprise. If the next chapter isn't
+// written yet, the Bookmobile heads out of town to a signpost with a "?" on it.
+// A tap or key skips to the end of the drive; once it's there, another goes on.
+const ROUTE_DRIVE_AT = 1100, // ms in when the Bookmobile sets off (after a honk)
+  ROUTE_DRIVE_MS = 3400, // the drive
+  ROUTE_DONE_AT = ROUTE_DRIVE_AT + ROUTE_DRIVE_MS,
+  ROUTE_READY_MS = 450, // after arriving, before a press goes on (so a skip doesn't also leave)
+  ROUTE_UNKNOWN = [72, -74]; // where it heads when the next chapter isn't written yet
+let route = null; // { from, to, t, then, leaving }
+// Drive from chapter `from`'s library to chapter `to`'s, then `then` (with the screen black).
+function openRoute(from, to, then) {
+  book = null;
+  route = { from, to, t: 0, then, leaving: false };
+  state = "route";
+}
+function updateRoute(dt) {
+  if (!route) return;
+  const was = route.t;
+  route.t += dt;
+  runTime += dt;
+  const passed = (ms) => was < ms && route.t >= ms;
+  if (passed(ROUTE_DRIVE_AT - 450)) {
+    tone(330, 330, 0.12, "square", 0.04); // beep beep!
+    tone(392, 392, 0.16, "square", 0.04, 0.16);
+  }
+  if (passed(ROUTE_DONE_AT)) [784, 988, 1175].forEach((f, i) => tone(f, f, 0.18, "triangle", 0.09, i * 0.1)); // there!
+}
+function routeAdvance() {
+  if (!route || route.leaving || fadeOut !== null) return;
+  if (route.t < ROUTE_DONE_AT) {
+    route.t = ROUTE_DONE_AT - 1; // skip to the end of the drive (the chime still plays)
+    return;
+  }
+  if (route.t < ROUTE_DONE_AT + ROUTE_READY_MS) return;
+  route.leaving = true;
+  fadeTo(() => {
+    const then = route.then;
+    route = null;
+    then();
+  });
+}
+function routeKey(e) {
+  const k = e.code;
+  if (k === "Space" || k === "Enter" || k.startsWith("Arrow") || k === "Tab") e.preventDefault();
+  if (e.repeat) return;
+  if (k === "KeyM") return toggleMute();
+  routeAdvance();
+}
+function routeTap(e) {
+  e.preventDefault();
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  routeAdvance();
+}
+// Where a chapter's library is on the map (null if it isn't written yet).
+const chapterSpot = (c) => (CHAPTERS[c] ? CHAPTERS[c].at : null);
+// The road from a to b, bowed a little: the point u of the way along (0 … 1), and which way it's heading.
+function routeAt(a, b, u) {
+  const c = [(a[0] + b[0]) / 2 + (b[1] - a[1]) * 0.35, (a[1] + b[1]) / 2 - (b[0] - a[0]) * 0.35],
+    v = 1 - u;
+  return {
+    x: v * v * a[0] + 2 * v * u * c[0] + u * u * b[0],
+    y: v * v * a[1] + 2 * v * u * c[1] + u * u * b[1],
+    dx: 2 * v * (c[0] - a[0]) + 2 * u * (b[0] - c[0]),
+  };
+}
+// The map's panel, how far it's zoomed in (it's centred on the drive), and the card.
+function routeLayout() {
+  if (tall()) return { panel: { x: 14, y: 14, w: W - 28, h: 418 }, k: 2.2, card: { x: 22, y: 446, w: W - 44, h: 178 } };
+  return { panel: { x: 16, y: 16, w: 430, h: 288 }, k: 1.7, card: { x: 462, y: 40, w: 318, h: 238 } };
+}
+function drawRoute() {
+  if (!route) return;
+  const L = routeLayout(),
+    t = route.t;
+  // the same dark table the picture books lie on
+  const g = ctx.createLinearGradient(0, -TOP, 0, H + TOP);
+  g.addColorStop(0, "#3b2b20");
+  g.addColorStop(1, "#21160f");
+  ctx.fillStyle = g;
+  fillScreen();
+  // the map, printed on paper, zoomed in on the drive (centred halfway along it)
+  const P = L.panel,
+    a = chapterSpot(route.from) || [0, 0],
+    b = chapterSpot(route.to) || ROUTE_UNKNOWN,
+    mid = routeAt(a, b, 0.5);
+  ctx.save();
+  ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 6;
+  ctx.fillStyle = "#efe4c8";
+  roundRect(P.x, P.y, P.w, P.h, 8);
+  ctx.restore();
+  ctx.save();
+  roundRectPath(P.x, P.y, P.w, P.h, 8);
+  ctx.clip();
+  ctx.translate(P.x + P.w / 2, P.y + P.h / 2 - 6); // (a little high: Hughes Main's name tag hangs under it)
+  ctx.scale(L.k, L.k);
+  ctx.translate(-mid.x, -mid.y);
+  drawRouteMap(t);
+  ctx.restore();
+  drawRouteCard(L.card, t);
+}
+// The map, in the county's own units (Hughes Main at 0, 0).
+function drawRouteMap(t) {
+  const from = chapterSpot(route.from) || [0, 0],
+    toSpot = chapterSpot(route.to),
+    to = toSpot || ROUTE_UNKNOWN,
+    arrived = t >= ROUTE_DONE_AT,
+    u = Math.min(1, Math.max(0, (t - ROUTE_DRIVE_AT) / ROUTE_DRIVE_MS)),
+    e = u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u); // (easing out of the start and into the stop)
+  // the county
+  ctx.fillStyle = "#d9e7c2";
+  ctx.strokeStyle = "#8a6f45";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  COUNTY_OUTLINE.forEach(([a, b], i) => (i ? ctx.lineTo(a, b) : ctx.moveTo(a, b)));
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // the river, winding through downtown
+  ctx.strokeStyle = "#9cc3d5";
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-60, -130);
+  ctx.bezierCurveTo(-40, -60, 20, -10, 0, 40);
+  ctx.bezierCurveTo(-20, 90, 10, 110, -10, 138);
+  ctx.stroke();
+  // highways
+  ctx.strokeStyle = "rgba(138, 111, 69, 0.4)";
+  ctx.lineWidth = 2;
+  for (const [a, b, c, d] of [[-90, -100, 100, 110], [-110, 20, 125, 0], [-40, -140, 40, 140]]) {
+    ctx.beginPath();
+    ctx.moveTo(a, b);
+    ctx.lineTo(c, d);
+    ctx.stroke();
+  }
+  // the libraries: where Dewey's been, gold with their names; the rest a mystery
+  const been = Object.keys(CHAPTERS)
+    .map(Number)
+    .filter((c) => c !== 1 && (c < route.to || (c === route.to && arrived)));
+  for (const [a, b] of COUNTY_SPOTS) {
+    const c = been.find((n) => CHAPTERS[n].at[0] === a && CHAPTERS[n].at[1] === b);
+    if (c) {
+      oval(a, b, 6, 6, GOLD);
+      oval(a, b, 2.5, 2.5, "#fff");
+      label(CHAPTERS[c].place.replace(/ Library$/, ""), a, b + 15, 8, "#5a4630", "Georgia, serif");
+    } else {
+      oval(a, b, 5, 5, "#a39a88");
+      label("?", a, b + 3, 7, "#fff", "Georgia, serif");
+    }
+  }
+  starShape(0, 0, 9, CARD_RED); // Hughes Main, its name on a little paper tag
+  ctx.fillStyle = "rgba(255, 250, 240, 0.92)";
+  roundRect(-27, 11, 54, 12, 3);
+  label("Hughes Main", 0, 20, 8, "#5a4630", "Georgia, serif");
+
+  // the road ahead, dotted, and the way already driven, in gold
+  ctx.setLineDash([3, 5]);
+  ctx.strokeStyle = "rgba(90, 70, 48, 0.55)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let s = 0; s <= 40; s++) {
+    const p = routeAt(from, to, s / 40);
+    s ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (e > 0) {
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (let s = 0; s <= 40; s++) {
+      const p = routeAt(from, to, (s / 40) * e);
+      s ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+  ctx.lineCap = "butt";
+
+  // where it's going: a pulsing ring (and, for a chapter still being written, a "?" signpost)
+  const pulse = (t % 1200) / 1200;
+  if (!arrived) {
+    ctx.strokeStyle = `rgba(201, 42, 47, ${0.6 * (1 - pulse)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(to[0], to[1], 6 + pulse * 12, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (!toSpot) {
+    const pop = arrived ? 0.85 + 0.15 * Math.min(1, (t - ROUTE_DONE_AT) / 250) : 0.85;
+    ctx.save();
+    ctx.translate(to[0] + 13, to[1]);
+    ctx.scale(pop, pop);
+    R(-1, -24, 2.5, 24, "#6b4a2c");
+    ctx.fillStyle = "#fffaf0";
+    roundRect(-9, -34, 20, 15, 3);
+    ctx.strokeStyle = "#6b4a2c";
+    ctx.lineWidth = 1.2;
+    roundRectPath(-9, -34, 20, 15, 3);
+    ctx.stroke();
+    label("?", 1, -22.5, 11, CARD_RED, "Georgia, serif");
+    ctx.restore();
+  }
+  if (arrived) {
+    // a little burst where it stops
+    const k = Math.min(1, (t - ROUTE_DONE_AT) / 500);
+    if (k < 1)
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        sparkle(to[0] + Math.cos(a) * (8 + k * 16), to[1] + Math.sin(a) * (8 + k * 16), 3 * (1 - k), GOLD);
+      }
+  }
+
+  // the Bookmobile, small, sitting on the road (facing the way it's going)
+  const p = routeAt(from, to, e),
+    dir = (u > 0 ? p.dx : routeAt(from, to, 0.01).dx) < 0 ? -1 : 1,
+    sc = 0.12;
+  ctx.save();
+  ctx.translate(p.x, p.y + 2);
+  ctx.scale(dir * sc, sc);
+  drawBookmobile(-BM_LEN / 2, 0, t, { moving: u > 0 && u < 1 });
+  ctx.restore();
+}
+// The card beside the map (under it, on a phone): the chapter done, then where Dewey's headed.
+function drawRouteCard(c, t) {
+  const arrived = t >= ROUTE_DONE_AT,
+    next = CHAPTERS[route.to];
+  drawCard(c.x, c.y, c.w, c.h, `Chapter ${route.from} complete!`, false);
+  const lines = arrived
+    ? next
+      ? [`Next stop: ${next.place}!`, `Chapter ${route.to} begins...`]
+      : ["Where to next?", `Chapter ${route.to} is still being written.`, "Check back soon!"]
+    : ["Dewey hops aboard the Bookmobile.", "Off to find more of his pages!"];
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK;
+  const top = c.y + (tall() ? 80 : 84);
+  lines.forEach((line, i) => {
+    ctx.font = i === 0 && arrived ? "bold 17px Georgia, serif" : "15px Georgia, serif";
+    ctx.fillText(line, c.x + c.w / 2, top + i * 24);
+  });
+  // Continue, once it's there (before that, how to skip)
+  const by = c.y + c.h - (tall() ? 46 : 52);
+  if (arrived) {
+    const k = Math.min(1, (t - ROUTE_DONE_AT) / ROUTE_READY_MS),
+      bw = 150,
+      bh = 36,
+      bx = c.x + c.w / 2 - bw / 2;
+    ctx.save();
+    ctx.globalAlpha = k;
+    ctx.fillStyle = NAVY;
+    roundRect(bx, by, bw, bh, bh / 2);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 1.5;
+    roundRectPath(bx, by, bw, bh, bh / 2);
+    ctx.stroke();
+    ctx.fillStyle = PAPER;
+    ctx.font = "bold 16px Georgia, serif";
+    ctx.fillText("Continue ›", c.x + c.w / 2, by + bh / 2 + 6);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = INK_SOFT;
+    ctx.font = "italic 12px Georgia, serif";
+    ctx.fillText(padUI() ? "Press A to skip" : touchUI ? "Tap to skip" : "Press Enter to skip", c.x + c.w / 2, by + 22);
+  }
 }
 
 // ---------- The picture books ----------

@@ -1708,7 +1708,7 @@ function buttonCol(y, ...items) {
 }
 const MENU = {
   ready: [], // (the mode switch, Play and How to play: see makeButtons)
-  levels: [["home", "Back"]], // Story Mode's level list (+ a tile for each level: see storyButtons)
+  levels: [["home", "Back"]], // Story Mode's chapter book (its buttons are replaced by levelButtons, in deweydash-story.js)
   cleared: [
     ["continue", "Continue"],
     ["replay", "Play again"],
@@ -2156,6 +2156,7 @@ function frame(now) {
     updateParticles(dt);
     overTime += dt;
   } else if (state === "book") updateBook(dt);
+  else if (state === "route") updateRoute(dt); // Story Mode: the Bookmobile's drive between chapters
   else if (state === "cleared") updateCleared(dt);
   else if (onStartScreen()) {
     // start screen: the library drifts by slowly while the book jogs on the spot
@@ -2780,6 +2781,7 @@ function drawTallFloor() {
 
 function draw() {
   if (state === "book") return drawBook(); // a Story Mode picture book takes the whole screen
+  if (state === "route") return drawRoute(); // so does the Bookmobile's route map, between chapters
   // a quick shake when the player gets bumped (the HUD stays still)
   ctx.save();
   if (shake > 0) {
@@ -2904,7 +2906,7 @@ function draw() {
   if (!onStartScreen()) drawProfile();
 
   if (onStartScreen()) {
-    if (barShown) drawBestBadge();
+    if (barShown && state !== "levels") drawBestBadge(); // (Endless Mode's best: not on Story Mode's chapter book)
     ctx.globalAlpha = 1;
     if (state === "howto") drawHowTo();
     if (state === "chars") drawCharacters();
@@ -3051,7 +3053,6 @@ function drawButtons() {
     if (b.help) return drawHelpButton(b, on);
     if (b.seg) return drawModeSegment(b, on);
     if (b.play) return drawPlayButton(b, on, on ? 1 + Math.sin(runTime * 0.005) * 0.04 : 1);
-    if (b.tile != null) return drawLevelTile(b, on); // Story Mode's level list
     if (story && state === "over") b = { ...b, label: b.id === "again" ? "Try again" : "Levels" };
     if (b.close) return drawCloseButton(b, on);
     if (b.tips) return drawTipsButton(b, on);
@@ -5914,6 +5915,7 @@ function iconHeart(x, y) {
 // ---------- Input ----------
 document.addEventListener("keydown", (e) => {
   if (state === "book") return bookKey(e); // turning the pages of a Story Mode picture book
+  if (state === "route") return routeKey(e); // skipping (or leaving) the Bookmobile's route map
   // During the opening sequence, any key skips to the start screen.
   if (intro && state === "ready") {
     if (e.code === "Space" || e.code === "Enter" || e.code.startsWith("Arrow")) e.preventDefault();
@@ -5963,6 +5965,8 @@ document.addEventListener("keydown", (e) => {
       }
       // (↑ ↓ and Tab move between Next, Back and ✕, below)
     }
+    // Story Mode's chapter book: ← → flip chapters, ↑ ↓ go down its contents (see storyLevelsKey)
+    if (state === "levels" && storyLevelsKey(e)) return;
     // on the Characters screen the arrows flip through the characters
     if (state === "chars" && moveKeys.includes(e.code)) {
       e.preventDefault();
@@ -6069,6 +6073,7 @@ canvas.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "mouse" && performance.now() - pad.lastPress < 150) return;
   if (intro && state === "ready") return skipIntro(); // a tap skips the opening sequence
   if (state === "book") return bookTap(e); // a tap turns the page
+  if (state === "route") return routeTap(e); // a tap skips the drive, then goes on
   const [cx, cy] = toCanvas(e);
   if (inside(cx, cy, MUTE_BTN)) return toggleMute();
   if (isMenu()) {
