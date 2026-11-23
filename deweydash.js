@@ -2586,8 +2586,10 @@ function pressReset() {
 // Clicking it turns sound on or off (see pointerdown).
 let soundHint = null; // where it was last drawn: { x, y, w, h } (null when it isn't shown)
 let soundHintHover = false;
+// (also clears the Characters screen's hover: both share the pointing-hand cursor)
 function clearSoundHintHover() {
   soundHintHover = false;
+  charHover = -1;
   canvas.style.cursor = "";
 }
 function drawSoundKeyHint() {
@@ -4006,7 +4008,7 @@ function draw() {
   // best, so it's only as wide as those. It keeps its right end by the profile (centred on a phone).
   ctx.font = "bold 16px Georgia, serif";
   const room = scoreBarRoom(),
-    sw = story ? Math.min(SCORE_W, room.w) : 108 + ctx.measureText("BEST " + best).width + 14,
+    sw = story ? Math.min(SCORE_W, room.w) : 108 + ctx.measureText("Best " + best).width + 14,
     sx = tall() ? room.x + room.w / 2 - sw / 2 : room.x + room.w - sw, // (wide: up against the hearts)
     sy = SCORE.y; // top of the score bar
   ctx.fillStyle = "rgba(20, 14, 10, 0.65)";
@@ -4036,7 +4038,7 @@ function draw() {
     drawStoryProgress(sx, sy, sw); // the level, and how far through it the book is
   else {
     ctx.fillStyle = GOLD;
-    ctx.fillText("BEST " + best, sx + 108, sy + 22);
+    ctx.fillText("Best " + best, sx + 108, sy + 22);
   }
 
   drawPowerHUD();
@@ -7365,6 +7367,8 @@ function pickCharacter(i) {
   tone(660, 880, 0.07, "triangle", 0.08);
 }
 
+// The character card the mouse is over (desktop), or -1: it lifts a little and warms up.
+let charHover = -1;
 // The character cards on the Characters screen (shared by drawing and tapping).
 // Wide: one row of four. Tall: a 2 × 2 grid.
 const CARD = { w: 136, h: 160, gap: 12, y: 64 };
@@ -7404,13 +7408,14 @@ function drawCharacters() {
   cardRules(px, py + 38, pw);
 
   CHARACTERS.forEach((c, i) => {
-    const on = i === charIndex;
+    const on = i === charIndex,
+      hover = !on && i === charHover; // (desktop: the mouse is over another book)
     const r = cardRect(i),
-      lift = on ? -4 : 0;
-    ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : "rgba(52, 64, 79, 0.06)";
+      lift = on ? -4 : hover ? -2 : 0;
+    ctx.fillStyle = on ? "rgba(215, 163, 94, 0.3)" : hover ? "rgba(215, 163, 94, 0.14)" : "rgba(52, 64, 79, 0.06)";
     roundRect(r.x, r.y + lift, r.w, r.h, 10);
-    ctx.strokeStyle = on ? CARD_RED : "rgba(122, 106, 85, 0.35)";
-    ctx.lineWidth = on ? 2.5 : 1;
+    ctx.strokeStyle = on ? CARD_RED : hover ? "rgba(168, 56, 47, 0.55)" : "rgba(122, 106, 85, 0.35)";
+    ctx.lineWidth = on ? 2.5 : hover ? 1.5 : 1;
     ctx.stroke();
     // the character, jogging on a little shelf (the chosen one runs, the others wait)
     const floor = r.y + lift + (tall() ? 112 : 100),
@@ -8225,6 +8230,7 @@ canvas.addEventListener("pointermove", (e) => {
     return;
   }
   if (state !== "ready" && soundHintHover) clearSoundHintHover(); // (left the start screen)
+  if (state !== "chars" && charHover >= 0) clearSoundHintHover(); // (left the Characters screen)
   if (!isMenu()) return;
   keyNav = false;
   const [cx, cy] = toCanvas(e);
@@ -8232,9 +8238,16 @@ canvas.addEventListener("pointermove", (e) => {
   const overHint = state === "ready" && !!soundHint && inside(cx, cy, soundHint);
   if (overHint !== soundHintHover) {
     soundHintHover = overHint;
-    canvas.style.cursor = overHint ? "pointer" : "";
     if (overHint) sfx.hover(); // (the same tick as the other buttons: see highlight)
   }
+  // the Characters screen: the card under the mouse (desktop)
+  const overChar =
+    state === "chars" && HAS_KEYS ? CHARACTERS.findIndex((_, i) => inside(cx, cy, cardRect(i))) : -1;
+  if (overChar !== charHover) {
+    charHover = overChar;
+    if (overChar >= 0 && overChar !== charIndex) sfx.hover();
+  }
+  canvas.style.cursor = overHint || overChar >= 0 ? "pointer" : "";
   if (state === "howto" && tipsIndex.open) {
     // hovering All tips highlights a tip
     const t = tipsIndex.items.findIndex((r) => r && inside(cx, cy, r));
