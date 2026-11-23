@@ -1781,8 +1781,8 @@ function makeButtons() {
       { id: "howto", label: "How to play", help: true, x: W / 2 - hw / 2, y: 232, w: hw, h: 46 },
     ];
   }
-  // the pause screen's How to play looks like the start screen's: the quieter "?" pill
-  for (const b of BUTTONS.paused) if (b.id === "howto") b.help = true;
+  // the pause screen: Resume, How to play and Quit in their places on its card (see drawPause)
+  BUTTONS.paused = pauseButtons();
   // How to play: Back and Next at the bottom, either side of where you are; ✕ in the top right
   {
     const y = BUTTON_Y[layout].howto;
@@ -2868,6 +2868,7 @@ function draw() {
   ctx.globalAlpha = 1;
   ctx.restore(); // end of the shaking part
 
+  if (state === "paused") dimBehindCard(); // (before the top bar, which stays bright while paused)
   if (state === "ready") drawStartScreen();
   else if (!onStartScreen()) drawHearts(MUTE_BTN.x + MUTE_BTN.w + 8, MUTE_BTN.y + (MUTE_BTN.h - 32) / 2); // (centred on the buttons)
   if (state === "running") drawPauseButton();
@@ -2970,6 +2971,16 @@ const INK = "#3a2a1e", // text on the cards
   INK_SOFT = "#7a6a55", // quieter text
   CARD_RED = "#a8382f"; // the rules, ribbon and stamp
 
+// A rounded rectangle's outline, to stroke (roundRect fills).
+function roundRectPath(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 // Fill the whole screen (in full screen, that reaches past the layout, above and below).
 function fillScreen() {
   ctx.fillRect(0, -TOP, W, H + 2 * TOP);
@@ -3248,26 +3259,283 @@ function drawRingButton(b, dim = false) {
   ctx.stroke();
 }
 
+// The pause screen: "Bookmarked!", as if a bookmark had been slipped in to keep your place. The
+// card sits below the top bar, which stays bright (the run behind is dimmed before the bar is
+// drawn: see draw). On the left, where your run's at; on the right, a big Resume, How to play, and
+// Quit on its own under a rule, quieter, saying where it goes. Sound is the top bar's button.
+// On a phone it's all one column.
+function pauseLayout() {
+  if (tall()) {
+    const card = { x: 16, y: 124, w: W - 32, h: 486 },
+      x = card.x + 24,
+      w = card.w - 48;
+    return {
+      tall: true,
+      card,
+      info: { x, y: card.y, w },
+      resume: { x, y: card.y + 262, w, h: 56 },
+      howto: { x, y: card.y + 330, w, h: 48 },
+      ruleY: card.y + card.h - 68,
+      quit: { x, y: card.y + card.h - 58, w, h: 44 },
+      ribbonX: card.x + card.w - 56,
+    };
+  }
+  const card = { x: 136, y: 60, w: 528, h: 244 },
+    x = card.x + 300,
+    w = card.w - 300 - 24;
+  return {
+    tall: false,
+    card,
+    info: { x: card.x + 72, y: card.y, w: 210 },
+    divX: card.x + 288,
+    resume: { x, y: card.y + 26, w, h: 50 },
+    howto: { x, y: card.y + 88, w, h: 38 },
+    ruleY: card.y + 168,
+    quit: { x, y: card.y + 174, w, h: 32 },
+    hintY: card.y + card.h - 14,
+    ribbonX: card.x + 36,
+  };
+}
+// Its buttons, in MENU.paused's order (Resume, How to play, Quit). See makeButtons.
+function pauseButtons() {
+  const L = pauseLayout();
+  return [
+    { id: "resume", label: "Resume", ...L.resume },
+    { id: "howto", label: "How to play", ...L.howto },
+    { id: "quit", label: "Quit", ...L.quit },
+  ];
+}
 function drawPause() {
-  dimBehindCard();
-  const pw = tall() ? 380 : 500, // wide enough for three buttons in a row
-    py = tall() ? 120 : 34,
-    ph = tall() ? 400 : 252;
-  drawCard(W / 2 - pw / 2, py, pw, ph, "Shh… paused");
+  const L = pauseLayout(),
+    c = L.card,
+    B = BUTTONS.paused,
+    on = (id) => B[selected.paused] && B[selected.paused].id === id;
+  // (the run behind was dimmed before the top bar was drawn)
+  drawCard(c.x, c.y, c.w, c.h, null, false);
+  // the bookmark, tucked in over the top edge
+  const rx = L.ribbonX,
+    rw = 22,
+    rh = 52;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+  ctx.fillRect(rx + 2, c.y - 8, rw, rh);
+  poly(CARD_RED, rx, c.y - 8, rx + rw, c.y - 8, rx + rw, c.y - 8 + rh, rx + rw / 2, c.y - 8 + rh * 0.8, rx, c.y - 8 + rh);
+  if (!L.tall) {
+    ctx.fillStyle = "rgba(58, 42, 30, 0.18)";
+    ctx.fillRect(L.divX, c.y + 24, 1, c.h - 48);
+  }
+  drawPauseInfo(L);
+
+  // Resume: the big one (dark letters: white on the gold is hard to read), picked to start with
+  const r = L.resume;
+  if (on("resume")) {
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
+    roundRectPath(r.x - 5, r.y - 5, r.w + 10, r.h + 10, 15);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+  roundRect(r.x, r.y + 4, r.w, r.h, 11);
+  ctx.fillStyle = MAPLE;
+  roundRect(r.x, r.y, r.w, r.h, 11);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 2;
+  roundRectPath(r.x, r.y, r.w, r.h, 11);
+  ctx.stroke();
+  const keycap = HAS_KEYS && !padUI();
+  ctx.font = `bold ${L.tall ? 22 : 19}px Georgia, serif`;
+  const tw = ctx.measureText("Resume").width,
+    total = 16 + 10 + tw + (keycap ? 28 : 0),
+    tx = r.x + r.w / 2 - total / 2,
+    cy = r.y + r.h / 2;
+  poly("#2a1d14", tx + 2, cy - 7, tx + 14, cy, tx + 2, cy + 7);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#2a1d14";
+  ctx.fillText("Resume", tx + 26, cy + 7);
+  if (keycap) {
+    // the key that does it, as a little paper keycap
+    const kx = tx + 26 + tw + 10,
+      ky = cy - 10;
+    ctx.fillStyle = "#b9a888";
+    roundRect(kx, ky + 2, 20, 20, 4);
+    ctx.fillStyle = "#fffaf0";
+    roundRect(kx, ky, 20, 20, 4);
+    ctx.textAlign = "center";
+    ctx.fillStyle = INK;
+    ctx.font = "bold 11px Georgia, serif";
+    ctx.fillText("P", kx + 10, ky + 14);
+  }
+
+  // How to play
+  const h = L.howto;
+  if (on("howto")) {
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
+    roundRectPath(h.x - 4, h.y - 4, h.w + 8, h.h + 8, 13);
+    ctx.stroke();
+  }
+  ctx.fillStyle = NAVY;
+  roundRect(h.x, h.y, h.w, h.h, 9);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1.5;
+  roundRectPath(h.x, h.y, h.w, h.h, 9);
+  ctx.stroke();
+  ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
+  const hw = ctx.measureText("How to play").width,
+    hx = h.x + h.w / 2 - (22 + 8 + hw) / 2,
+    hy = h.y + h.h / 2;
+  ctx.strokeStyle = GOLD;
+  ctx.beginPath();
+  ctx.arc(hx + 11, hy, 10, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.fillStyle = GOLD;
+  ctx.font = `bold ${L.tall ? 13 : 12}px Georgia, serif`;
+  ctx.fillText("?", hx + 11, hy + 4);
+  ctx.textAlign = "left";
+  ctx.fillStyle = PAPER;
+  ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
+  ctx.fillText("How to play", hx + 30, hy + 5);
+
+  // Quit: on its own under a rule, quieter, and it says where it goes
+  const q = L.quit;
+  ctx.fillStyle = "rgba(58, 42, 30, 0.18)";
+  ctx.fillRect(q.x, L.ruleY, q.w, 1);
+  if (on("quit")) {
+    ctx.fillStyle = "rgba(168, 56, 47, 0.1)";
+    roundRect(q.x, q.y, q.w, q.h, 8);
+    ctx.strokeStyle = CARD_RED;
+    ctx.lineWidth = 1.5;
+    roundRectPath(q.x, q.y, q.w, q.h, 8);
+    ctx.stroke();
+  }
+  const quitText = story ? "Back to the chapters" : "Quit to the start screen";
+  ctx.font = `bold ${L.tall ? 16 : 14}px Georgia, serif`;
+  const qw = ctx.measureText(quitText).width,
+    qx = q.x + q.w / 2 - (14 + 8 + qw) / 2,
+    qy = q.y + q.h / 2;
+  // a door with an arrow leaving through it
+  ctx.strokeStyle = CARD_RED;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(qx + 9, qy - 7);
+  ctx.lineTo(qx + 13, qy - 7);
+  ctx.lineTo(qx + 13, qy + 7);
+  ctx.lineTo(qx + 9, qy + 7);
+  ctx.moveTo(qx + 5, qy - 4);
+  ctx.lineTo(qx + 1, qy);
+  ctx.lineTo(qx + 5, qy + 4);
+  ctx.moveTo(qx + 1, qy);
+  ctx.lineTo(qx + 10, qy);
+  ctx.stroke();
+  ctx.lineCap = "butt";
+  ctx.lineJoin = "miter";
+  ctx.textAlign = "left";
+  ctx.fillStyle = CARD_RED;
+  ctx.fillText(quitText, qx + 22, qy + 5);
+
+  // the keys (with a keyboard or a controller; on a touch screen there's nothing to say)
+  if (!L.tall && (HAS_KEYS || padUI())) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = INK_SOFT;
+    ctx.font = "11px Georgia, serif";
+    ctx.fillText(
+      padUI() ? "▲ ▼ to choose · A to select · Start to resume" : "↑ ↓ to choose · Enter to select · P or Esc to resume",
+      c.x + c.w / 2,
+      L.hintY,
+    );
+  }
+}
+// The left side (the top, on a phone): PAUSED, Bookmarked!, and where your run's at.
+function drawPauseInfo(L) {
+  const { x, y, w } = L.info,
+    big = L.tall;
+  ctx.textAlign = "left";
+  ctx.fillStyle = CARD_RED;
+  ctx.font = "bold 10px Georgia, serif";
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "3px";
+  ctx.fillText("PAUSED", x, y + (big ? 34 : 28));
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+  ctx.fillStyle = INK;
+  ctx.font = `bold ${big ? 30 : 26}px Georgia, serif`;
+  ctx.fillText("Bookmarked!", x, y + (big ? 66 : 56));
+  ctx.fillStyle = "#5c4a3a";
+  ctx.font = `italic ${big ? 15 : 13}px Georgia, serif`;
+  ctx.fillText("Your run will wait right here.", x, y + (big ? 90 : 76));
+  let ty = y + (big ? 104 : 90); // where the boxes start
+  const gap = big ? 8 : 6,
+    th = big ? 54 : 40,
+    tw = (w - gap) / 2;
+  if (story) {
+    // where you are in the story: the level, and how far through it
+    const bh = big ? 74 : 58;
+    pauseBox(x, ty, w, bh);
+    ctx.textAlign = "left";
+    ctx.fillStyle = INK_SOFT;
+    ctx.font = `bold ${big ? 10 : 9}px Georgia, serif`;
+    ctx.fillText(`CHAPTER ${story.level.chapter} · LEVEL ${story.level.num}`, x + 12, ty + (big ? 20 : 16));
+    ctx.fillStyle = INK;
+    ctx.font = `bold ${big ? 18 : 15}px Georgia, serif`;
+    ctx.fillText(story.level.name, x + 12, ty + (big ? 42 : 34));
+    const pct = Math.round(storyProgress() * 100),
+      barX = x + 12,
+      barW = w - 24 - 40,
+      barY = ty + bh - (big ? 20 : 15);
+    ctx.fillStyle = "rgba(58, 42, 30, 0.14)";
+    roundRect(barX, barY, barW, 8, 4);
+    ctx.fillStyle = GOLD;
+    roundRect(barX, barY, Math.max(8, (barW * pct) / 100), 8, 4);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#5c4a3a";
+    ctx.font = "bold 11px Georgia, serif";
+    ctx.fillText(pct + "%", x + w - 12, barY + 8);
+    ty += bh + gap;
+    pauseTile(x, ty, tw, th, String(pages), pages === 1 ? "page found" : "pages found", big);
+    pauseHearts(x + tw + gap, ty, tw, th, big);
+    return;
+  }
+  // Endless: pages, distance, hearts, and how far off your best
+  const m = Math.floor(runDist * METERS_PER_PX);
+  pauseTile(x, ty, tw, th, String(pages), pages === 1 ? "page" : "pages", big);
+  pauseTile(x + tw + gap, ty, tw, th, `${m} m`, "run so far", big);
+  ty += th + gap;
+  pauseHearts(x, ty, tw, th, big);
+  if (pages > best) pauseTile(x + tw + gap, ty, tw, th, "New best!", best ? `old best: ${best}` : "your first run", big, true);
+  else pauseTile(x + tw + gap, ty, tw, th, `${best - pages + 1} to go`, "to beat your best", big, true);
+}
+function pauseBox(x, y, w, h) {
+  ctx.fillStyle = "rgba(58, 42, 30, 0.06)";
+  roundRect(x, y, w, h, 7);
+  ctx.strokeStyle = "rgba(58, 42, 30, 0.12)";
+  ctx.lineWidth = 1;
+  roundRectPath(x, y, w, h, 7);
+  ctx.stroke();
+}
+// A box with a number (or a few words, if `small`) and what it means under it.
+function pauseTile(x, y, w, h, value, what, big, small = false) {
+  pauseBox(x, y, w, h);
   ctx.textAlign = "center";
   ctx.fillStyle = INK;
-  ctx.font = "16px Georgia, serif";
-  ctx.fillText("Your run will wait right here.", W / 2, py + 92);
-  ctx.fillStyle = CARD_RED;
-  ctx.font = "bold 15px Georgia, serif";
-  ctx.fillText(HAS_KEYS ? "Press P or Esc to keep reading" : "Tap Resume to keep reading", W / 2, py + 120); // (keys only where there are keys)
-  drawButtons();
-  hint(
-    tall()
-      ? "Quit goes back to the start screen"
-      : "Tab or ← → to choose · Enter to select · Quit goes back to the start screen",
-    py + ph - 14,
-  );
+  ctx.font = `bold ${small ? (big ? 17 : 14) : big ? 24 : 19}px Georgia, serif`;
+  ctx.fillText(value, x + w / 2, y + h / 2 + (big ? 3 : 2));
+  ctx.fillStyle = INK_SOFT;
+  ctx.font = `${big ? 12 : 10}px Georgia, serif`;
+  ctx.fillText(what, x + w / 2, y + h - (big ? 8 : 5));
+}
+function pauseHearts(x, y, w, h, big) {
+  pauseBox(x, y, w, h);
+  const s = big ? 8 : 6.5,
+    gap = s * 2.6;
+  for (let i = 0; i < LIVES; i++) {
+    heartPath(x + w / 2 + (i - (LIVES - 1) / 2) * gap, y + h / 2 - (big ? 5 : 4), s);
+    ctx.fillStyle = i < lives ? RIBBON_RED : "rgba(58, 42, 30, 0.18)";
+    ctx.fill();
+  }
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK_SOFT;
+  ctx.font = `${big ? 12 : 10}px Georgia, serif`;
+  ctx.fillText(lives === 1 ? "heart left" : "hearts left", x + w / 2, y + h - (big ? 8 : 5));
 }
 
 // How to play: its own screen, opened from the start screen or the pause screen. Each section's
