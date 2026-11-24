@@ -2209,6 +2209,15 @@ const selected = {
 // Was the highlight last moved with the keyboard? If not (mouse or finger), the start screen has
 // nothing highlighted except the button being hovered (selected.ready is -1).
 let keyNav = false;
+// Where the mouse is over the game (canvas units), or null (off it, or a finger: no hovering).
+let pointerAt = null;
+// Which button on a screen wears the highlight ring: with the keys, the selected one; with the
+// mouse, only the one it's over right now (none once it moves off).
+function litIndex(screen) {
+  if (keyNav) return selected[screen];
+  if (!pointerAt || !BUTTONS[screen]) return -1;
+  return BUTTONS[screen].findIndex((b) => inside(pointerAt.x, pointerAt.y, b));
+}
 
 // Keep the most pages collected in one run. Returns true if this run beat it.
 function saveBest() {
@@ -2713,8 +2722,9 @@ function drawSettings() {
     big = tall();
   drawCard(L.x, L.y, L.w, L.h, "Settings");
   drawSoundHeading(L, big);
+  const lit = litIndex("settings");
   BUTTONS.settings.forEach((b, i) => {
-    const on = i === selected.settings;
+    const on = i === lit;
     if (b.toggle) {
       const [, name, about] = SETTING_ROWS.find((r) => r[0] === b.toggle),
         cy = b.y + b.h / 2;
@@ -4197,8 +4207,9 @@ function drawButtons() {
   if (state === "ready") drawLockedPops(); // (over the buttons)
 }
 function drawButtonList() {
+  const lit = litIndex(state);
   BUTTONS[state].forEach((b, i) => {
-    const on = i === selected[state];
+    const on = i === lit;
     if (b.help) return drawHelpButton(b, on);
     if (b.gear) return drawGearButton(b, on);
     if (b.seg) return drawModeSegment(b, on);
@@ -4676,7 +4687,8 @@ function drawPause() {
   const L = pauseLayout(),
     c = L.card,
     B = BUTTONS.paused,
-    on = (id) => B[selected.paused] && B[selected.paused].id === id,
+    lit = B[litIndex("paused")],
+    on = (id) => !!lit && lit.id === id,
     big = tall();
   // (the run behind was dimmed before the top bar was drawn)
   drawCard(c.x, c.y, c.w, c.h, "Bookmarked!");
@@ -5171,8 +5183,7 @@ function drawHowTo() {
   ctx.fillStyle = "rgba(10, 6, 4, 0.6)"; // (darker than the other menus: the cards don't cover much)
   fillScreen();
   if (tipsIndex.open) return drawTipsIndex();
-  const L = HOWTO_LAYOUT[layout],
-    scr = HOWTO_SCREENS[howtoScreen],
+  const scr = HOWTO_SCREENS[howtoScreen],
     page = HOWTO_PAGES[scr.page],
     rows = page.rows().slice(scr.from, scr.to),
     now = performance.now();
@@ -8248,9 +8259,10 @@ canvas.addEventListener("pointermove", (e) => {
   }
   if (state !== "ready" && soundHintHover) clearSoundHintHover(); // (left the start screen)
   if (state !== "chars" && charHover >= 0) clearSoundHintHover(); // (left the Characters screen)
+  const [cx, cy] = toCanvas(e);
+  pointerAt = e.pointerType === "touch" ? null : { x: cx, y: cy }; // (for the highlight ring: see litIndex)
   if (!isMenu()) return;
   keyNav = false;
-  const [cx, cy] = toCanvas(e);
   // the start screen's M hint: brighter, and a pointing hand, while the mouse is over it
   const overHint = state === "ready" && !!soundHint && inside(cx, cy, soundHint);
   if (overHint !== soundHintHover) {
@@ -8272,11 +8284,16 @@ canvas.addEventListener("pointermove", (e) => {
     return;
   }
   const i = BUTTONS[state].findIndex((b) => inside(cx, cy, b));
-  if (i >= 0) highlight(state, i);
+  if (i >= 0 && i !== hoverWas) sfx.hover(); // (a tick on moving onto a button, even the same one again)
+  hoverWas = i;
+  if (i >= 0) selected[state] = i;
   else if (state === "ready") selected.ready = -1; // off the buttons: nothing highlighted
 });
+let hoverWas = -1; // the button the mouse was last over (-1: none), for the hover tick
 // The mouse leaving the game also hands the start screen's highlight back to Start.
 canvas.addEventListener("pointerleave", () => {
+  pointerAt = null; // (nothing hovered: no ring, unless the keys are in use)
+  hoverWas = -1;
   clearSoundHintHover();
   if (state === "ready" && !keyNav) selected.ready = -1;
 });

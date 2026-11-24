@@ -675,7 +675,7 @@ function storyLevelsKey(e) {
 function drawLevels() {
   const L = levelsLayout(),
     B = BUTTONS.levels,
-    focus = B[selected.levels] || {};
+    focus = B[litIndex("levels")] || {};
   dimBehindCard();
   ctx.fillStyle = "rgba(10, 6, 4, 0.25)";
   fillScreen();
