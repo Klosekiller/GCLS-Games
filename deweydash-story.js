@@ -215,15 +215,16 @@ function beginLevel(i, again = false) {
     // first a look at the scene (as the iris opens, and a moment more), then the level's goals
     // (Let's go! starts the countdown)
     state = "preview";
-    story.previewT = 0;
+    previewT = 0;
   }
 }
 // The look at the scene before a level's goals (state "preview"): about a second once the iris is
-// open, then the goals pop up.
+// open, then the goals pop up. (Endless Mode does this too, with its own goals: see beginCountdown.)
 const PREVIEW_MS = 1600; // (from when the level is set up: the iris takes the first ~0.6 s, then a second's look)
+let previewT = 0; // ms into the preview
 function updateStoryPreview(dt) {
-  story.previewT += dt; // (the run's own clock doesn't start until after the countdown)
-  if (story.previewT >= PREVIEW_MS) openStoryTip("goals");
+  previewT += dt; // (the run's own clock doesn't start until after the countdown)
+  if (previewT >= PREVIEW_MS) openStoryTip(story ? "goals" : "endless");
 }
 // A level's scripted opening (`opening`), asked by pickNext (in deweydash.js) as each thing goes
 // out: the next thing in the opening, or null once it's all out. (The first is set up by beginLevel.)
@@ -402,7 +403,7 @@ function updateCleared(dt) {
 function storyChoose(id) {
   if (id === "endless") {
     leaveStory();
-    startRun();
+    startRun(true); // (with its goals first)
     return true;
   }
   if (id === "story") {
@@ -429,12 +430,20 @@ function storyChoose(id) {
       return true;
     }
   }
+  if (state === "tip" && id === "tipback" && STORY_TIPS[tipName].back) {
+    openStoryTip(STORY_TIPS[tipName].back); // ‹ Back: the screen before (its cards deal in again)
+    return true;
+  }
+  if (state === "tip" && id === "tipgo" && STORY_TIPS[tipName].next) {
+    openStoryTip(STORY_TIPS[tipName].next); // Next: the tip's second screen (its cards deal in)
+    return true;
+  }
   if (state === "tip" && id === "tipgo") {
     // got it: count down again, so there's a moment to get ready
     state = "countdown";
     countTime = COUNT_START_MS - 250;
     countShown = 0;
-    story.resumed = story.tip !== "goals"; // (after the goals, it's the level's real start: its title shows)
+    if (story) story.resumed = tipName !== "goals"; // (after the goals, it's the level's real start: its title shows)
     return true;
   }
   if (state === "cleared") {
@@ -606,6 +615,24 @@ function levelButtons() {
 }
 function storyButtons() {
   levelButtons();
+  // The tips' buttons: just the one (from MENU.tip), or, on a tip's second screen, ‹ Back beside it
+  // (on the left, as in How to play; the main button first, so Enter picks it)
+  BUTTONS.tipOne = BUTTONS.tip;
+  const y = BUTTON_Y[layout].tip;
+  if (tall()) {
+    const x = W / 2 - 181;
+    BUTTONS.tipBack = [
+      { id: "tipgo", label: "Let's go!", x: x + 162, y, w: 200, h: 54 },
+      { id: "tipback", label: "‹ Back", x, y, w: 150, h: 54 },
+    ];
+  } else {
+    const x = W / 2 - 148;
+    BUTTONS.tipBack = [
+      { id: "tipgo", label: "Let's go!", x: x + 136, y, w: 160, h: 42 },
+      { id: "tipback", label: "‹ Back", x, y, w: 120, h: 42 },
+    ];
+  }
+  if (state === "tip") useTipButtons(); // (a new layout mid-tip)
 }
 // Open the book at chapter c, with the furthest level you can play there picked (or its spine).
 function showChapter(c) {
@@ -1057,7 +1084,7 @@ function drawStoryOverlay() {
 function drawLevelBanner() {
   const a =
     state === "preview"
-      ? Math.min(1, Math.max(0, (story.previewT - 700) / 300)) // (once the iris is open)
+      ? Math.min(1, Math.max(0, (previewT - 700) / 300)) // (once the iris is open)
       : state === "countdown"
         ? Math.min(1, Math.max(0, (countTime - COUNT_START_MS + 300) / 300))
         : 1 - runTime / 1400;
@@ -1202,6 +1229,7 @@ const STORY_TIPS = {
   // (not watched for: shown as a level with `briefing` starts, before its countdown)
   goals: {
     name: "Your goals",
+    button: "Let's go!",
     line: () => storyLine(story.level),
     cards: () => {
       const lv = story.level,
@@ -1231,6 +1259,22 @@ const STORY_TIPS = {
       ].filter(Boolean);
     },
   },
+  // (Endless Mode's goals, before an Endless run's countdown: the same cards as How to play's Goal screen)
+  // (only three cards fit, so Next goes on to a second screen: jumping and ducking)
+  endless: {
+    name: "Your goals",
+    line: ENDLESS_GOAL_LINE,
+    cards: endlessGoalCards,
+    next: "endlessControls",
+  },
+  // (How to play's Controls screen, just Jump and Duck: keys, controller or touch, whichever you have)
+  endlessControls: {
+    name: "Controls",
+    line: () => HOWTO_PAGES.find((p) => p.name === "Controls").tip(),
+    cards: () => HOWTO_PAGES.find((p) => p.name === "Controls").rows().slice(0, 2),
+    button: "Let's go!",
+    back: "endless", // (‹ Back, or Esc: the goals again)
+  },
 };
 // The level's last page (`lastPage`): once nothing new is coming (the clear stretch before the goal),
 // one page on the floor, just ahead, where running straight on collects it. Called every frame.
@@ -1257,23 +1301,42 @@ function storyWatchTips() {
     }
   }
 }
+let tipName = null, // the tip showing (a key of STORY_TIPS)
+  tipAt = 0; // when it opened (its cards deal in)
 function openStoryTip(name) {
-  tipsSeen.add(story.level.id + ":" + name); // (trying again skips it)
-  story.tip = name;
-  story.tipAt = performance.now(); // (its cards deal in)
+  if (story) tipsSeen.add(story.level.id + ":" + name); // (trying again skips it)
+  tipName = name;
+  tipAt = performance.now();
   duckHeld = false;
   state = "tip";
   selected.tip = 0;
+  useTipButtons();
+}
+// The tip's buttons: one, or with ‹ Back if it has a screen before it. The main one says Next
+// (if it has a screen after), or the tip's own word, or Got it.
+function useTipButtons() {
+  const t = STORY_TIPS[tipName];
+  BUTTONS.tip = t.back ? BUTTONS.tipBack : BUTTONS.tipOne;
+  BUTTONS.tip[0].label = t.next ? "Next" : t.button || "Got it";
 }
 // A tip, drawn like a screen of How to play: its name and line, its card(s), the button, the hint.
 function drawStoryTip() {
-  const t = STORY_TIPS[story.tip];
-  BUTTONS.tip[0].label = story.tip === "goals" ? "Let's go!" : "Got it";
+  const t = STORY_TIPS[tipName];
   dimBehindCard();
   ctx.fillStyle = "rgba(10, 6, 4, 0.6)"; // (as dark as How to play)
   fillScreen();
   drawHowtoHeading(t.name, typeof t.line === "function" ? t.line() : t.line);
-  drawHowtoCards(t.cards(), story.tipAt, performance.now());
+  // more than one screen (`back` / `next`): How to play's progress bar, one segment per screen
+  let at = 0,
+    first = tipName;
+  while (STORY_TIPS[first].back) {
+    first = STORY_TIPS[first].back;
+    at++;
+  }
+  let n = 1;
+  for (let k = first; STORY_TIPS[k].next; k = STORY_TIPS[k].next) n++;
+  if (n > 1) drawHowtoSegs(n, at);
+  drawHowtoCards(t.cards(), tipAt, performance.now());
   drawButtons();
   if (!tall()) {
     ctx.textAlign = "center";

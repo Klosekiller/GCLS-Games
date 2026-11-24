@@ -2868,8 +2868,10 @@ function updateFade(dt) {
   then();
   fadeIn = -FADE_HOLD_MS; // counts up through the hold (still black), then the reveal
 }
-function startRun() {
-  fadeTo(beginCountdown);
+// (briefing: an Endless run started from the Characters screen first shows its goals, as a Story
+// Mode level does; Try again goes straight to the countdown)
+function startRun(briefing = false) {
+  fadeTo(() => beginCountdown(briefing));
 }
 // Back to the start screen (Main menu from game over, or Quit from pause).
 function goHome() {
@@ -2881,11 +2883,16 @@ function goHome() {
   });
 }
 // Called when the screen is fully black: set up the run and begin the countdown.
-function beginCountdown() {
+function beginCountdown(briefing = false) {
   reset(); // a fresh run (the start screen's animation clock kept ticking)
   state = "countdown";
   countTime = 0;
   countShown = 0;
+  if (briefing) {
+    // first a look at the scene, then the goals (Let's go! starts the countdown: see updateStoryPreview)
+    state = "preview";
+    previewT = 0;
+  }
 }
 function updateCountdown(dt) {
   countTime += dt;
@@ -3107,7 +3114,7 @@ function goBack() {
   else if (state === "chars") choose("charsBack");
   else if (state === "settings") choose("settingsBack");
   else if (state === "over") choose("menu");
-  else if (state === "tip") choose("tipgo"); // (Esc: got it)
+  else if (state === "tip") choose(STORY_TIPS[tipName].back ? "tipback" : "tipgo"); // (Esc: got it, or back a screen)
 }
 
 // ---------- Layout: wide (desktop, tablets, phones on their side) or tall (phones held upright) ----------
@@ -3229,7 +3236,7 @@ function frame(now) {
     overTime += dt;
   } else if (state === "book") updateBook(dt);
   else if (state === "preview")
-    updateStoryPreview(dt); // Story Mode: a look at the scene before the level's goals
+    updateStoryPreview(dt); // a look at the scene before the goals (a Story Mode level, or Endless)
   else if (state === "route")
     updateRoute(dt); // Story Mode: the Bookmobile's drive between chapters
   else if (state === "cleared") updateCleared(dt);
@@ -4052,6 +4059,7 @@ function draw() {
   if (state === "howto") drawHowTo();
   if (state === "over") drawGameOver();
   if (story) drawStoryOverlay(); // a level's title as it begins, and the card when it's cleared
+  else if (state === "tip") drawStoryTip(); // (Endless: its goals, before the countdown)
 }
 
 // ---------- Menu drawing ----------
@@ -4762,6 +4770,29 @@ const touchUI = !HAS_KEYS; // (a touch screen: see HAS_KEYS)
 // With a controller plugged in (see Game controller, at the end), the Controls cards show its buttons.
 const padUI = () => pad.polling,
   PAD_FACES = { A: "#6cc24a", B: "#e5484d" }; // the A and B buttons' letter colors
+// Endless Mode's goals: How to play's Goal screen, and the pop-up before an Endless run's countdown
+// (STORY_TIPS.endless, in deweydash-story.js).
+const ENDLESS_GOAL_LINE = "Dash through the library and collect as many pages as you can!";
+const endlessGoalCards = () => [
+  {
+    title: "Loose pages",
+    how: "Every one you grab adds to your score.",
+    pic: "run",
+    items: iconPage,
+    count: 3,
+  },
+  {
+    title: "Bookmarks",
+    how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`,
+    pic: "icon",
+    icon: iconBookmarkPick,
+  },
+  {
+    title: "Go the distance",
+    how: "The farther you run, the trickier it gets.",
+    pic: "run",
+  },
+];
 const HOWTO_PAGES = [
   {
     name: "Goal",
@@ -4770,7 +4801,7 @@ const HOWTO_PAGES = [
     tip: () =>
       howtoMode === "story"
         ? "Find Dewey's lost pages and reach the end of each level!"
-        : "Dash through the library and collect as many pages as you can!",
+        : ENDLESS_GOAL_LINE,
     rows: () =>
       howtoMode === "story"
         ? [
@@ -4793,26 +4824,7 @@ const HOWTO_PAGES = [
               pic: "run",
             },
           ]
-        : [
-            {
-              title: "Loose pages",
-              how: "Every one you grab adds to your score.",
-              pic: "run",
-              items: iconPage,
-              count: 3,
-            },
-            {
-              title: "Bookmarks",
-              how: `Rare, but worth ${BOOKMARK_PAGES} pages each!`,
-              pic: "icon",
-              icon: iconBookmarkPick,
-            },
-            {
-              title: "Go the distance",
-              how: "The farther you run, the trickier it gets.",
-              pic: "run",
-            },
-          ],
+        : endlessGoalCards(),
   },
   {
     name: "Controls",
@@ -5170,22 +5182,8 @@ function drawHowTo() {
     typeof page.tip === "function" ? page.tip() : page.tip,
   );
 
-  // the progress bar: one segment per section (done in gold, this one in cream). Tap to jump.
-  const n = HOWTO_PAGES.length,
-    gap = 5,
-    sx = W / 2 - (n * L.segW + (n - 1) * gap) / 2;
-  howtoSegs = [];
-  for (let i = 0; i < n; i++) {
-    const x = sx + i * (L.segW + gap);
-    ctx.fillStyle =
-      i < scr.page
-        ? GOLD
-        : i === scr.page
-          ? PAPER
-          : "rgba(243, 234, 215, 0.25)";
-    roundRect(x, L.segY, L.segW, tall() ? 5 : 4, 2);
-    howtoSegs.push({ x: x - gap / 2, y: L.segY - 10, w: L.segW + gap, h: 24 }); // (a bigger target than it looks)
-  }
+  // the progress bar: one segment per section. Tap to jump.
+  howtoSegs = drawHowtoSegs(HOWTO_PAGES.length, scr.page);
 
   drawHowtoCards(rows, howtoDealAt, now);
 
@@ -5208,6 +5206,22 @@ function drawHowTo() {
       BUTTON_Y.wide.howto + 56,
     );
   }
+}
+// How to play's progress bar (also a pop-up's, when it has more than one screen): n segments under
+// the heading, the ones before `at` in gold, `at` in cream, the rest faint. Returns where each was
+// drawn (a bigger target than it looks, for taps).
+function drawHowtoSegs(n, at) {
+  const L = HOWTO_LAYOUT[layout],
+    gap = 5,
+    sx = W / 2 - (n * L.segW + (n - 1) * gap) / 2,
+    segs = [];
+  for (let i = 0; i < n; i++) {
+    const x = sx + i * (L.segW + gap);
+    ctx.fillStyle = i < at ? GOLD : i === at ? PAPER : "rgba(243, 234, 215, 0.25)";
+    roundRect(x, L.segY, L.segW, tall() ? 5 : 4, 2);
+    segs.push({ x: x - gap / 2, y: L.segY - 10, w: L.segW + gap, h: 24 });
+  }
+  return segs;
 }
 // How to play's heading (also Story Mode's pop-ups'): a name, and its one line under it (two on a
 // phone, if it needs them), in cream on the dark.
