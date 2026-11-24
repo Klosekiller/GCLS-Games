@@ -756,6 +756,10 @@ const HAS_KEYS = !(
   window.matchMedia &&
   (window.matchMedia("(hover: none)").matches || window.matchMedia("(pointer: coarse)").matches)
 );
+// Is the player using a touch screen? It starts as the guess above, then follows what they actually
+// do: a finger on the game means touch, a key or a mouse click means keys. (Tablets and some phones
+// say they have a mouse when they don't, so the tips and the Controls cards go by this, not HAS_KEYS.)
+let usingTouch = !HAS_KEYS;
 const MUTE_BTN = { x: 12, y: 12, w: 140, h: 34 };
 // A small, quiet keycap (18 square) at (x, y): the key that does what the button beside it does.
 function drawKeycap(x, y, label) {
@@ -4580,7 +4584,7 @@ const MIDRUN_CARD = {
   tall: { x: 16, y: 124, h: 486 },
 };
 // The hint line's words: for keys, for a controller, or for a touch screen.
-const hintFor = (keys, pad, touch) => (padUI() ? pad : HAS_KEYS ? keys : touch);
+const hintFor = (keys, pad, touch) => (padUI() ? pad : touchUI() ? touch : keys);
 // The story line, under a Story Mode card's heading.
 const storyLine = (lv) =>
   `Chapter ${lv.chapter} · Level ${lv.num} · ${lv.name}`;
@@ -4778,7 +4782,7 @@ function drawPause() {
 // over `over`), "duck" (ducking under `over`, which flies past, or `around`, which it ducks
 // through), "icon" (one big picture, on a navy badge when `badge`), "row" (`count` of `item` in a
 // row) or "power" (a power-up's badge). `keys`: the keys that do it, shown as keycaps on a keyboard.
-const touchUI = !HAS_KEYS; // (a touch screen: see HAS_KEYS)
+const touchUI = () => usingTouch; // (a touch screen: see usingTouch)
 // With a controller plugged in (see Game controller, at the end), the Controls cards show its buttons.
 const padUI = () => pad.polling,
   PAD_FACES = { A: "#6cc24a", B: "#e5484d" }; // the A and B buttons' letter colors
@@ -4843,7 +4847,7 @@ const HOWTO_PAGES = [
     tip: () =>
       padUI()
         ? "Use your controller's buttons, the left stick or the D-pad."
-        : touchUI
+        : touchUI()
           ? "Tap and swipe anywhere on the game."
           : "Use the arrow keys, or Space and the letters below.",
     // (with a controller plugged in, its buttons instead: still four cards, so the screens don't change)
@@ -4881,7 +4885,7 @@ const HOWTO_PAGES = [
               keys: ["View"],
             },
           ]
-        : touchUI
+        : touchUI()
           ? [
               {
                 title: "Jump",
@@ -5210,7 +5214,7 @@ function drawHowTo() {
       `Screen ${howtoScreen + 1} of ${HOWTO_SCREENS.length} · ` +
         (padUI()
           ? "◀ ▶ to flip · ▲ ▼ for the buttons · A to choose · B to close"
-          : touchUI
+          : touchUI()
             ? "swipe to flip · ✕ to close"
             : "← → to flip · Tab for the buttons · T for all tips · Esc to close"),
       W / 2,
@@ -5573,7 +5577,7 @@ function drawHowtoPic(r, x, y, w, h, now) {
 
   // the keys that do it (keyboards and controllers only), as keycaps in the top right corner;
   // a controller's A and B buttons are round, in their own colors
-  if (r.keys && (!touchUI || padUI())) {
+  if (r.keys && (!touchUI() || padUI())) {
     ctx.font = `bold ${11 * s}px Fraunces, Georgia, serif`;
     let kx = x + w - 6 * s;
     for (let i = r.keys.length - 1; i >= 0; i--) {
@@ -5693,7 +5697,7 @@ function drawTipsIndex() {
     ctx.fillText("›", r.x + r.w - 12, cy);
   });
   hint(
-    touchUI
+    touchUI()
       ? "Tap a section to jump to it"
       : "Arrow keys to choose · Enter to open · Esc to go back",
     py + ph - 12,
@@ -7996,6 +8000,7 @@ function iconHeart(x, y) {
 
 // ---------- Input ----------
 document.addEventListener("keydown", (e) => {
+  usingTouch = false; // (the tips talk about keys from now on)
   if (state === "book") return bookKey(e); // turning the pages of a Story Mode picture book
   if (state === "route") return routeKey(e); // skipping (or leaving) the Bookmobile's route map
   // During the opening sequence, any key skips to the start screen.
@@ -8178,6 +8183,8 @@ canvas.addEventListener("pointerdown", (e) => {
   // would do everything twice: the click is ignored, as the controller has already done it.
   if (e.pointerType === "mouse" && performance.now() - pad.lastPress < 150)
     return;
+  if (e.pointerType === "touch") usingTouch = true; // (the tips talk about taps and swipes from now on)
+  else if (e.pointerType === "mouse") usingTouch = false;
   if (intro && state === "ready") return skipIntro(); // a tap skips the opening sequence
   if (state === "book") return bookTap(e); // a tap turns the page
   if (state === "route") return routeTap(e); // a tap skips the drive, then goes on

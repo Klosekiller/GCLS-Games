@@ -733,7 +733,7 @@ function drawLevels() {
     ctx.fillText(
       padUI()
         ? "◀ ▶ chapters · ▲ ▼ levels · A to play · B to go back"
-        : touchUI
+        : touchUI()
           ? "Tap a level to play it · tap a spine to open its chapter"
           : "← → chapters · ↑ ↓ levels · Enter to play · Esc to go back",
       W / 2,
@@ -3213,7 +3213,7 @@ function drawBookPage(pg, L, t) {
   ctx.font = "italic 12px Fraunces, Georgia, serif";
   const last = book.i === book.pages.length - 1,
     end = book.intoLevel ? "begin" : "finish";
-  const hintText = touchUI
+  const hintText = touchUI()
     ? last ? `Tap to ${end}` : "Tap to turn the page"
     : last ? `Enter to ${end}` : "Enter or → to turn the page · Esc to skip";
   ctx.fillText(hintText, tall() ? W / 2 : tx.x + tx.w / 2, L.page.y + L.page.h - 12);
