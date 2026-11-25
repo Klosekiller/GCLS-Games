@@ -4,70 +4,105 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Library Games</title>
+  <link rel="icon" href="logo-icon.svg" type="image/svg+xml" />
+  <!-- Fraunces: Dewey Dash's typeface, for its title in the preview -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;1,9..144,700&display=swap" />
   <link rel="stylesheet" href="index.css" />
 </head>
 <body>
 
   <div class="topbar">
-    <button type="button" id="test-open" class="test-open">Get Test Link</button>
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">
+        <img src="logo-icon.svg" alt="" width="20" height="30" />
+        <span>Library Games</span>
+      </a>
+      <label class="search">
+        <span class="visually-hidden">Search games</span>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2" /><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+        <input type="search" id="search" placeholder="Search games" autocomplete="off" />
+      </label>
+      <button type="button" id="test-open" class="test-open">Get Test Link</button>
+    </div>
   </div>
 
   <header>
-    <h1>Library Games</h1>
-    <p>Pick a game to play. No sign-in, just click and go!</p>
+    <p class="eyebrow">Greenville County Library System</p>
+    <h1>Games</h1>
+    <p class="lede">Pick a game to play. No sign-in, just click and go!</p>
+    <div class="chips" role="group" aria-label="Filter by type of game" id="chips"></div>
   </header>
 
   <main>
-    <section class="group" aria-labelledby="featured">
-      <h2 class="group-title" id="featured">Featured games</h2>
-      <div class="grid">
-      <a class="game" href="game.html?g=deweydash">
-        <!-- Dewey Dash preview: Dewey leaping over a book stack -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="A little book character jumping over a stack of books">
-          <rect width="400" height="200" fill="#8b919a" />
-          <rect width="150" height="170" fill="#aab3c1" />
-          <rect x="250" width="22" height="170" fill="#c62a2f" />
-          <rect x="20" y="104" width="160" height="66" fill="#cda46c" />
-          <rect x="25" y="109" width="150" height="56" fill="#efe6d4" />
-          <g fill="#d94b4b"><rect x="30" y="115" width="7" height="22" /><rect x="88" y="140" width="6" height="22" /></g>
-          <g fill="#4b79d9"><rect x="38" y="118" width="6" height="19" /><rect x="120" y="142" width="7" height="20" /></g>
-          <g fill="#f2c14e"><rect x="45" y="114" width="8" height="23" /><rect x="60" y="141" width="8" height="21" /></g>
-          <g fill="#5cb85c"><rect x="54" y="117" width="6" height="20" /><rect x="140" y="140" width="6" height="22" /></g>
-          <g fill="#9b59b6"><rect x="70" y="116" width="7" height="21" /><rect x="100" y="143" width="8" height="19" /></g>
-          <rect x="25" y="137" width="150" height="3" fill="#b88e55" />
-          <circle cx="70" cy="90" r="14" fill="#1c1817" /><circle cx="84" cy="78" r="9" fill="#1c1817" />
-          <rect y="170" width="400" height="30" fill="#c3b493" />
-          <rect y="170" width="400" height="10" fill="#5e6e8b" />
-          <!-- book stack -->
-          <rect x="300" y="158" width="34" height="12" fill="#8c2f39" /><rect x="304" y="160" width="30" height="8" fill="#f3ead7" />
-          <rect x="296" y="146" width="36" height="12" fill="#2f5d62" /><rect x="300" y="148" width="32" height="8" fill="#f3ead7" />
-          <rect x="302" y="135" width="30" height="11" fill="#b5893b" /><rect x="306" y="137" width="26" height="7" fill="#f3ead7" />
-          <!-- bookmark -->
-          <path d="M316 70 h14 v26 l-7 -6 l-7 6 z" fill="#c92a2f" stroke="#fff" stroke-width="1.5" />
-          <!-- hero mid-jump -->
-          <g transform="translate(200 70) rotate(-8)">
-            <rect x="4" y="3" width="38" height="44" rx="3" fill="#f3ead7" />
-            <rect width="36" height="50" rx="4" fill="#2f5d62" />
-            <rect width="7" height="50" fill="#234548" />
-            <rect x="10" y="38" width="22" height="3" fill="#d4a64a" />
-            <circle cx="18" cy="15" r="5" fill="none" stroke="#d4a64a" stroke-width="1.5" />
-            <circle cx="28" cy="15" r="5" fill="none" stroke="#d4a64a" stroke-width="1.5" />
-            <rect x="17" y="14" width="3" height="4" fill="#1a1a1a" /><rect x="27" y="14" width="3" height="4" fill="#1a1a1a" />
-            <rect x="8" y="50" width="5" height="8" fill="#1e2b2c" /><rect x="24" y="50" width="5" height="8" fill="#1e2b2c" />
+    <section class="group hero" aria-labelledby="pick">
+      <h2 class="visually-hidden" id="pick">Editor's pick</h2>
+      <a class="game" href="game.html?g=deweydash" data-genre="Runner" style="--tint: #2f4a6b">
+        <!-- Dewey Dash preview: the game's title (drawTitle in deweydash.js), with Dewey peeking out from behind the D as on its start screen -->
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Dewey Dash logo: book spines spelling DEWEY on a shelf with Dewey standing beside them, and Dash in gold">
+        <defs>
+          <radialGradient id="dd-glow" cx="0.5" cy="0.5" r="0.6"><stop offset="0" stop-color="#5a4130"/><stop offset="1" stop-color="#241a14"/></radialGradient>
+          <linearGradient id="dd-dash" gradientUnits="userSpaceOnUse" x1="0" y1="-48" x2="0" y2="4"><stop offset="0" stop-color="#fff2bf"/><stop offset="0.5" stop-color="#d4a64a"/><stop offset="1" stop-color="#a8741f"/></linearGradient>
+          <clipPath id="dd-peek" clipPathUnits="userSpaceOnUse"><rect x="-200" y="-200" width="204" height="210"/></clipPath>
+        </defs>
+        <rect width="400" height="200" fill="url(#dd-glow)"/>
+        <!-- dim stacks behind -->
+        <g opacity="0.22">
+          <rect x="0" y="40" width="400" height="3" fill="#8a6238"/><rect x="0" y="170" width="400" height="3" fill="#8a6238"/>
+          <g fill="#7a2e2a"><rect x="8" y="18" width="8" height="22"/><rect x="120" y="150" width="9" height="20"/><rect x="330" y="20" width="8" height="20"/></g>
+          <g fill="#2f4a6b"><rect x="18" y="22" width="7" height="18"/><rect x="300" y="148" width="8" height="22"/><rect x="352" y="18" width="9" height="22"/></g>
+          <g fill="#3d6b4a"><rect x="40" y="148" width="8" height="22"/><rect x="66" y="20" width="8" height="20"/><rect x="376" y="150" width="7" height="20"/></g>
+          <g fill="#b0812f"><rect x="50" y="152" width="9" height="18"/><rect x="250" y="20" width="8" height="20"/><rect x="200" y="150" width="8" height="20"/></g>
+        </g>
+        <!-- the game's title, as drawTitle draws it (scaled) -->
+        <g transform="translate(66 122.5) scale(0.9)">
+          <rect x="-40" y="0" width="230" height="8" rx="2" fill="#5e3f24"/><rect x="-40" y="0" width="230" height="2" fill="#8a6238"/>
+          <!-- Dewey peeking out from behind the D book, as on the start screen (drawPeek): mirrored to face you, leaning out, the part behind the book hidden -->
+          <g clip-path="url(#dd-peek)">
+            <g transform="translate(-9 0) rotate(-10.3) scale(-0.95 0.95)">
+              <g transform="translate(-20 -50)">
+                <g fill="#1e2b2c"><rect x="8" y="42" width="5" height="8"/><rect x="26" y="42" width="5" height="8"/></g>
+                <rect x="4" y="3" width="38" height="38" rx="3" fill="#f3ead7"/>
+                <g fill="#000" fill-opacity=".15"><rect x="38" y="6" width="2" height="1"/><rect x="38" y="9" width="2" height="1"/><rect x="38" y="12" width="2" height="1"/><rect x="38" y="15" width="2" height="1"/><rect x="38" y="18" width="2" height="1"/><rect x="38" y="21" width="2" height="1"/><rect x="38" y="24" width="2" height="1"/><rect x="38" y="27" width="2" height="1"/><rect x="38" y="30" width="2" height="1"/><rect x="38" y="33" width="2" height="1"/><rect x="38" y="36" width="2" height="1"/></g>
+                <rect x="0" y="0" width="36" height="44" rx="4" fill="#2f5d62"/><rect x="0" y="0" width="7" height="44" fill="#234548"/>
+                <rect x="10" y="32" width="22" height="3" fill="#d4a64a"/>
+                <g fill="#1a1a1a"><rect x="17" y="14" width="3" height="4"/><rect x="27" y="14" width="3" height="4"/></g>
+                <g fill="none" stroke="#d4a64a" stroke-width="1.5"><circle cx="18" cy="15" r="5"/><circle cx="28" cy="15" r="5"/></g>
+              </g>
+            </g>
           </g>
-          <g fill="#f3ead7" opacity="0.7"><rect x="180" y="160" width="4" height="3" /><rect x="190" y="155" width="4" height="3" /><rect x="172" y="152" width="4" height="3" /></g>
-        </svg>
+          <g font-family="Fraunces, Georgia, serif" font-weight="700" font-size="26" fill="#f3ead7" text-anchor="middle" dominant-baseline="central">
+            <g><rect x="0" y="-56" width="34" height="56" rx="3" fill="#7a2e2a"/><rect x="3" y="-54" width="4" height="52" fill="#fff" fill-opacity=".14"/><rect x="28" y="-54" width="3" height="52" fill="#000" fill-opacity=".2"/><rect x="3" y="-50" width="28" height="2" fill="#d4a64a"/><rect x="3" y="-9" width="28" height="2" fill="#d4a64a"/><text x="17" y="-27">D</text></g>
+            <g><rect x="37" y="-50" width="34" height="50" rx="3" fill="#2f4a6b"/><rect x="40" y="-48" width="4" height="46" fill="#fff" fill-opacity=".14"/><rect x="65" y="-48" width="3" height="46" fill="#000" fill-opacity=".2"/><rect x="40" y="-44" width="28" height="2" fill="#d4a64a"/><rect x="40" y="-9" width="28" height="2" fill="#d4a64a"/><text x="54" y="-24">E</text></g>
+            <g><rect x="74" y="-58" width="34" height="58" rx="3" fill="#3d6b4a"/><rect x="77" y="-56" width="4" height="54" fill="#fff" fill-opacity=".14"/><rect x="102" y="-56" width="3" height="54" fill="#000" fill-opacity=".2"/><rect x="77" y="-52" width="28" height="2" fill="#d4a64a"/><rect x="77" y="-9" width="28" height="2" fill="#d4a64a"/><text x="91" y="-28">W</text></g>
+            <g><rect x="111" y="-52" width="34" height="52" rx="3" fill="#b0812f"/><rect x="114" y="-50" width="4" height="48" fill="#fff" fill-opacity=".14"/><rect x="139" y="-50" width="3" height="48" fill="#000" fill-opacity=".2"/><rect x="114" y="-46" width="28" height="2" fill="#d4a64a"/><rect x="114" y="-9" width="28" height="2" fill="#d4a64a"/><text x="128" y="-25">E</text></g>
+            <g transform="rotate(-5.7 165 0)"><rect x="148" y="-55" width="34" height="55" rx="3" fill="#5b3a6b"/><rect x="151" y="-53" width="4" height="51" fill="#fff" fill-opacity=".14"/><rect x="176" y="-53" width="3" height="51" fill="#000" fill-opacity=".2"/><rect x="151" y="-49" width="28" height="2" fill="#d4a64a"/><rect x="151" y="-9" width="28" height="2" fill="#d4a64a"/><text x="165" y="-26.5">Y</text></g>
+          </g>
+          <g fill="#f3ead7" fill-opacity=".75"><rect x="190" y="-32" width="14" height="3" rx="1.5"/><rect x="184" y="-21" width="20" height="3" rx="1.5"/><rect x="192" y="-10" width="12" height="3" rx="1.5"/></g>
+          <text x="208" y="-6" font-family="Fraunces, Georgia, serif" font-style="italic" font-weight="700" font-size="56" fill="url(#dd-dash)" stroke="#140e0a" stroke-opacity=".9" stroke-width="6" stroke-linejoin="round" paint-order="stroke">Dash</text>
+        </g>
+        </svg></div>
         <div class="info">
           <h3>Dewey Dash</h3>
-          <p>Run through the library as a speedy little book! Jump over stacks of books, duck under flying ones and collect as many loose pages as you can.</p>
+          <p class="sub">Jump, duck and dash through the stacks</p>
+          <p class="desc">Run through the library as a speedy little book! Jump over stacks of books, duck under flying ones and collect as many loose pages as you can.</p>
           <div class="tags"><span>Runner</span><span>Keyboard or touch</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
+    </section>
 
-      <a class="game" href="game.html?g=books">
+    <section class="group featured" aria-labelledby="featured">
+      <div class="group-head">
+        <h2 class="group-title" id="featured">Featured games</h2>
+        <div class="scroll-buttons">
+          <button type="button" class="scroll-btn" data-dir="-1" aria-label="Scroll featured games left">‹</button>
+          <button type="button" class="scroll-btn" data-dir="1" aria-label="Scroll featured games right">›</button>
+        </div>
+      </div>
+      <div class="shelf">
+      <a class="game" href="game.html?g=books" data-genre="Puzzle" style="--tint: #6b3e75">
         <!-- Shelf Help preview: a bookcase filling up with colorful book bundles -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="A bookcase filling up with falling bundles of colorful books">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A bookcase filling up with falling bundles of colorful books">
           <rect width="400" height="200" fill="#8b919a" />
           <rect x="110" y="6" width="180" height="194" fill="#cda46c" />
           <rect x="120" y="14" width="160" height="186" fill="#3a2e25" />
@@ -107,18 +142,19 @@
           <rect x="300" width="16" height="200" fill="#c62a2f" />
           <rect x="20" y="40" width="70" height="40" rx="4" fill="#34404f" stroke="#d7a35e" stroke-width="2" />
           <text x="55" y="66" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="14" fill="#f3ead7">NEXT</text>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Shelf Help</h3>
-          <p>Bundles of books are falling! Turn and slide them into place, and fill a whole shelf to clear it. How many shelves can you fill?</p>
+          <p class="sub">Stack falling books to clear the shelves</p>
+          <p class="desc">Bundles of books are falling! Turn and slide them into place, and fill a whole shelf to clear it. How many shelves can you fill?</p>
           <div class="tags"><span>Puzzle</span><span>Keyboard or touch</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
 
-      <a class="game" href="game.html?g=globe">
+      <a class="game" href="game.html?g=globe" data-genre="Geography" style="--tint: #1f5f99">
         <!-- Globe Trotter preview: the lobby globe with a pin, a clue card and a passport stamp -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="The library lobby globe with a map pin on Africa, next to a clue card and a passport stamp">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="The library lobby globe with a map pin on Africa, next to a clue card and a passport stamp">
           <defs>
             <radialGradient id="gt-sea" cx="0.38" cy="0.32" r="0.75">
               <stop offset="0" stop-color="#6fb0e0" />
@@ -165,18 +201,19 @@
             <rect x="293" y="132" width="56" height="24" fill="none" stroke="#b08a1f" stroke-width="2" />
             <text x="321" y="148" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="bold" font-size="10" fill="#b08a1f">AFRICA</text>
           </g>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Globe Trotter</h3>
-          <p>Spin our lobby globe and go on a trip around the world! Read each clue, find the right continent or ocean, and fill your passport with stamps.</p>
+          <p class="sub">Travel the world, one clue at a time</p>
+          <p class="desc">Spin our lobby globe and go on a trip around the world! Read each clue, find the right continent or ocean, and fill your passport with stamps.</p>
           <div class="tags"><span>Geography</span><span>Drag or keyboard</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
 
-      <a class="game" href="game.html?g=bookmobile">
+      <a class="game" href="game.html?g=bookmobile" data-genre="Maze" style="--tint: #c92a2f">
         <!-- Bookmobile Route preview: the Bookmobile driving a town maze toward stops asking for items -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="The Bookmobile driving through a maze of town streets toward stops that want a book and a DVD">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="The Bookmobile driving through a maze of town streets toward stops that want a book and a DVD">
           <defs>
             <clipPath id="bm-clip"><rect width="400" height="200" /></clipPath>
           </defs>
@@ -242,18 +279,19 @@
             <circle cx="125" cy="70" r="6" fill="#222" /><circle cx="157" cy="70" r="6" fill="#222" />
             <circle cx="125" cy="70" r="2.5" fill="#aab0b6" /><circle cx="157" cy="70" r="2.5" fill="#aab0b6" />
           </g>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Bookmobile Route</h3>
-          <p>Drive the Bookmobile through a twisty town! Bring each stop the book, DVD, magazine or audiobook they asked for, dodge the ducks, and head back to the Library before closing time.</p>
+          <p class="sub">Deliver books across a twisty town</p>
+          <p class="desc">Drive the Bookmobile through a twisty town! Bring each stop the book, DVD, magazine or audiobook they asked for, dodge the ducks, and head back to the Library before closing time.</p>
           <div class="tags"><span>Maze</span><span>Keyboard, swipe or touch</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
 
-      <a class="game" href="game.html?g=faves">
+      <a class="game" href="game.html?g=faves" data-genre="Matching" style="--tint: #2f9e44">
         <!-- Fave Finder preview: a patron at the library window with a request, and the pick that becomes a new fave -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="A patron at the library service window asking for a book, next to shelves of covers and a New fave! badge">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A patron at the library service window asking for a book, next to shelves of covers and a New fave! badge">
           <defs>
             <clipPath id="ff-win"><rect x="18" y="30" width="190" height="104" /></clipPath>
           </defs>
@@ -295,23 +333,26 @@
           <!-- New fave! badge -->
           <rect x="250" y="146" width="116" height="30" rx="15" fill="#2f9e44" />
           <text x="308" y="166" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="14" fill="#fff">New fave!</text>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Fave Finder</h3>
-          <p>Patrons line up at the library window looking for something new to read, watch or listen to. Figure out what they&#39;d love, avoid what they don&#39;t, and find their next favorite before closing time! Inspired by our Next Five Faves service.</p>
+          <p class="sub">Find every patron&#39;s next favorite</p>
+          <p class="desc">Patrons line up at the library window looking for something new to read, watch or listen to. Figure out what they&#39;d love, avoid what they don&#39;t, and find their next favorite before closing time! Inspired by our Next Five Faves service.</p>
           <div class="tags"><span>Matching</span><span>Mouse, touch or keyboard</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
       </div>
     </section>
 
-    <section class="group" aria-labelledby="more">
-      <h2 class="group-title" id="more">More games</h2>
-      <div class="grid">
-      <a class="game" href="game.html?g=sort">
+    <section class="group more" aria-labelledby="more">
+      <div class="group-head">
+        <h2 class="group-title" id="more">More games</h2>
+      </div>
+      <div class="list">
+      <a class="game" href="game.html?g=sort" data-genre="Sorting" style="--tint: #3d4c8c">
         <!-- Book Drop Sort preview: items riding a conveyor from the return cabinet toward labeled carts -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="Returned books and DVDs riding a conveyor belt from the book drop toward labeled book carts">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Returned books and DVDs riding a conveyor belt from the book drop toward labeled book carts">
           <rect width="400" height="200" fill="#bcc6d1" />
           <!-- return cabinet -->
           <rect x="16" y="14" width="368" height="6" fill="#e3b06a" />
@@ -370,18 +411,19 @@
             <rect x="306" y="164" width="78" height="30" fill="#c08f48" /><rect x="310" y="168" width="70" height="22" fill="#3a2e25" />
             <g fill="#6b3e75"><rect x="313" y="173" width="5" height="16" /><rect x="320" y="174" width="5" height="15" /><rect x="327" y="173" width="5" height="16" /></g>
           </g>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Book Drop Sort</h3>
-          <p>Books, DVDs and audiobooks are pouring out of the return slots! Tap the right cart to sort each one before it rolls off the end of the belt.</p>
+          <p class="sub">Sort the returns before they roll away</p>
+          <p class="desc">Books, DVDs and audiobooks are pouring out of the return slots! Tap the right cart to sort each one before it rolls off the end of the belt.</p>
           <div class="tags"><span>Sorting</span><span>Keyboard or touch</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
 
-      <a class="game" href="game.html?g=shush">
+      <a class="game" href="game.html?g=shush" data-genre="Quick reflexes" style="--tint: #8c2f39">
         <!-- Shush! preview: a patron with a ringing phone, a calm reader, and the noise meter -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="Library patrons in the children's area: one has a ringing phone, another reads quietly after being shushed, under a noise meter">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Library patrons in the children's area: one has a ringing phone, another reads quietly after being shushed, under a noise meter">
           <rect width="400" height="200" fill="#8b919a" />
           <rect width="140" height="110" fill="#aab3c1" />
           <rect width="400" height="28" fill="#2b2b30" />
@@ -438,18 +480,19 @@
           <text x="266" y="85" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="bold" font-size="15" fill="#f3ead7">Shh…</text>
           <!-- tap ripple -->
           <g fill="none" stroke="#bfe3ff" stroke-width="2" opacity="0.8"><circle cx="300" cy="120" r="8" /><circle cx="300" cy="120" r="14" /></g>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Shush!</h3>
-          <p>Things are getting noisy in the library! Tap the ringing phones, squeaky chairs and giggling kids to shush them before the noise meter fills. But don&#39;t shush the quiet readers!</p>
+          <p class="sub">Quiet the noise, but not the readers</p>
+          <p class="desc">Things are getting noisy in the library! Tap the ringing phones, squeaky chairs and giggling kids to shush them before the noise meter fills. But don&#39;t shush the quiet readers!</p>
           <div class="tags"><span>Quick reflexes</span><span>Mouse or touch</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
 
-      <a class="game" href="game.html?g=catch">
+      <a class="game" href="game.html?g=catch" data-genre="Arcade" style="--tint: #d9773a">
         <!-- Bookmark Catch preview: items drifting down from the banners into a navy book cart -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="Bookmarks, a page and a library card falling from colorful ceiling banners into a book cart, with a coffee cup to dodge">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Bookmarks, a page and a library card falling from colorful ceiling banners into a book cart, with a coffee cup to dodge">
           <rect width="400" height="200" fill="#8b919a" />
           <rect width="140" height="200" fill="#aab3c1" />
           <rect x="140" y="30" width="20" height="148" fill="#c62a2f" />
@@ -509,18 +552,19 @@
           <g fill="#4b79d9"><rect x="136" y="162" width="6" height="11" /></g><g fill="#f2c14e"><rect x="143" y="164" width="5" height="9" /></g>
           <rect x="76" y="173" width="88" height="4" fill="#34404f" />
           <circle cx="86" cy="179" r="5" fill="#2a2a2a" /><circle cx="154" cy="179" r="5" fill="#2a2a2a" />
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Bookmark Catch</h3>
-          <p>Bookmarks, pages and library cards are falling from the banners! Slide your book cart to catch them, but watch out for spilled drinks.</p>
+          <p class="sub">Catch bookmarks, dodge the spills</p>
+          <p class="desc">Bookmarks, pages and library cards are falling from the banners! Slide your book cart to catch them, but watch out for spilled drinks.</p>
           <div class="tags"><span>Arcade</span><span>Keyboard or touch</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
 
-      <a class="game" href="game.html?g=match">
+      <a class="game" href="game.html?g=match" data-genre="Memory" style="--tint: #2f7d84">
         <!-- Spine Match preview: book spines on a shelf, some face down with the library logo, two matched pairs -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="Book spines on a library shelf, some showing the library logo and some flipped to reveal matching pictures">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Book spines on a library shelf, some showing the library logo and some flipped to reveal matching pictures">
           <defs>
             <!-- library logo icon (from logo-icon.svg), 122 x 182 units -->
             <g id="pm-logo">
@@ -594,18 +638,19 @@
             <path d="M362 50 l4 9 10 1 -7.5 6.5 2.5 9.5 -9 -5 -9 5 2.5 -9.5 -7.5 -6.5 10 -1 z" />
             <path d="M30 62 l3 6.5 7 .7 -5.3 4.6 1.7 6.7 -6.4 -3.5 -6.4 3.5 1.7 -6.7 -5.3 -4.6 7 -.7 z" />
           </g>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Spine Match</h3>
-          <p>Flip the book spines to find matching pairs! Later shelves get bigger, and you&#39;ll match pictures to their book topics, like a rocket to Space.</p>
+          <p class="sub">Flip spines to find matching pairs</p>
+          <p class="desc">Flip the book spines to find matching pairs! Later shelves get bigger, and you&#39;ll match pictures to their book topics, like a rocket to Space.</p>
           <div class="tags"><span>Memory</span><span>Keyboard or touch</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
 
-      <a class="game" href="game.html?g=pinquest">
+      <a class="game" href="game.html?g=pinquest" data-genre="Ages 2–5" style="--tint: #bf4097">
         <!-- Pin Quest preview: big friendly activity circles and a tote bag collecting pins -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="Colorful activity circles with a heart, a music note, 123, a star and a book, next to a tote bag holding earned pins">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Colorful activity circles with a heart, a music note, 123, a star and a book, next to a tote bag holding earned pins">
           <rect width="400" height="200" fill="#8b919a" />
           <rect y="22" width="140" height="138" fill="#aab3c1" />
           <rect width="400" height="22" fill="#2b2b30" />
@@ -654,18 +699,19 @@
           <circle cx="232" cy="40" r="16" fill="#d9673a" stroke="#d4a64a" stroke-width="3" />
           <path d="M232 36 q-5 -2 -9 0 v10 q5 -2 9 1 q4 -3 9 -1 v-10 q-4 -2 -9 0 z" fill="#fff" />
           <g fill="#e8b52a"><circle cx="214" cy="28" r="2" /><circle cx="250" cy="24" r="2" /><circle cx="246" cy="58" r="2" /></g>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Little Learners Pin Quest</h3>
-          <p>Five gentle little games for ages 2–5: breathe with a balloon, find toys, count books, jump and pop bubbles, and choose a story&#39;s ending. Every game is read aloud, and each one earns a pin for your tote bag!</p>
+          <p class="sub">Five gentle games for ages 2–5</p>
+          <p class="desc">Five gentle little games for ages 2–5: breathe with a balloon, find toys, count books, jump and pop bubbles, and choose a story&#39;s ending. Every game is read aloud, and each one earns a pin for your tote bag!</p>
           <div class="tags"><span>Ages 2–5</span><span>Read aloud</span><span>Touch friendly</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
 
-      <a class="game" href="game.html?g=garden">
+      <a class="game" href="game.html?g=garden" data-genre="Nature" style="--tint: #4f7942">
         <!-- Seed Library Garden preview: a seed packet from the Seed Library and a garden bed with a sunflower, milkweed with a monarch, and bee balm with a bee -->
-        <svg viewBox="0 0 400 200" role="img" aria-label="A seed packet from the library's Seed Library next to a garden bed with a sunflower, milkweed with a monarch butterfly, and bee balm with a bumblebee">
+        <div class="shot"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A seed packet from the library's Seed Library next to a garden bed with a sunflower, milkweed with a monarch butterfly, and bee balm with a bumblebee">
           <defs>
             <linearGradient id="sg-sky" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stop-color="#8fcbf2" />
@@ -746,16 +792,19 @@
           <rect x="200" y="46" width="160" height="4" fill="#b07636" />
           <text x="280" y="28" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="14" fill="#3a2512">Seed Library Garden</text>
           <text x="280" y="43" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="10" fill="#5a3a1c">Grow your world!</text>
-        </svg>
+        </svg></div>
         <div class="info">
           <h3>Seed Library Garden</h3>
-          <p>Pick free seed packets at the Seed Library, then plant, water and weed your own garden! Watch for bees, butterflies and hummingbirds, and fill your Garden Journal.</p>
+          <p class="sub">Grow a garden from library seeds</p>
+          <p class="desc">Pick free seed packets at the Seed Library, then plant, water and weed your own garden! Watch for bees, butterflies and hummingbirds, and fill your Garden Journal.</p>
           <div class="tags"><span>Nature</span><span>Mouse, touch or keyboard</span><span>Sound</span></div>
-          <span class="play">Play →</span>
+          <span class="play" aria-hidden="true">Play</span>
         </div>
       </a>
       </div>
     </section>
+
+    <p class="no-results" id="no-results" role="status" hidden></p>
   </main>
 
   <footer>Made for our library. Your best scores are saved on this device.</footer>
@@ -960,6 +1009,55 @@
         banner.textContent = "That password wasn't right. Pick a game and try again.";
         document.querySelector("header").appendChild(banner);
       }
+    })();
+  </script>
+  <script>
+    // Search, type filters and the featured scroller
+    (function () {
+      const games = [...document.querySelectorAll("a.game")];
+      const search = document.getElementById("search");
+      const chips = document.getElementById("chips");
+      const noResults = document.getElementById("no-results");
+      let genre = "All";
+
+      const genres = ["All", ...new Set(games.map((g) => g.dataset.genre))];
+      for (const name of genres) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip";
+        b.textContent = name;
+        b.setAttribute("aria-pressed", String(name === genre));
+        b.addEventListener("click", () => {
+          genre = name;
+          chips.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c === b)));
+          update();
+        });
+        chips.appendChild(b);
+      }
+
+      function update() {
+        const q = search.value.trim().toLowerCase();
+        let shown = 0;
+        for (const g of games) {
+          const ok = (genre === "All" || g.dataset.genre === genre) &&
+            (!q || g.textContent.toLowerCase().includes(q));
+          g.hidden = !ok;
+          if (ok) shown++;
+        }
+        document.querySelectorAll("main .group").forEach((s) => {
+          s.hidden = !s.querySelector("a.game:not([hidden])");
+        });
+        noResults.hidden = shown > 0;
+        noResults.textContent = shown ? "" : "No games match that. Try another word, or pick All.";
+      }
+      search.addEventListener("input", update);
+
+      const shelf = document.querySelector(".shelf");
+      document.querySelectorAll(".scroll-btn").forEach((b) =>
+        b.addEventListener("click", () => {
+          const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+          shelf.scrollBy({ left: Number(b.dataset.dir) * shelf.clientWidth * 0.8, behavior: reduce ? "auto" : "smooth" });
+        }));
     })();
   </script>
 </body>
