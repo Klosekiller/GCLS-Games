@@ -64,6 +64,11 @@ function resetStoryProgress() {
 // `furniture`: which pieces turn up where (see storyFurniture): zones, each a run of `scenes` (by
 // index), the `kinds` of furniture there, how often (`chance`), how many (`min`, `max`), and any
 // pieces it must have (`need`: { kind: how many }) or can have at most (`limit`: { kind: how many }).
+// `placed`: furniture set at its real spot in a scene, in order: `scene` (by index), `at` (the
+// spot, in that scene's own px: the piece reaches the book just as the book passes it), `kind` (as
+// PLATFORMS names them), its `look` if it has one, a `toy` sitting on it (see storyToyOn) and
+// `clear`: the clear floor before it, in jump lengths (2.3 if not said). Nothing else comes out
+// where it would be in the way (see storyPlaced).
 // `toys`: the `scenes` where some of the book stacks are toys instead, and how often (see storyToy). `goal`: what happens at the end,
 // once the library stops scrolling and the book runs on to it: "stop" (stops there), "enter" (goes
 // in through a door) or "hop" (jumps aboard). `intro` / `outro`: picture books (see BOOKS).
@@ -108,7 +113,17 @@ const LEVELS = [
     // the stacks have a book cart or two; the children's wing has its reading chairs and couches
     furniture: [
       { scenes: [0, 1], kinds: ["cart", "table"], min: 2, max: 4, chance: 0.25, need: { cart: 1 }, limit: { cart: 2 } }, // (a cart or two, and reading tables)
-      { scenes: [2, 3, 4, 5], kinds: ["chair", "couch", "table"], chance: 0.25, need: { couch: 2 } }, // (at least two couches to bounce on)
+      { scenes: [3, 4, 5], kinds: ["chair", "couch", "table"], chance: 0.25, need: { couch: 1 } }, // (another couch to bounce on, besides the first, below)
+    ],
+    // the picture-book room's own furniture, each where it stands in the room (its navy sofa doesn't
+    // bounce: it has a teddy bear sitting on it), then the first couch to bounce on, just past the
+    // giraffe, with plenty of clear floor before it (see storyPlaced)
+    placed: [
+      { scene: 2, at: 140, kind: "bench", look: "curved" },
+      { scene: 2, at: 270, kind: "sofa", look: "navy", toy: "bear" },
+      { scene: 2, at: 490, kind: "round", look: "kids" },
+      { scene: 2, at: 610, kind: "bin" },
+      { scene: 3, at: 220, kind: "couch", clear: 3.5 },
     ],
     toys: { scenes: [2, 3, 4, 5], chance: 0.45 }, // in the children's wing, some of the stacks are toys
     goal: "stop",
@@ -125,6 +140,7 @@ const LEVELS = [
       [sceneBookDrop, 900],
       [sceneFriendsShop, 1000],
       [sceneSeating, 900],
+      [sceneFoyer, 700], // (the foyer outside the Meeting Rooms, just before the globe)
       [sceneLobby, 900],
       [sceneGlobeDoor, 900],
     ],
@@ -145,12 +161,17 @@ const LEVELS = [
     bookmarks: [
       { scenes: [0, 1], spot: "high" },
       { scenes: [3], spot: "hop" },
-      { scenes: [4, 5], spot: "high" },
+      { scenes: [5, 6], spot: "high" },
     ],
     furniture: [
       { scenes: [1], kinds: ["wet"], min: 1, max: 1, chance: 0.4 },
       { scenes: [2], kinds: ["saleCart"], min: 2, max: 2, chance: 0.5 },
       { scenes: [3], kinds: ["tableHop"], min: 1, max: 1, chance: 1 },
+    ],
+    // the steel café tables in the atrium, in front of the foyer before the globe (see storyPlaced)
+    placed: [
+      { scene: 4, at: 300, kind: "round", look: "steel" },
+      { scene: 4, at: 540, kind: "round", look: "steel" },
     ],
     goal: "enter",
     intro: "chase",
@@ -169,8 +190,32 @@ const LEVELS = [
       [sceneDrive, 900],
       [sceneBookmobileStop, 900],
     ],
-    features: { flyer: 0, double: 6000, wet: 9000, dart: 16000, swoop: 24000 },
-    chances: { flyer: 0.35, wet: 0.18 },
+    // hedges (single, then wide), the odd sprinkler, and the birds, which come in all the kinds the
+    // flying books do (but the flocks and the charging crow): pigeons gliding in at head height from
+    // early on, then blue jays that dart in faster than the walk moves, then swallows diving down out
+    // of the sky (jump or duck: you can't tell which until they're close: see diveBottom), then
+    // robins that rise and dive as they come (run under them at the top, duck through the middle,
+    // jump them at the bottom)
+    features: { double: 5000, flyer: 6000, wet: 16000, dart: 16000, dive: 20000, swoop: 26000 },
+    chances: { flyer: 0.35, wet: 0.15 },
+    pages: 10, // ten pages to find in the whole level (see storyPageAllowance)
+    lastPage: true, // …the last of them a freebie, in the clear stretch before the Bookmobile
+    powers: ["shield"], // the hardcover is the only power-up so far (over a hedge now and then)
+    // three bookmarks: high over a hedge by the doors or the rotunda, high over another by the
+    // rotunda or the drive, and high over the top of the terraces (only a jump from up there reaches it)
+    bookmarks: [
+      { scenes: [0, 1], spot: "high" },
+      { scenes: [1, 3], spot: "high" },
+      { scenes: [2], spot: "terrace" },
+    ],
+    // the level's own pieces: the stepped terraces on the sculpture's lawn; on the drive, a line of
+    // parked vehicles (a car, a box truck, a car) to jump up onto and run across; and just past
+    // them, the parking gate's arm by its booth, swinging up and down (see storySpawnPiece)
+    placed: [
+      { scene: 2, at: 260, kind: "terrace" },
+      { scene: 3, at: 470, kind: "cars", clear: 3 },
+      { scene: 3, at: 700, kind: "gate" },
+    ],
     goal: "hop",
     intro: "outside",
     outro: "bookmobile",
@@ -225,6 +270,7 @@ function beginLevel(i, again = false) {
     bookmarksPlaced: (level.bookmarks || []).map(() => false), // which of its bookmarks are out (see storyBookmark)
     tipsShown: {}, // the level's tips shown so far (see storyWatchTips)
     openingOut: 0, // how many of the level's `opening` are out so far (see storyOpening)
+    placedOut: 0, // how many of the level's `placed` pieces are out so far (see storyPlaced)
     resumed: false, // counting down again after a tip (so the level's title doesn't show again)
     bookmarksFound: 0,
     markFlights: [], // bookmarks just found, on their way up to their slots in the top bar (see storyBookmarkFlight)
@@ -278,6 +324,16 @@ function storyOpeningGap() {
   const g = story.openingGap;
   story.openingGap = null;
   return g ?? null;
+}
+// The level's next `placed` piece, with `due`: the distance it comes out at (on the right edge),
+// so it reaches the book just as the scenery behind has its spot there. Or null, when all are out.
+// (See updateObstacles, in deweydash.js, which also holds back anything that would be in its way.)
+function storyPlaced() {
+  const list = story.level.placed;
+  if (!list || story.placedOut >= list.length) return null;
+  const p = list[story.placedOut],
+    start = story.level.scenes.slice(0, p.scene).reduce((s, [, w]) => s + w, 0);
+  return { ...p, due: (start + p.at - PLAYER_X) / BG_PARALLAX - (W + 10 - PLAYER_X) };
 }
 // Which scene the next thing to come will be in (by the time it reaches the book), and how far into it.
 function sceneAhead() {
@@ -399,10 +455,70 @@ function storyFinishing(dt) {
         story.hidden = true;
         burst(goal, player.y + player.h / 2, 14, GOLD, 4);
       }
+      // the big star is the book's: a shower of gold and a bright chime
+      burst(goal, GOAL_STAR_Y, 18, GOLD, 5);
       sfx.bookmark();
+      [1047, 1319, 1568].forEach((hz, i) => tone(hz, hz * 1.5, 0.18, "triangle", 0.09, 0.08 + i * 0.07));
     }
   } else if (f.t - f.arrivedAt > ARRIVE_MS) levelCleared();
   return true;
+}
+// The big gold star waiting at the end of every level, floating over the goal at head height:
+// reach the end and it's yours (the first of the level's three stars, whatever pages you found).
+// It glows and bobs as it comes into view, and swells and spins away when the book gets there.
+const GOAL_STAR_R = 20,
+  GOAL_STAR_Y = FLOOR - 62;
+function drawGoalStar() {
+  if (state === "cleared") return; // (it's on the results card by then)
+  const off = Math.min(distance * BG_PARALLAX, story.end),
+    x = story.end + W - GOAL_FROM_RIGHT - off; // (where the goal is in the scenery, on screen)
+  if (x < -60 || x > W + 60) return;
+  const f = story.finishing,
+    got = f && f.arrivedAt ? f.t - f.arrivedAt : -1; // ms since the book got it
+  if (got < 0) {
+    const y = GOAL_STAR_Y + Math.sin(runTime * 0.004) * 4,
+      r = GOAL_STAR_R * (1 + Math.sin(runTime * 0.006) * 0.06),
+      glow = ctx.createRadialGradient(x, y, 4, x, y, r * 2.4);
+    glow.addColorStop(0, "rgba(255, 230, 140, 0.6)");
+    glow.addColorStop(1, "rgba(255, 230, 140, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    goalStar(x, y, r);
+    for (let i = 0; i < 3; i++) {
+      // little twinkles circling it
+      const a = runTime * 0.0015 + i * 2.1;
+      sparkle(x + Math.cos(a) * r * 1.7, y + Math.sin(a) * r * 1.3, 3 + Math.sin(runTime * 0.01 + i) * 1.5, "#fff6c8");
+    }
+    return;
+  }
+  const q = Math.min(1, got / 700);
+  if (q >= 1) return;
+  ctx.save();
+  ctx.globalAlpha = 1 - q;
+  ctx.translate(x, GOAL_STAR_Y - q * 70);
+  ctx.rotate(q * Math.PI);
+  goalStar(0, 0, GOAL_STAR_R * (1 + q * 0.8));
+  ctx.restore();
+}
+// The goal's star itself: gold with a darker edge underneath and a lighter middle, outlined in black.
+function goalStar(x, y, r) {
+  starShape(x, y + 2, r, "#a87a22"); // (its darker edge, underneath)
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5,
+      rr = i % 2 ? r * 0.45 : r;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = GOLD;
+  ctx.fill();
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#111111";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  starShape(x, y - 1, r * 0.55, "#f7d77a");
 }
 
 // ---------- A level's results ----------
@@ -1145,36 +1261,98 @@ function drawLevelBanner() {
 }
 // How faded-in the results card is (the run behind is dimmed to match: see draw in deweydash.js).
 const clearedFade = () => Math.min(1, clearedTime / 300);
-// A level's results, by the card standards (see drawStatRow in deweydash.js): the heading, the
-// story line, the stars (this card's centrepiece) landing one at a time, the numbers, the best,
-// the buttons and the hint.
+// Bits of text (and little rows of bookmarks) in one line, centred on cx, on the baseline y.
+// parts: { text, font, color } or { marks: [found, total], s } (see bookmarkMarks).
+function drawTextRun(cx, y, parts) {
+  let total = 0;
+  for (const p of parts) {
+    if (p.marks) p.w = 8 * p.s * (p.marks[1] - 1) + 5 * p.s + 6;
+    else {
+      ctx.font = p.font;
+      p.w = ctx.measureText(p.text).width;
+    }
+    total += p.w;
+  }
+  let x = cx - total / 2;
+  ctx.textAlign = "left";
+  for (const p of parts) {
+    if (p.marks) bookmarkMarks(x, y - 10 * p.s, p.marks[0], p.marks[1], p.s);
+    else {
+      ctx.font = p.font;
+      ctx.fillStyle = p.color;
+      ctx.fillText(p.text, x, y);
+    }
+    x += p.w;
+  }
+}
+// A level's results. The heading says which level is done (a small red label), then its name
+// big, then its chapter and library over the card's red rules. Under them the stars (landing one
+// at a time) and the pages and bookmarks in one quiet line. Continue goes across the card, with
+// Play again and Chapters under it (see BUTTONS.cleared in makeButtons). No best: in Story Mode
+// that's the stars' job.
 function drawCleared() {
   const r = story.result,
+    lv = story.level,
     k = clearedFade(),
-    big = tall();
+    big = tall(),
+    L = CLEARED_CARD[layout];
   ctx.save();
   ctx.globalAlpha = k;
   ctx.translate(0, (1 - k) * 12);
   // (the run behind was dimmed before the top bar was drawn)
-  const c = big ? midrunCard() : { x: W / 2 - 240, y: MIDRUN_CARD.wide.y, w: 480, h: MIDRUN_CARD.wide.h }; // (wide enough for three buttons)
-  drawCard(c.x, c.y, c.w, c.h, `${levelName(story.level)} complete!`);
-  cardSub(storyLine(story.level), c.y + (big ? 72 : 65));
+  const c = clearedCard();
+  drawCard(c.x, c.y, c.w, c.h, null);
+  // the label: a red check and "LEVEL 2 COMPLETE", letter-spaced
+  const label = `${levelName(lv)} complete`.toUpperCase();
+  ctx.font = `bold ${big ? 13 : 12}px Fraunces, Georgia, serif`;
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "2px";
+  const lw = ctx.measureText(label).width,
+    ck = big ? 11 : 10, // the check's size
+    lx = W / 2 - (lw + ck + 6) / 2,
+    ly = c.y + L.label;
+  ctx.strokeStyle = CARD_RED;
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(lx, ly - ck * 0.45);
+  ctx.lineTo(lx + ck * 0.38, ly - ck * 0.08);
+  ctx.lineTo(lx + ck, ly - ck * 0.9);
+  ctx.stroke();
+  ctx.textAlign = "left";
+  ctx.fillStyle = CARD_RED;
+  ctx.fillText(label, lx + ck + 6, ly);
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+  // the level's name, then its chapter and library, over the red rules
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK;
+  ctx.font = `bold ${big ? 30 : 26}px Fraunces, Georgia, serif`;
+  ctx.fillText(lv.name, W / 2, c.y + L.title);
+  cardSub(`Chapter ${lv.chapter} · ${lv.place}`, c.y + L.sub);
+  cardRules(c.x, c.y + L.rules, c.w);
   // the stars land one at a time
-  const sy = c.y + (big ? 112 : 90),
-    sr = big ? 22 : 16,
-    sgap = big ? 58 : 44;
   for (let i = 0; i < 3; i++) {
     const t = clearedTime - 420 - i * 240,
       on = i < r.stars;
     const pop = !on || t <= 0 ? 1 : t < 200 ? 1 + Math.sin((t / 200) * Math.PI) * 0.35 : 1;
-    starShape(W / 2 + (i - 1) * sgap, sy, sr * pop, on && t > 0 ? GOLD : "rgba(58, 42, 30, 0.14)");
+    starShape(W / 2 + (i - 1) * L.starGap, c.y + L.stars, L.starR * pop, on && t > 0 ? GOLD : "rgba(58, 42, 30, 0.14)");
   }
-  const marks = story.level.bookmarks ? story.level.bookmarks.length : 0;
-  drawStatRow(W / 2, c.y + (big ? 176 : 128), [
-    [`${pages} of ${story.pagesThere}`, "pages found"],
-    ...(marks ? [[`${story.bookmarksFound} of ${marks}`, "bookmarks"]] : []),
-  ]); // (centred: the pages alone, or the pages and bookmarks side by side)
-  cardLine(r.newBest ? "★ New best! ★" : `Best: ${"★".repeat(progress.stars[story.level.id])}`, c.y + (big ? 216 : 166), r.newBest);
+  // the pages (and the bookmarks, if the level has any) in one line
+  const marks = lv.bookmarks ? lv.bookmarks.length : 0,
+    fs = big ? 16 : 14,
+    bold = `bold ${fs}px Fraunces, Georgia, serif`,
+    plain = `${fs}px Fraunces, Georgia, serif`;
+  drawTextRun(W / 2, c.y + L.stats, [
+    { text: `${pages} of ${story.pagesThere}`, font: bold, color: INK },
+    { text: " pages", font: plain, color: INK_SOFT },
+    ...(marks
+      ? [
+          { text: "   ·   ", font: plain, color: INK_SOFT },
+          { marks: [story.bookmarksFound, marks], s: big ? 1.1 : 1 },
+          { text: `${story.bookmarksFound} of ${marks}`, font: bold, color: INK },
+          { text: " bookmarks", font: plain, color: INK_SOFT },
+        ]
+      : []),
+  ]);
   if (clearedTime >= CLEARED_GRACE_MS * 0.6) drawButtons();
   hint(
     hintFor("Tab or ← → to choose · Enter to select · Esc for the chapters", "◀ ▶ to choose · A to select · B for the chapters", "Tap Continue for the next level"),
@@ -1340,24 +1518,50 @@ function storyLastPage() {
   story.lastPageOut = true;
   addPickup(W + 60, FLOOR - 34);
 }
-// Called every frame of a run: if something the level explains is just ahead for the first time, stop
-// for its tip (the tip screen; Got it counts down again).
-function storyWatchTips() {
-  storyLastPage(); // (and the level's last page, once the end is near)
+// How far the run still has to go before it stops for a tip (the first time something the level
+// explains comes up), or null if there's none coming. Each tip stops the run with its thing `ahead`
+// px in front of the book. (tipNext: which tip that is.)
+let tipNext = null;
+function tipGap() {
   const tips = story.level.tips;
-  if (!tips || state !== "running") return;
+  if (!tips || state !== "running") return null;
+  let gap = null;
   for (const name of tips) {
     if (story.tipsShown[name]) continue;
     const t = STORY_TIPS[name],
       watch = t.pickup ? pickups : obstacles, // (most tips are about an obstacle; some, a pickup)
       o = watch.find((ob) => t.is(ob) && ob.x > player.x + player.w);
-    if (o && o.x - (player.x + player.w) <= t.ahead) {
-      story.tipsShown[name] = true;
-      openStoryTip(name);
-      sfx.select();
-      return;
+    if (!o) continue;
+    const g = o.x - (player.x + player.w) - t.ahead;
+    if (gap == null || g < gap) {
+      gap = g;
+      tipNext = name;
     }
   }
+  return gap;
+}
+// Slowing to a stop for a tip: once its stopping point is within TIP_BRAKE, the run eases down
+// (steadily, like braking) to a standstill right there, and the tip opens. After it, the run picks
+// up again over TIP_RAMP_MS. Returns how much of the run's usual speed to go at (asked every frame
+// by update, in deweydash.js).
+const TIP_BRAKE = 120, // px
+  TIP_RAMP_MS = 700;
+function storyTipBrake() {
+  let k = story.rampFrom != null ? Math.min(1, (runTime - story.rampFrom) / TIP_RAMP_MS) : 1;
+  const g = tipGap();
+  if (g != null && g < TIP_BRAKE) k = Math.min(k, Math.sqrt(Math.max(0, g) / TIP_BRAKE)); // (v² falls in step with the distance left)
+  return Math.max(0.03, k); // (a crawl at the very least, so it always gets there)
+}
+// Called every frame of a run: once the run has slowed to its stop for a tip, open it (the tip
+// screen; Got it counts down again).
+function storyWatchTips() {
+  storyLastPage(); // (and the level's last page, once the end is near)
+  const g = tipGap();
+  if (g == null || g > 1) return;
+  story.tipsShown[tipNext] = true;
+  story.rampFrom = runTime; // (it picks up again afterwards)
+  openStoryTip(tipNext);
+  sfx.select();
 }
 let tipName = null, // the tip showing (a key of STORY_TIPS)
   tipAt = 0; // when it opened (its cards deal in)
@@ -1439,13 +1643,21 @@ function spawnToy(kind) {
   obstacles.push(o);
   return o;
 }
+// A toy sitting on top of a piece of furniture (o), past where you'd land on it: jump it from up
+// there. (It's drawn sitting on whatever's under it: see drawToy.)
+function storyToyOn(o, kind) {
+  const t = spawnToy(kind);
+  t.x = o.x + o.w * 0.6;
+  t.y = o.y - t.h;
+}
 function drawToy(o) {
-  const { x, w } = o;
-  oval(x + w / 2, FLOOR - 1, w * 0.6, 3.5, "rgba(0, 0, 0, 0.25)"); // shadow
+  const { x, w } = o,
+    base = o.y + o.h; // (the floor, or the furniture it's sitting on)
+  oval(x + w / 2, base - 1, w * 0.6, 3.5, "rgba(0, 0, 0, 0.25)"); // shadow
   if (o.toy === "blocks") {
     for (const b of o.bricks) {
       const bx = x + b.dx,
-        by = FLOOR - b.dy;
+        by = base - b.dy;
       R(bx, by, BRICK_W, BRICK_H, b.color);
       R(bx, by, BRICK_W, 2, "rgba(255, 255, 255, 0.3)");
       R(bx, by + BRICK_H - 2, BRICK_W, 2, "rgba(0, 0, 0, 0.22)");
@@ -1458,7 +1670,7 @@ function drawToy(o) {
     }
     return;
   }
-  const by = FLOOR,
+  const by = base,
     cx = x + w / 2;
   if (o.toy === "bear") {
     // a teddy bear sitting on the floor: legs out front, round tummy, round head, a bow tie
@@ -1515,10 +1727,247 @@ function drawToy(o) {
   R(cx - 6, by - 24, 12, 3, o.color); // a ribbon round the neck
 }
 
+// ---------- Level 3's own pieces: the parking gate and the terraces ----------
+// One of a level's `placed` pieces that isn't furniture (asked by updateObstacles, in deweydash.js).
+// Returns { w, moves }: how far it reaches, and how you might be getting past it.
+function storySpawnPiece(p) {
+  if (p.kind === "gate") return spawnGate();
+  if (p.kind === "cars") return spawnCars();
+  return spawnTerrace();
+}
+// A line of parked vehicles on the drive, nose to tail: a car, a box truck (its tall box, then its
+// lower cab), and another car. Each is something to land on and run along, like furniture: jump up
+// onto the first car, jump again up onto the truck's box (run into its back and it's a smash), drop
+// down onto the cab, run on across the last car, and hop off. While the book is up on them the
+// view rises a little (their `lift`: see updatePlayer, in deweydash.js), so it can see what's
+// ahead of it up there.
+const CAR_COLORS = [
+  { body: "#f1f1ee", shade: "#c9cbcc", trim: "#2b2d31" }, // white, with dark trim
+  { body: "#9ea4ab", shade: "#7c8289", trim: "#2b2d31" }, // silver
+  { body: "#2f4f7f", shade: "#22395c", trim: "#1c1e22" }, // dark blue
+];
+const VEHICLE_LIFT = 44; // px the view rises, up on the vehicles
+function spawnCars() {
+  const x0 = W + 10,
+    gap = 14, // (narrow enough to run straight across: the book is always over one or the other)
+    pick = (Math.random() * CAR_COLORS.length) | 0,
+    pieces = [
+      { vehicle: "car", w: 150, h: 50, color: CAR_COLORS[pick] },
+      { vehicle: "box", w: 170, h: 92, gapBefore: gap },
+      { vehicle: "cab", w: 62, h: 64 },
+      { vehicle: "car", w: 150, h: 50, gapBefore: gap, color: CAR_COLORS[(pick + 1 + ((Math.random() * 2) | 0)) % CAR_COLORS.length] },
+    ];
+  let x = x0;
+  for (const p of pieces) {
+    x += p.gapBefore || 0;
+    obstacles.push({ type: "platform", kind: "vehicle", vehicle: p.vehicle, color: p.color, x, y: FLOOR - p.h, w: p.w, h: p.h, books: [], lift: VEHICLE_LIFT, seed: Math.random() * 1000 });
+    if (p.vehicle !== "cab") addPickup(x + p.w / 2, FLOOR - p.h - 34); // (a page on each roof, as the level's pacing allows)
+    x += p.w;
+  }
+  return { w: x - x0, moves: ["high"] };
+}
+function drawVehicle(o) {
+  if (o.vehicle === "car") drawParkedCar(o);
+  else if (o.vehicle === "box") drawTruckBox(o);
+  else drawTruckCab(o);
+}
+// A wheel: a dark tyre, a silver hub (cx, cy: its middle).
+function wheel(cx, cy, r) {
+  oval(cx, cy, r, r, "#1d1e21");
+  oval(cx, cy, r * 0.55, r * 0.55, "#b9bec4");
+  oval(cx, cy, r * 0.2, r * 0.2, "#5a5e64");
+}
+// A wagon parked facing right (the way the book runs): a long flat roof with rails (where you
+// land), its windows, the hood and headlight at the front, a taillight at the back.
+function drawParkedCar(o) {
+  const { x, y, w } = o,
+    c = o.color;
+  oval(x + w / 2, FLOOR - 1, w * 0.5, 4, "rgba(0, 0, 0, 0.28)");
+  // the body: the lower half, with the hood sloping down at the front
+  ctx.fillStyle = c.body;
+  ctx.beginPath();
+  ctx.moveTo(x + 4, FLOOR - 14);
+  ctx.lineTo(x + 2, y + 24);
+  ctx.quadraticCurveTo(x + 4, y + 18, x + 16, y + 18);
+  ctx.lineTo(x + w - 46, y + 18);
+  ctx.quadraticCurveTo(x + w - 6, y + 22, x + w - 2, y + 30);
+  ctx.lineTo(x + w, FLOOR - 14);
+  ctx.closePath();
+  ctx.fill();
+  R(x + 2, FLOOR - 22, w - 2, 8, c.trim); // the dark cladding along the bottom
+  // the cabin and its roof (flat across: it's what you run along)
+  poly(c.body, x + 10, y + 19, x + 18, y + 2, x + w - 56, y + 2, x + w - 40, y + 19);
+  R(x + 14, y - 1, w - 70, 4, "#3a3d42"); // the roof rails
+  poly("#2d3a46", x + 17, y + 17, x + 22, y + 6, x + 56, y + 6, x + 56, y + 17); // the windows
+  poly("#2d3a46", x + 60, y + 17, x + 60, y + 6, x + w - 60, y + 6, x + w - 46, y + 17);
+  R(x + 30, y + 8, 4, 8, "rgba(255, 255, 255, 0.22)");
+  R(x + 58, y + 19, 1.5, FLOOR - y - 40, c.shade); // the door seams
+  R(x + w - 62, y + 19, 1.5, FLOOR - y - 40, c.shade);
+  R(x + w - 8, y + 26, 7, 5, "#f4e7b0"); // headlight
+  R(x + 2, y + 24, 5, 6, "#c0392b"); // taillight
+  wheel(x + 30, FLOOR - 12, 12);
+  wheel(x + w - 32, FLOOR - 12, 12);
+}
+// The box truck's box, its back facing you: tall, plain white, a roll-up door at the back, a
+// colored stripe along the side, and two pairs of wheels underneath. Its flat top is where you run.
+function drawTruckBox(o) {
+  const { x, y, w } = o;
+  oval(x + w / 2, FLOOR - 1, w * 0.5, 4, "rgba(0, 0, 0, 0.28)");
+  R(x, FLOOR - 24, w + 4, 8, "#2b2d31"); // the frame
+  R(x, y, w, FLOOR - 24 - y, "#f4f3ef");
+  R(x, y, w, 4, "#dcdbd6");
+  R(x + 14, y + 22, w - 20, 10, "#3f7dc0"); // the stripe
+  R(x + 14, y + 34, w - 20, 3, "#e8b52a");
+  R(x, y, 10, FLOOR - 24 - y, "#d8d7d2"); // the back, with its roll-up door's ribs
+  for (let k = y + 8; k < FLOOR - 28; k += 8) R(x + 1, k, 8, 1, "#b9b8b3");
+  R(x - 2, FLOOR - 26, 14, 4, "#3a3a3a"); // the bumper
+  R(x + 2, FLOOR - 34, 4, 6, "#c0392b"); // tail light
+  for (const wx of [x + 34, x + 62]) wheel(wx, FLOOR - 12, 12);
+}
+// The box truck's cab, facing right, lower than the box: drop down onto its roof from the box.
+function drawTruckCab(o) {
+  const { x, y, w } = o;
+  oval(x + w / 2, FLOOR - 1, w * 0.5, 4, "rgba(0, 0, 0, 0.28)");
+  ctx.fillStyle = "#f4f3ef";
+  ctx.beginPath();
+  ctx.moveTo(x, FLOOR - 16);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x + w - 18, y);
+  ctx.lineTo(x + w - 2, y + 26);
+  ctx.lineTo(x + w, FLOOR - 16);
+  ctx.closePath();
+  ctx.fill();
+  poly("#2d3a46", x + 10, y + 6, x + w - 20, y + 6, x + w - 8, y + 24, x + 10, y + 24); // its window
+  R(x + 14, y + 8, 4, 12, "rgba(255, 255, 255, 0.22)");
+  R(x + 6, y + 28, 1.5, FLOOR - y - 46, "#c9cbcc"); // the door
+  R(x + 26, y + 34, 8, 3, "#3a3a3a"); // its handle
+  R(x + w - 2, y + 18, 5, 3, "#2b2d31"); // the mirror
+  R(x, FLOOR - 24, w + 2, 8, "#2b2d31");
+  R(x + w - 6, y + 32, 6, 6, "#f4e7b0"); // headlight
+  R(x + w - 4, FLOOR - 22, 8, 6, "#3a3a3a"); // the bumper
+  wheel(x + w - 24, FLOOR - 12, 12);
+}
+// The parking garage's gate arm: a striped arm that swings down across the walk and back up, over
+// and over, on a steady beat. Up, you run straight under it. Down, it's at head height: duck and
+// slide under it, or jump over it. Caught as it swings, it's a bump (a heart, like a bird), not a
+// smash. Its post stands on the curb beside the walk, so only the arm is in the way.
+const GATE = { len: 104, pivotY: FLOOR - 40, cycle: 2600, down: 1000, swing: 350, up: 1.45 };
+function spawnGate() {
+  const o = { type: "gate", x: W + 10, y: GATE.pivotY - GATE.len, w: GATE.len + 16, h: FLOOR - (GATE.pivotY - GATE.len), books: [], phase: Math.random() * GATE.cycle };
+  obstacles.push(o);
+  addPickup(o.x + GATE.len * 0.45, FLOOR - 30); // a page under the arm, for whoever ducks under it (or times it)
+  return { w: o.w, moves: ["jump", "duck"] };
+}
+// How far up the arm is (0 down, GATE.up up), from where it is in its beat.
+function gateAngle(o) {
+  const t = (runTime + o.phase) % GATE.cycle,
+    ease = (p) => p * p * (3 - 2 * p),
+    hold = (GATE.cycle - GATE.down - 2 * GATE.swing); // (how long it stays up)
+  if (t < GATE.down) return 0;
+  if (t < GATE.down + GATE.swing) return ease((t - GATE.down) / GATE.swing) * GATE.up;
+  if (t < GATE.down + GATE.swing + hold) return GATE.up;
+  return ease(1 - (t - GATE.down - GATE.swing - hold) / GATE.swing) * GATE.up;
+}
+const gatePivotX = (o) => o.x + o.w - 8;
+// Is the arm in the book's way (p: its box)? Points along the arm, from a little out from the post
+// (its root is over the curb, beside the walk) to the tip.
+function gateHits(o, p) {
+  const a = gateAngle(o),
+    px = gatePivotX(o);
+  for (let i = 2; i <= 12; i++) {
+    const k = i / 12,
+      ax = px - Math.cos(a) * GATE.len * k,
+      ay = GATE.pivotY - Math.sin(a) * GATE.len * k;
+    if (ax > p.x + 4 && ax < p.x + p.w - 4 && ay > p.y + 3 && ay < p.y + p.h) return true;
+  }
+  return false;
+}
+function drawGate(o) {
+  const px = gatePivotX(o),
+    a = gateAngle(o);
+  // the curb island beside the walk, and the gate's yellow post on it (a step back, so the book
+  // runs past in front of it)
+  R(px - 26, FLOOR - 12, 52, 5, "#d7d4cc");
+  R(px - 26, FLOOR - 8, 52, 3, "#e8b52a");
+  R(px - 10, FLOOR - 50, 22, 40, "#e8b52a");
+  R(px + 6, FLOOR - 50, 6, 40, "#c4931c");
+  R(px - 10, FLOOR - 52, 22, 3, "#3a3a3a");
+  R(px - 6, FLOOR - 32, 10, 6, "#2a2a2a"); // (its little card reader)
+  // the arm: white with red stripes, a red reflector at its tip
+  ctx.save();
+  ctx.translate(px, GATE.pivotY);
+  ctx.rotate(Math.PI + a);
+  R(0, -3, GATE.len, 6, "#f6f6f2");
+  ctx.fillStyle = "#d22a2f";
+  for (let s = 8; s < GATE.len - 6; s += 18) {
+    ctx.beginPath();
+    ctx.moveTo(s, 3);
+    ctx.lineTo(s + 8, -3);
+    ctx.lineTo(s + 16, -3);
+    ctx.lineTo(s + 8, 3);
+    ctx.fill();
+  }
+  R(GATE.len - 5, -3.5, 5, 7, "#d22a2f");
+  ctx.restore();
+  oval(px, GATE.pivotY, 5, 5, "#3a3a3a"); // the hub
+  oval(px, GATE.pivotY, 2, 2, "#9a9a9a");
+}
+// Heritage Green's terraces: wide concrete steps topped with grass, up three and back down. The
+// book runs up and down them by itself (each step is low: see STEP_UP), so on top it's running
+// higher than ever: a page waits up there, and maybe one of the level's bookmarks, so high above
+// the top step that only a jump from up there reaches it.
+const TERRACE = { rise: 16, run: 46, top: 160 };
+function spawnTerrace() {
+  const r = TERRACE.rise,
+    u = TERRACE.run,
+    steps = [];
+  let at = 0;
+  for (const [lv, len] of [[1, u], [2, u], [3, TERRACE.top], [2, u], [1, u]]) {
+    steps.push([at, at + len, FLOOR - lv * r]);
+    at += len;
+  }
+  const o = { type: "platform", kind: "terrace", x: W + 10, y: FLOOR - 3 * r, w: at, h: 3 * r, books: [], steps, seed: Math.random() * 1000 };
+  obstacles.push(o);
+  const mid = o.x + 2 * u + TERRACE.top / 2;
+  addPickup(mid - 40, o.y - 34);
+  if (storyBookmark("terrace")) addStoryBookmark(mid + 20, GROUND_Y - 194); // (out of reach from the ground: see the note above)
+  return { w: o.w, moves: ["high"] };
+}
+function drawTerrace(o) {
+  oval(o.x + o.w / 2, FLOOR - 1, o.w * 0.5, 4, "rgba(0, 0, 0, 0.22)");
+  for (const [a, b, top] of o.steps) {
+    const x = o.x + a,
+      w = b - a;
+    R(x, top, w, FLOOR - top, "#cfcac0"); // the concrete
+    R(x, top, w, 5, "#c2b07c"); // its grass, gone gold for the winter
+    R(x, top + 5, w, 2, "#a9a497");
+    for (let k = 0; k * 9 < w; k++) R(x + k * 9 + hash(k, top | 0) * 4, top - 1, 2, 2, "#b19e68"); // (tufts)
+  }
+  // the risers' shading, so each step reads
+  for (let i = 1; i < o.steps.length; i++) {
+    const [a, , top] = o.steps[i],
+      prev = o.steps[i - 1][2];
+    if (top < prev) R(o.x + a, top + 7, 3, prev - top, "rgba(0, 0, 0, 0.12)");
+    else R(o.x + a - 3, prev + 7, 3, top - prev, "rgba(255, 255, 255, 0.25)");
+  }
+}
+
 // Outdoors, the hazards are what you'd find on a library lawn.
 function storyDrawObstacle(o) {
   if (o.toy) {
     drawToy(o); // (the children's wing's toys, in place of book stacks)
+    return true;
+  }
+  if (o.type === "gate") {
+    drawGate(o);
+    return true;
+  }
+  if (o.steps) {
+    drawTerrace(o);
+    return true;
+  }
+  if (o.vehicle) {
+    drawVehicle(o);
     return true;
   }
   if (!story.level.outdoor) return false;
@@ -1542,8 +1991,10 @@ function drawHedge(o) {
     oval(x + 3 + hash(i, seed + 3) * (w - 6), y + 8 + hash(seed, i) * (h - 12), 2, 1.5, i % 2 ? "#5d9f47" : "#2f6227");
 }
 // A bird flying at you, in place of a flying book: a pigeon, or (like the books) a swooping robin,
-// a darting blue jay, or a crow that shakes, squawks "!" and charges.
+// a darting blue jay, or a crow that shakes, squawks "!" and charges. A diving swallow has its own
+// look (see drawSwallow).
 function drawBird(o) {
+  if (o.dive) return drawSwallow(o);
   const cx = o.x + o.w / 2,
     cy = o.y + o.h / 2;
   let shake = 0;
@@ -1574,6 +2025,34 @@ function drawBird(o) {
   poly("#e3a33a", -16, -5, -22, -3, -16, -2); // beak
   oval(-12, -5, 1.4, 1.4, "#111");
   poly(wing, -3, -1, 9, -1, 4, -1 - 15 * flap); // the near wing
+  ctx.restore();
+}
+// A barn swallow coming down out of the sky (a diver: see diveBottom, in deweydash.js): glossy navy
+// back and long pointed wings, a rusty throat, a white belly and a deeply forked tail. It tips
+// along its path, nose down as it dives, and pulls up or dips again when it commits. Its shadow
+// on the walk grows as it comes down.
+function drawSwallow(o) {
+  const cx = o.x + o.w / 2,
+    cy = o.y + o.h / 2,
+    d = o.x - (player.x + player.w),
+    tilt = -Math.atan2(diveBottom(o, d - 12) - diveBottom(o, d), 12) * 0.8, // (the way it's heading)
+    near = Math.max(0, Math.min(1, 1 - (FLOOR - (o.y + o.h)) / 200));
+  oval(cx, FLOOR - 1, 6 + 8 * near, 2 + 1.5 * near, `rgba(0, 0, 0, ${0.08 + 0.12 * near})`);
+  const flap = Math.sin(runTime * 0.034 + o.phase),
+    navy = "#22325c",
+    wingNavy = "#1a2748";
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(tilt);
+  poly(wingNavy, -2, -2, 10, -2, 6, -3 - 16 * flap); // the far wing
+  poly(navy, 9, -2, 24, -8, 17, -1, 24, 4, 9, 2); // the forked tail
+  oval(0, 0, 12, 6, navy);
+  oval(1, 2.5, 9, 3.5, "#f4f1ea"); // white belly
+  oval(-9, -1, 5.5, 5, navy); // head
+  oval(-11, 1.5, 3.5, 2.8, "#c8642e"); // rusty throat
+  poly("#2a2a2a", -14, -1.5, -19, 0, -14, 1);
+  oval(-10.5, -2.5, 1.3, 1.3, "#111");
+  poly(wingNavy, -4, -1, 12, -1, 3, -1 - 19 * flap); // the near wing
   ctx.restore();
 }
 // A lawn sprinkler, in place of a wet floor sign (its puddles come after, as usual).
@@ -1614,8 +2093,22 @@ function sceneAisleStacks(x, w) {
   R(x, CEIL - 3, w, 3, "#dedcd5");
   R(x, CEIL, w, FLOOR - CEIL, "#e9e7e1");
   carpet(x, w, "#b8ac8e", "#a19575");
+  stackRows(x + 18, x + w, 0);
+  drawShelvingCart(x + 600, FLOOR, 0.9);
+  // a steel trash can
+  const tg = ctx.createLinearGradient(x + 300, 0, x + 322, 0);
+  tg.addColorStop(0, "#d7dbdf");
+  tg.addColorStop(1, "#8f959b");
+  ctx.fillStyle = tg;
+  ctx.fillRect(x + 300, FLOOR - 40, 22, 40);
+  R(x + 298, FLOOR - 42, 26, 4, "#a7adb3");
+}
+// The long aisle's rows of stacks, seen end-on: one every 126 px from x0 until x1, each its maple
+// end panel and the shelves past it, full of books (seed: which books), and now and then a catalog
+// computer at the end.
+function stackRows(x0, x1, seed) {
   const top = CEIL + 14;
-  for (let k = 0, rx = x + 18; rx < x + w; k++, rx += 126) {
+  for (let k = seed, rx = x0; rx < x1; k++, rx += 126) {
     // the row's shelves, seen past its end
     const sx = rx + 26,
       sw = 100;
@@ -1648,28 +2141,13 @@ function sceneAisleStacks(x, w) {
       poly("#7fb3d9", rx + 1, FLOOR - 65, rx + 24, FLOOR - 65, rx + 27, FLOOR - 81, rx + 4, FLOOR - 81);
     }
   }
-  drawShelvingCart(x + 600, FLOOR, 0.9);
-  // a steel trash can
-  const tg = ctx.createLinearGradient(x + 300, 0, x + 322, 0);
-  tg.addColorStop(0, "#d7dbdf");
-  tg.addColorStop(1, "#8f959b");
-  ctx.fillStyle = tg;
-  ctx.fillRect(x + 300, FLOOR - 40, 22, 40);
-  R(x + 298, FLOOR - 42, 26, 4, "#a7adb3");
 }
-// A black two-shelf book cart (feet at floorY).
-function drawShelvingCart(cx, floorY, s = 1) {
-  const w = 60 * s,
-    h = 70 * s,
-    x = cx - w / 2,
-    y = floorY - h;
-  R(x, y, 4 * s, h - 6 * s, "#2a2a2e");
-  R(x + w - 4 * s, y, 4 * s, h - 6 * s, "#2a2a2e");
-  for (const sy of [y + 22 * s, y + h - 14 * s]) {
-    R(x, sy, w, 4 * s, "#1f1f22");
-    for (let i = 0; i < 6; i++) R(x + 6 * s + i * 8 * s, sy - 18 * s + (i % 2) * 3 * s, 6 * s, (18 - (i % 2) * 3) * s, SPINES[(i * 3 + 1) % SPINES.length]);
-  }
-  for (const wx of [x + 6 * s, x + w - 6 * s]) oval(wx, floorY - 4 * s, 4 * s, 4 * s, "#111");
+// A short book truck (feet at floorY), in the background and the picture books: tan, like the
+// ones in the aisle, unless given another of CART_COLORS. (Its top shelf is 48 tall at s = 1,
+// with the handles standing up 22 more: where Dewey rides in the picture books.)
+function drawShelvingCart(cx, floorY, s = 1, color = CART_COLORS[2]) {
+  const w = 60 * s;
+  drawBookTruck(cx - w / 2, floorY - 48 * s, w, floorY, color, 7, s, 22 * s);
 }
 // The long main aisle, wall side: the navy wall with the elevator and restrooms, maple study carrels.
 function sceneAisleWall(x, w) {
@@ -1709,105 +2187,294 @@ function sceneAisleWall(x, w) {
   }
   oval(x + 590, FLOOR - 14, 14, 4, "#d9a560"); // a round maple stool
   R(x + 576, FLOOR - 14, 28, 14, "#cf9a55");
+  // past the carrels, a stretch of bare wall, then more rows of stacks up to the children's wing
+  stackRows(x + 1330, x + w, 20);
 }
-// Where the long aisle opens into the children's wing: the giraffe, then the picture-book corner
-// (armchairs around a book table, low red shelves, framed illustrations, big bright windows).
-function scenePictureBooks(x, w) {
-  R(x, 0, w, CEIL, "#f4f3ef");
-  for (let i = 0; i * 64 < w; i++) R(x + i * 64, 0, 1, CEIL, "#e3e0d8");
-  R(x, 32, w, 1, "#e3e0d8");
-  R(x, CEIL, w, FLOOR - CEIL, "#e2e7ed");
-  // big windows onto the trees
-  for (const off of [590, 790]) {
-    const wx = x + off;
-    R(wx, CEIL + 10, 180, FLOOR - CEIL - 60, "#cfd6dc");
-    R(wx + 6, CEIL + 16, 168, FLOOR - CEIL - 72, "#bfe0c9");
-    // (seeded by the window's spot in the scene, not on the screen, so the trees hold still)
-    for (let i = 0; i < 6; i++) oval(wx + 20 + i * 28, CEIL + 60 + hash(i, off) * 40, 26, 22, i % 2 ? "#7fb26a" : "#93c27c");
-    R(wx + 88, CEIL + 16, 4, FLOOR - CEIL - 72, "#cfd6dc");
+// The picture-book room, where the long aisle opens into the children's wing, with the giraffe at
+// its far end: a drop ceiling with disc pendant lights, pale blue-grey walls (a big lion painting,
+// and a feature wall with three framed illustrations), tall grey picture-book shelves with red end
+// panels, a navy sofa, a little round table with maple chairs, a maple browsing bin of face-out
+// books, a curved navy bench, and big windows onto the trees.
+// (Everything is placed by its spot in the scene, not on the screen, which changes every frame as
+// the library scrolls: books picked by screen spot would flicker.)
+const PB_SPINES = ["#e8d9c0", "#f2c14e", "#d94b4b", "#4b79d9", "#8fb7d9", "#f3a76b", "#e8e8e8", "#9bc27c", "#c9a3d9", "#3aa6a6", "#f0e0a8"];
+const PB_RED = "#b3262c",
+  PB_NAVY = "#2c3a68",
+  PB_NAVY_LIGHT = "#3d4f88";
+// A picture-book shelf, tops at `top`: grey metal, the books (thin, tall and every color) in rows
+// with grey dividers, a sign or two on top, and (ends: true) red end panels.
+function pictureBookShelf(sx, top, sw, rows, seed, ends = true) {
+  const h = FLOOR - top,
+    rowH = (h - 6) / rows;
+  R(sx, top, sw, h, "#c3c8cd");
+  R(sx - 2, top - 4, sw + 4, 5, "#dfe2e5"); // the top
+  for (let r = 0; r < rows; r++) {
+    const bottom = top + 3 + (r + 1) * rowH;
+    R(sx + 2, bottom - rowH + 2, sw - 4, rowH - 2, "#e6e8ea");
+    let bx = sx + 8;
+    for (let k = 0; ; k++) {
+      const rnd = hash(seed * 50 + r, k),
+        bw = 2 + rnd * 4;
+      if (bx + bw > sx + sw - 8) break;
+      if (k % 11 === 10) {
+        R(bx, bottom - rowH * 0.45 - 3, 3, rowH * 0.45, "#a9afb5"); // a divider
+        bx += 5;
+        continue;
+      }
+      const bh = rowH * (0.5 + hash(k + 7, seed + r) * 0.38);
+      R(bx, bottom - bh - 3, bw, bh, PB_SPINES[(rnd * PB_SPINES.length) | 0]);
+      bx += bw + 0.6;
+    }
+    R(sx + 2, bottom - 3, sw - 4, 3, "#a9afb5");
   }
-  // a feature wall with three framed illustrations
-  R(x + 300, CEIL, 250, FLOOR - CEIL, "#edf0f4");
-  const pastel = [["#bfe1f2", "#7fb86a"], ["#f3d9b5", "#c98a6a"], ["#2d3d78", "#f2d36b"]];
-  pastel.forEach(([sky, fg], i) => {
-    const fx = x + 316 + i * 76;
-    R(fx, CEIL + 46, 64, 80, "#f8f9fb");
-    R(fx + 5, CEIL + 51, 54, 70, sky);
-    oval(fx + 32, CEIL + 104, 22, 14, fg);
-    oval(fx + 18 + i * 8, CEIL + 70, 6, 6, i === 2 ? "#f2d36b" : "#ffffff");
-  });
-  // disc pendant lights
-  for (let lx = x + 140; lx < x + w; lx += 220) {
-    R(lx - 1, 0, 2, 40, "#cfd3d6");
-    oval(lx, 44, 30, 6, "#d6dadd");
-    oval(lx, 45, 17, 3, "#fff6dc");
+  // signs standing on top
+  for (let i = 0; 30 + i * 70 < sw; i++) {
+    const gx = sx + 20 + i * 70 + hash(seed, i) * 20;
+    R(gx, top - 18, 11, 14, "#2f5fb0");
+    R(gx + 2, top - 15, 7, 5, "#e8eef8");
   }
-  carpet(x, w, "#9c8a6c", "#84735a");
-  drawGiraffe(x + 110, FLOOR);
-  // low picture-book shelves, red at the ends, with books standing face-out on top
-  // (each shelf's books are picked by its spot in the scene, off, not on the screen, which
-  // changes every frame as the library scrolls: that made the books flicker)
-  for (const [off, sw] of [[200, 110], [580, 150], [780, 160]]) {
-    const sx = x + off;
-    shelfUnit(sx, FLOOR - 66, sw, 66, 2, off);
-    R(sx - 6, FLOOR - 70, 7, 70, "#c62a2f");
-    R(sx + sw - 1, FLOOR - 70, 7, 70, "#c62a2f");
-    for (let i = 0; 8 + i * 22 < sw; i++) R(sx + 6 + i * 22, FLOOR - 92, 16, 22, BRIGHT[(i * 3 + off) % BRIGHT.length]);
+  if (ends) {
+    R(sx - 7, top - 6, 8, h + 6, PB_RED);
+    R(sx + sw - 1, top - 6, 8, h + 6, PB_RED);
   }
-  // blue armchairs around an octagonal maple book table
-  for (const ax of [x + 330, x + 488]) {
-    ctx.fillStyle = "#4d6d85";
-    roundRect(ax, FLOOR - 60, 62, 36, 8);
-    ctx.fillStyle = "#5b7d96";
-    roundRect(ax - 4, FLOOR - 32, 70, 26, 7);
-    R(ax + 4, FLOOR - 6, 3, 6, "#666");
-    R(ax + 55, FLOOR - 6, 3, 6, "#666");
-  }
-  poly("#d29a55", x + 410, FLOOR - 58, x + 470, FLOOR - 58, x + 480, FLOOR - 44, x + 480, FLOOR, x + 400, FLOOR, x + 400, FLOOR - 44);
-  R(x + 400, FLOOR - 44, 80, 3, "#b98340");
-  for (let i = 0; i < 4; i++) R(x + 412 + i * 16, FLOOR - 72 + (i % 2) * 4, 11, 14 - (i % 2) * 4, BRIGHT[(i * 2 + 1) % BRIGHT.length]);
 }
-// The tall giraffe statue by the children's wing (feet at floorY).
-function drawGiraffe(cx, floorY) {
-  R(cx - 30, floorY - 12, 60, 12, "#b98340");
-  R(cx - 32, floorY - 14, 64, 4, "#d29a55");
-  const legTop = floorY - 112;
-  for (const lx of [-22, -10, 10, 20]) {
-    R(cx + lx, legTop, 7, 100, "#cdb88c");
-    R(cx + lx, floorY - 22, 7, 8, "#3a2f28");
-  }
-  poly("#cdb88c", cx + 14, legTop - 14, cx + 26, legTop - 8, cx + 52, floorY - 200, cx + 40, floorY - 204);
-  oval(cx, legTop - 6, 34, 20, "#cdb88c");
-  poly("#cdb88c", cx - 32, legTop - 8, cx - 44, legTop + 16, cx - 41, legTop + 17); // tail
-  ctx.save();
-  ctx.translate(cx + 50, floorY - 206);
-  ctx.rotate(0.35);
-  oval(0, 0, 15, 8, "#cdb88c");
-  oval(10, 2, 6, 5, "#bca57a");
-  R(-6, -16, 3, 10, "#cdb88c");
-  R(-1, -17, 3, 10, "#cdb88c");
-  oval(-4.5, -16, 3, 3, "#3a2f28");
-  oval(0.5, -17, 3, 3, "#3a2f28");
-  oval(-12, -5, 6, 3, "#cdb88c");
-  oval(2, -2, 2, 2, "#1b1512");
-  ctx.restore();
-  // its patches
-  ctx.save();
+// A curved navy bench on thin metal legs (cx: its middle).
+function curvedBench(cx) {
+  for (const lx of [-54, -20, 20, 52]) R(cx + lx, FLOOR - 16, 2.5, 16, "#a9aeb3");
+  ctx.fillStyle = PB_NAVY;
   ctx.beginPath();
-  ctx.ellipse(cx, legTop - 6, 33, 19, 0, 0, Math.PI * 2);
-  ctx.moveTo(cx + 14, legTop - 14);
-  ctx.lineTo(cx + 26, legTop - 8);
-  ctx.lineTo(cx + 52, floorY - 200);
-  ctx.lineTo(cx + 40, floorY - 204);
+  ctx.moveTo(cx - 64, FLOOR - 36);
+  ctx.quadraticCurveTo(cx, FLOOR - 46, cx + 64, FLOOR - 36);
+  ctx.lineTo(cx + 64, FLOOR - 16);
+  ctx.quadraticCurveTo(cx, FLOOR - 26, cx - 64, FLOOR - 16);
   ctx.closePath();
-  ctx.clip();
-  for (let i = 0; i < 26; i++) {
-    const t = i / 26;
-    const px = i < 14 ? cx - 28 + hash(i, 4) * 56 : cx + 18 + (t - 0.5) * 60 + hash(i, 2) * 6,
-      py = i < 14 ? legTop - 22 + hash(4, i) * 32 : legTop - 12 - (t - 0.54) * 190;
-    oval(px, py, 5 + hash(i, 9) * 3, 4 + hash(9, i) * 2, "#6b4a33");
+  ctx.fill();
+  ctx.fillStyle = PB_NAVY_LIGHT; // (its top, catching the light)
+  ctx.beginPath();
+  ctx.moveTo(cx - 64, FLOOR - 36);
+  ctx.quadraticCurveTo(cx, FLOOR - 46, cx + 64, FLOOR - 36);
+  ctx.lineTo(cx + 64, FLOOR - 33);
+  ctx.quadraticCurveTo(cx, FLOOR - 43, cx - 64, FLOOR - 33);
+  ctx.closePath();
+  ctx.fill();
+}
+// A maple browsing bin on casters: picture books standing face-out in two tiers (bx: its left).
+function browsingBin(bx, seed) {
+  R(bx, FLOOR - 62, 86, 56, "#d9b07a");
+  for (let i = 0; i < 5; i++) R(bx + 5 + i * 16, FLOOR - 74 + (i % 2) * 3, 14, 20, BRIGHT[(i * 3 + seed) % BRIGHT.length]);
+  R(bx + 4, FLOOR - 46, 78, 20, "#a37a48");
+  for (let i = 0; i < 5; i++) R(bx + 7 + i * 15, FLOOR - 42 + (i % 2) * 2, 13, 16, BRIGHT[(i * 5 + seed + 2) % BRIGHT.length]);
+  for (const ly of [FLOOR - 60, FLOOR - 26]) {
+    R(bx, ly, 86, 9, "#e8c595"); // each tier's front, with its little drawer pulls
+    for (let i = 0; i < 4; i++) R(bx + 11 + i * 19, ly + 3, 8, 3, "#3a2a1e");
+  }
+  oval(bx + 9, FLOOR - 3, 3, 3, "#333");
+  oval(bx + 77, FLOOR - 3, 3, 3, "#333");
+}
+function scenePictureBooks(x, w) {
+  // the drop ceiling
+  R(x, 0, w, CEIL, "#eef0f2");
+  for (let i = 0; i * 50 < w; i++) R(x + i * 50, 0, 1, CEIL, "#d7dbdf");
+  R(x, 21, w, 1, "#d7dbdf");
+  R(x, 42, w, 1, "#d7dbdf");
+  for (const vx of [260, 760]) R(x + vx, 25, 44, 12, "#d7dbdf"); // air vents
+  // the walls
+  R(x, CEIL, w, FLOOR - CEIL, "#c8d2dc");
+  R(x + 270, CEIL, 340, FLOOR - CEIL, "#d4dce4"); // the feature wall, standing forward
+  // a big lion painting in a black frame
+  const px = x + 70,
+    py = CEIL + 8;
+  R(px, py, 84, 104, "#1d1d1f");
+  R(px + 4, py + 4, 76, 96, "#c98a3a");
+  oval(px + 42, py + 50, 32, 40, "#b5702c"); // mane
+  oval(px + 42, py + 56, 17, 24, "#dda55a"); // face
+  oval(px + 35, py + 50, 2.5, 1.6, "#4a2c12");
+  oval(px + 49, py + 50, 2.5, 1.6, "#4a2c12");
+  poly("#6b3a1a", px + 38, py + 64, px + 46, py + 64, px + 42, py + 69); // nose
+  // three framed illustrations, in clear mounts
+  const art = [["#bfe1f2", "#7fb86a", "#c62a2f"], ["#f3e3c8", "#c98a6a", "#b3262c"], ["#2d3d78", "#f2d36b", "#ffffff"]];
+  art.forEach(([sky, ground, accent], i) => {
+    const fx = x + 330 + i * 82;
+    R(fx - 5, CEIL + 34, 70, 92, "rgba(255, 255, 255, 0.45)");
+    R(fx, CEIL + 39, 60, 82, "#f8f9fb");
+    R(fx + 6, CEIL + 45, 48, 70, sky);
+    oval(fx + 30, CEIL + 106, 22, 10, ground);
+    R(fx + 22 + i * 4, CEIL + 70 + i * 4, 7, 18, accent); // (a figure, or a bird in the night sky)
+    oval(fx + 25 + i * 4, CEIL + 67 + i * 4, 4, 4, i === 2 ? accent : "#e9c8a0");
+  });
+  // big windows onto the trees, and the exit sign
+  const wx = x + 640;
+  R(wx, CEIL + 8, 200, FLOOR - CEIL - 60, "#9aa6b2");
+  R(wx + 5, CEIL + 13, 190, FLOOR - CEIL - 70, "#bfe0c9");
+  for (let i = 0; i < 7; i++) oval(wx + 18 + i * 27, CEIL + 50 + hash(i, 640) * 40, 24, 22, i % 2 ? "#7fb26a" : "#93c27c");
+  for (const mx of [70, 132]) R(wx + mx, CEIL + 13, 3, FLOOR - CEIL - 70, "#9aa6b2");
+  R(x + 600, CEIL + 6, 26, 11, "#f4f4f4");
+  label("EXIT", x + 613, CEIL + 15, 8, "#c62a2f");
+  // disc pendant lights, each hanging on a pair of white rods
+  for (let lx = x + 110; lx < x + w; lx += 200) {
+    R(lx - 5, 0, 1.5, 40, "#e9ebee");
+    R(lx + 3.5, 0, 1.5, 40, "#e9ebee");
+    oval(lx, 43, 30, 6, "#b9bec4");
+    oval(lx, 44, 16, 3, "#fff6dc");
+  }
+  carpet(x, w, "#8a8174", "#6f675b");
+  // the shelves: tall ones either side, the low ones under the feature wall
+  pictureBookShelf(x + 14, FLOOR - 108, 220, 4, 1);
+  pictureBookShelf(x + 262, FLOOR - 82, 356, 3, 2, false);
+  pictureBookShelf(x + 652, FLOOR - 108, 150, 4, 3);
+  // (the room's furniture comes along as things to jump and bounce on: see the level's `placed`)
+  drawGiraffe(x + 890, FLOOR);
+}
+// The picture-book room's furniture, drawn into the scene (for the picture books: in the level it
+// comes along as things to jump and bounce on instead).
+function pictureBookRoomFurniture(x) {
+  // the navy sofa against the low shelves
+  const sx = x + 300;
+  R(sx, FLOOR - 60, 104, 28, "#26355f");
+  R(sx - 4, FLOOR - 36, 112, 26, PB_NAVY);
+  R(sx - 4, FLOOR - 36, 112, 3, PB_NAVY_LIGHT);
+  R(sx + 2, FLOOR - 10, 3, 10, "#555");
+  R(sx + 99, FLOOR - 10, 3, 10, "#555");
+  // a little round table with a red top, and maple chairs
+  const tx = x + 476;
+  for (const [chx, back] of [[tx - 50, 0], [tx + 32, 15]]) {
+    R(chx + back, FLOOR - 50, 3, 26, "#d29a55"); // its back
+    R(chx, FLOOR - 26, 18, 4, "#d29a55"); // its seat
+    R(chx + 1, FLOOR - 22, 2, 22, "#333");
+    R(chx + 15, FLOOR - 22, 2, 22, "#333");
+  }
+  R(tx - 2, FLOOR - 36, 4, 34, "#555");
+  oval(tx, FLOOR - 2, 14, 2, "#555");
+  oval(tx, FLOOR - 38, 32, 5, "#c4473a");
+  R(tx - 32, FLOOR - 38, 64, 3, "#8e2f27");
+  // the browsing bin, and the curved bench in front
+  browsingBin(x + 536, 4);
+  curvedBench(x + 196);
+}
+// The giraffe statue by the children's wing (feet at floorY), as it really is: papier-mâché in
+// rust-brown paper, mottled rather than spotted, with the strips' edges showing. Very long thin
+// legs, a near-upright neck, a boxy head looking up, short horns and ears with dark tips, and a
+// daisy at each ear (blue and red). It stands on green turf inside a clear case that comes up to
+// its knees, with a "please do not touch" sign on the front.
+const GIRAFFE_PAPER = "#b5733c",
+  GIRAFFE_DARK = "#8a5129", // the far legs, the muzzle
+  GIRAFFE_TIP = "#2a1f1a"; // the hooves and the tips of the horns and ears
+// The body and neck, as one path (t: the top of the legs).
+function giraffeBodyPath(cx, floorY, t) {
+  ctx.beginPath();
+  ctx.moveTo(cx - 32, t - 2); // rump
+  ctx.quadraticCurveTo(cx - 30, t - 24, cx - 6, t - 24); // back
+  ctx.lineTo(cx + 10, t - 28); // withers
+  ctx.quadraticCurveTo(cx + 18, t - 60, cx + 25, floorY - 194); // up the back of the neck
+  ctx.lineTo(cx + 38, floorY - 192); // (the head covers the top)
+  ctx.quadraticCurveTo(cx + 38, t - 50, cx + 34, t - 10); // down the front of the neck
+  ctx.quadraticCurveTo(cx + 34, t + 6, cx + 22, t + 8); // chest
+  ctx.lineTo(cx - 22, t + 8); // belly
+  ctx.quadraticCurveTo(cx - 34, t + 6, cx - 32, t - 2);
+  ctx.closePath();
+}
+// One long thin leg, a little narrower below the knee, with its hoof (x: its middle).
+function giraffeLeg(x, top, floorY, color) {
+  const bottom = floorY - 12,
+    knee = top + (bottom - top) * 0.55;
+  poly(color, x - 4, top, x + 4, top, x + 3.2, knee, x + 2.6, bottom - 5, x - 2.6, bottom - 5, x - 3.2, knee);
+  R(x - 0.5, top + 6, 1.4, bottom - top - 14, "rgba(240, 200, 150, 0.35)"); // (the light on its front)
+  R(x - 3, bottom - 6, 6, 6, GIRAFFE_TIP);
+}
+// A fake daisy, of radius r.
+function daisy(x, y, r, petal) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = petal;
+  for (let k = 0; k < 14; k++) {
+    ctx.rotate((Math.PI * 2) / 14);
+    ctx.beginPath();
+    ctx.ellipse(r * 0.55, 0, r * 0.5, r * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
+  oval(x, y, r * 0.3, r * 0.3, "#d8c23a");
+}
+function drawGiraffe(cx, floorY) {
+  const t = floorY - 110; // the top of the legs
+  // the base: a pale plinth with green turf on it
+  R(cx - 44, floorY - 4, 88, 4, "#cfd4d8");
+  R(cx - 42, floorY - 12, 84, 8, "#4c8a3a");
+  for (let i = 0; i < 14; i++) R(cx - 40 + i * 6, floorY - 14 + hash(i, 7) * 2, 2, 3, "#5f9e48");
+  // the far legs, then the tail
+  giraffeLeg(cx - 14, t, floorY, GIRAFFE_DARK);
+  giraffeLeg(cx + 25, t, floorY, GIRAFFE_DARK);
+  ctx.strokeStyle = GIRAFFE_DARK;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 31, t - 6);
+  ctx.quadraticCurveTo(cx - 38, t + 10, cx - 36, t + 34);
+  ctx.stroke();
+  oval(cx - 36, t + 36, 2.5, 4, GIRAFFE_TIP);
+  // the body and neck, in mottled paper with the strips' edges showing
+  giraffeBodyPath(cx, floorY, t);
+  ctx.fillStyle = GIRAFFE_PAPER;
+  ctx.fill();
+  ctx.save();
+  giraffeBodyPath(cx, floorY, t);
+  ctx.clip();
+  for (let i = 0; i < 30; i++) {
+    const px = cx - 34 + hash(i, 3) * 74,
+      py = floorY - 196 + hash(3, i) * 116;
+    oval(px, py, 5 + hash(i, 5) * 7, 4 + hash(5, i) * 5, "rgba(92, 50, 24, 0.3)");
+  }
+  for (let i = 0; i < 14; i++) {
+    const px = cx - 30 + hash(i, 11) * 68,
+      py = floorY - 190 + hash(11, i) * 104;
+    oval(px, py, 3 + hash(i, 13) * 5, 2 + hash(13, i) * 2, "rgba(236, 196, 140, 0.35)");
+  }
+  ctx.strokeStyle = "rgba(70, 38, 18, 0.45)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < 9; i++) {
+    const sy = floorY - 186 + i * 13, // (the seams wrap around the neck, then the body)
+      sx = cx + (i < 6 ? 14 : -26 + hash(i, 17) * 30);
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + 26, sy - 6 - hash(17, i) * 6);
+  }
+  ctx.stroke();
+  ctx.restore();
+  // the near legs
+  giraffeLeg(cx - 24, t, floorY, GIRAFFE_PAPER);
+  giraffeLeg(cx + 15, t, floorY, GIRAFFE_PAPER);
+  // the head, tipped back a little to look up: boxy, with a blunt muzzle
+  ctx.save();
+  ctx.translate(cx + 33, floorY - 199);
+  ctx.rotate(-0.35);
+  daisy(-11, -11, 7, "#3f7fd0"); // (the blue daisy, on the far ear)
+  poly(GIRAFFE_DARK, -7, -7, -18, -15, -14, -4); // far ear
+  oval(-17, -14, 2, 1.6, GIRAFFE_TIP);
+  R(-6, -17, 3.5, 10, GIRAFFE_PAPER); // the horns
+  R(-1, -18, 3.5, 11, GIRAFFE_PAPER);
+  R(-6, -18, 3.5, 3, GIRAFFE_TIP);
+  R(-1, -19, 3.5, 3, GIRAFFE_TIP);
+  ctx.fillStyle = GIRAFFE_PAPER;
+  roundRect(-10, -8, 27, 15, 4);
+  R(10, -6, 7, 12, GIRAFFE_DARK); // muzzle
+  R(10, 3, 7, 1, GIRAFFE_TIP); // mouth
+  R(-6, -7, 14, 2, "rgba(236, 196, 140, 0.4)"); // (the light along its brow)
+  oval(3, -3, 2.4, 2.4, "#1b1512");
+  oval(3.6, -3.7, 0.8, 0.8, "#ffffff");
+  poly(GIRAFFE_PAPER, -8, -4, -20, -6, -13, 2); // near ear
+  oval(-19, -5.5, 2, 1.6, GIRAFFE_TIP);
+  daisy(-9, -1, 7, "#c2264b"); // (the red daisy, on the near ear)
+  ctx.restore();
+  // the clear case around its legs, up to the knees, with the sign on the front
+  const caseTop = floorY - 64;
+  R(cx - 42, caseTop, 84, floorY - 12 - caseTop, "rgba(225, 240, 250, 0.14)");
+  R(cx - 42, caseTop, 84, 1, "rgba(255, 255, 255, 0.7)");
+  R(cx - 38, caseTop - 4, 84, 1, "rgba(255, 255, 255, 0.45)"); // (its back edge, just above)
+  R(cx - 42, caseTop, 1, floorY - 12 - caseTop, "rgba(255, 255, 255, 0.6)");
+  R(cx + 41, caseTop, 1, floorY - 12 - caseTop, "rgba(255, 255, 255, 0.6)");
+  poly("rgba(255, 255, 255, 0.16)", cx - 30, caseTop + 1, cx - 18, caseTop + 1, cx - 34, floorY - 12, cx - 41, floorY - 12); // glare
+  R(cx - 8, floorY - 54, 16, 20, "#9fd5dc");
+  for (let i = 0; i < 3; i++) R(cx - 5, floorY - 50 + i * 4, 10, 1.5, "#e07b39");
+  R(cx + 2, floorY - 39, 2, 4, "#e0a040");
 }
 // The children's help desk, with the giant stuffed animals on the shelves under the ceiling waves.
 // The dark ceiling over the children's wing, with its rows of light panels.
@@ -2160,6 +2827,123 @@ function sceneSeating(x, w) {
     oval(px, FLOOR - 58, 20, 24, "#4f7942");
     oval(px - 10, FLOOR - 74, 12, 16, "#669456");
     oval(px + 10, FLOOR - 70, 12, 16, "#5b8a4a");
+  }
+}
+// Grey slate flagstones, in two rows of slabs of different sizes and shades, with pale grout. Like
+// tiles (in deweydash.js), the pattern moves at ground speed so it reads as the floor you run on.
+function slateFloor(x, w) {
+  const fh = H + 2 * TOP - FLOOR,
+    grout = "#6b6f77";
+  R(x, FLOOR, w, fh, "#3a3d44");
+  for (const [ty, th, sp, len] of [[0, 14, 0.9, 64], [15, fh - 15, 1.1, 92]]) {
+    const off = distance * sp;
+    for (let k = Math.floor(off / len) - 1; k * len - off < W; k++) {
+      const sx = k * len - off,
+        tone = hash(k, len);
+      R(sx + 1, FLOOR + ty + 1, len - 1, th - 1, tone < 0.33 ? "#34373e" : tone < 0.66 ? "#3f424a" : "#474b53");
+      R(sx, FLOOR + ty, 1, th, grout);
+      if (hash(len, k) < 0.4) R(sx + len * (0.4 + hash(k, 3) * 0.2), FLOOR + ty, 1, th, grout); // (a slab split in two)
+    }
+    R(x, FLOOR + ty, w, 1, grout);
+  }
+}
+// The foyer just before the globe, outside the Meeting Rooms: a white drop ceiling with round
+// lights, blue-grey walls with tall maple-paneled walls either side (a door in the left one), a TV
+// on the wall in the middle showing what's on at the library, square maple pillars, a big potted
+// fig in a silver planter with a maple chair beside it, and a grey slate floor.
+function sceneFoyer(x, w) {
+  // the drop ceiling
+  R(x, 0, w, CEIL, "#eeedea");
+  for (let i = 0; i * 56 < w; i++) R(x + i * 56, 0, 1, CEIL, "#d9d8d3");
+  R(x, 22, w, 1, "#d9d8d3");
+  R(x, 44, w, 1, "#d9d8d3");
+  for (const vx of [300, 470]) {
+    R(x + vx, 26, 40, 14, "#dcdbd6"); // vents
+    for (let k = 0; k < 4; k++) R(x + vx + 4, 29 + k * 3, 32, 1, "#c2c1bb");
+  }
+  for (let lx = x + 90; lx < x + w; lx += 130) {
+    oval(lx, CEIL - 6, 9, 3, "#fffbe8"); // round recessed lights
+    oval(lx, CEIL - 6, 5, 1.6, "#ffffff");
+  }
+  R(x, CEIL - 2, w, 2, "#d5d3cd");
+  // the walls: blue-grey, with tall maple paneling at either side
+  R(x, CEIL, w, FLOOR - CEIL, "#b7c0c9");
+  const paneling = (px, pw, door) => {
+    const pt = CEIL + 52;
+    R(px - 3, pt - 6, pw + 6, 7, "#6b3f22"); // the dark wood cap
+    R(px, pt, pw, FLOOR - pt, "#d49853");
+    for (let k = 1; k * 48 < pw; k++) R(px + k * 48, pt, 2, FLOOR - pt, "#b07636");
+    R(px, FLOOR - 64, pw, 3, "#b07636"); // the rail
+    R(px, FLOOR - 8, pw, 8, "#2a2622"); // the base
+    if (door) {
+      R(px + door, pt + 6, 64, FLOOR - pt - 6, "#b07636"); // a door, flush with the paneling (shut)
+      R(px + door + 4, pt + 10, 56, FLOOR - pt - 18, "#dba05c");
+      R(px + door + 50, FLOOR - 92, 3, 20, "#d8d8d8");
+    }
+  };
+  paneling(x + 10, 200, 110);
+  paneling(x + 470, w - 470, 0);
+  // light switches, and the TV in the middle of the bare wall, its cable hanging below
+  R(x + 252, FLOOR - 108, 7, 11, "#eef0f2");
+  R(x + 430, FLOOR - 108, 7, 11, "#eef0f2");
+  const tx = x + 290,
+    ty = CEIL + 58;
+  R(tx, ty, 112, 66, "#111214");
+  R(tx + 3, ty + 3, 106, 60, "#59c4ef"); // the screen: a made-up "what's on" slide
+  R(tx + 8, ty + 10, 44, 7, "#e2384d");
+  R(tx + 8, ty + 20, 36, 7, "#e2384d");
+  for (let k = 0; k < 4; k++) R(tx + 8, ty + 34 + k * 5, 38 - (k % 2) * 8, 2, "#1d4f7a");
+  R(tx + 58, ty + 6, 48, 54, "#f4f7fa");
+  poly("#e2384d", tx + 64, ty + 58, tx + 78, ty + 22, tx + 100, ty + 30, tx + 96, ty + 58);
+  oval(tx + 84, ty + 18, 9, 9, "#f2d2b8");
+  ctx.strokeStyle = "#222";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(tx + 56, ty + 66);
+  ctx.quadraticCurveTo(tx + 50, ty + 84, tx + 60, ty + 96);
+  ctx.stroke();
+  R(tx + 54, ty + 96, 10, 12, "#eef0f2"); // the outlet
+  slateFloor(x, w);
+  // a maple chair, then the big fig in its round silver planter
+  const cx = x + 210;
+  poly("#d29a55", cx, FLOOR - 66, cx + 14, FLOOR - 64, cx + 16, FLOOR - 38, cx + 4, FLOOR - 36); // the back
+  R(cx, FLOOR - 36, 30, 5, "#d29a55"); // the seat
+  for (const lx of [cx + 2, cx + 26]) R(lx, FLOOR - 31, 2, 31, "#3a3a3a");
+  const fx = x + 120;
+  ctx.strokeStyle = "#6b4a2c";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(fx - 4, FLOOR - 44);
+  ctx.quadraticCurveTo(fx - 16, FLOOR - 120, fx - 6, FLOOR - 190);
+  ctx.moveTo(fx + 4, FLOOR - 44);
+  ctx.quadraticCurveTo(fx + 14, FLOOR - 100, fx + 10, FLOOR - 160);
+  ctx.stroke();
+  for (let i = 0; i < 16; i++) {
+    // its big fiddle leaves
+    const ly = FLOOR - 200 + i * 9 + hash(i, 5) * 6,
+      lx = fx + (i % 2 ? 1 : -1) * (8 + hash(5, i) * 26),
+      a = (i % 2 ? 0.5 : -0.5) + (hash(i, 9) - 0.5) * 0.6;
+    ctx.save();
+    ctx.translate(lx, ly);
+    ctx.rotate(a);
+    oval(0, 0, 13, 8, i % 3 ? "#3f7d36" : "#4f8f3f");
+    R(-10, -0.5, 20, 1, "rgba(255, 255, 255, 0.18)");
+    ctx.restore();
+  }
+  for (let i = 0; i < 7; i++) oval(fx - 30 + i * 10, FLOOR - 48 + (i % 2) * 4, 8, 5, "#4f8f3f"); // trailing ivy at its foot
+  const pg = ctx.createLinearGradient(fx - 32, 0, fx + 32, 0);
+  pg.addColorStop(0, "#9ea3a8");
+  pg.addColorStop(0.45, "#e4e7ea");
+  pg.addColorStop(1, "#8c9196");
+  ctx.fillStyle = pg;
+  ctx.fillRect(fx - 32, FLOOR - 46, 64, 44);
+  oval(fx, FLOOR - 46, 32, 4, "#c3c7cb");
+  // two square maple pillars, framing the TV wall
+  for (const px of [x + 236, x + 452]) {
+    R(px, 0, 22, FLOOR, "#c9a05e");
+    R(px + 15, 0, 7, FLOOR, "#a8803f");
+    R(px + 3, 0, 2, FLOOR, "rgba(255, 255, 255, 0.2)");
+    R(px - 4, FLOOR - 10, 30, 10, "#1c1c1e"); // its black base
   }
 }
 // A blue rolling cart of new books standing face-out.
@@ -3029,6 +3813,7 @@ const BOOKS = {
       text: "His due date was only a few days away, and a book with missing pages can't go back on the shelf. So Dewey took a deep breath... and dashed!",
       art: (t) => {
         scenePictureBooks(0, 1000);
+        pictureBookRoomFurniture(0);
         for (let i = 0; i < 5; i++) drawPage(420 + i * 70, 190 - Math.sin(t * 0.003 + i) * 8 - i * 6, 14, 18, Math.sin(t * 0.002 + i) * 0.4);
         drawDewey(300, FLOOR, 2.1, { run: t, wear: 1 });
         speedStreaks(255, 210, 60, 1, t);

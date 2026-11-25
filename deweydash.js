@@ -90,6 +90,33 @@ const SWOOP_PERIOD_MS = 1800; // one full rise and dive
 const SWOOP_COLOR = "#e07b39";
 // Darters: blue flying books that fly at you faster than the floor moves. They start farther
 // off screen by however much they'll catch up, so they still arrive with the usual room.
+// Divers (Story Mode's swallows; a level turns them on with its `dive` feature): they come down
+// out of the sky and level off just above the floor, at a height you can neither jump nor duck,
+// and only when they're close do they commit, either dipping to the floor (jump them) or pulling
+// up to head height (duck them). Which one, you can't tell until then.
+const DIVE_CHANCE = 0.35; // share of (non-swooping) flyers that dive
+const DIVE_START = -40; // their underside's height as they come in, up above the top of the screen
+const DIVE_EXTRA = 0.35; // px per ms faster than the floor, swooping in (until it levels off)
+const DIVE_HOLD = FLOOR - 16; // …levelled off, undecided: in the way of a standing book and a ducking one
+const DIVE_LOW = FLOOR - 2, // committed low: right on the floor (jump it)
+  DIVE_HIGH = FLYER_BOTTOM; // committed high: at head height (duck under it)
+const DIVE_COMMIT = 240; // px in front of the book where it commits…
+const DIVE_SETTLE = 80; // …and how far it flies getting there
+const DIVE_LEVEL = DIVE_COMMIT + 30; // where it has levelled off (swooping in fast until then)
+// A diver's underside, by how far in front of the book it is (d: now, unless asked about another spot).
+function diveBottom(o, d = o.x - (player.x + player.w)) {
+  if (d > DIVE_COMMIT) {
+    // swooping down out of the sky from where it comes into view: steeply at first, then pulling
+    // out of the dive in a curve as it levels off
+    const enter = W - (player.x + player.w),
+      p = Math.min(1, Math.max(0, (enter - d) / Math.max(1, enter - DIVE_LEVEL))),
+      e = 1 - Math.pow(1 - p, 2.6);
+    return DIVE_START + (DIVE_HOLD - DIVE_START) * e;
+  }
+  const q = Math.min(1, (DIVE_COMMIT - d) / DIVE_SETTLE),
+    e = q * q * (3 - 2 * q);
+  return DIVE_HOLD + ((o.dive.low ? DIVE_LOW : DIVE_HIGH) - DIVE_HOLD) * e;
+}
 const DART_START_MS = 15000;
 const DART_CHANCE = 0.3; // share of (non-swooping) flying books that dart
 const DART_EXTRA = 0.12; // px per ms faster than the floor
@@ -126,8 +153,10 @@ const PLATFORMS = {
   chair: { w: 190, h: 50 }, // a big comfy reading chair (you run along the seat)
   table: { w: 180, h: FLOOR - GROUND_Y }, // a low reading table: run along the top, or duck and slide underneath
   couch: { w: 240, h: 46 }, // a long, low couch (Story Mode's children's wing): run along the cushions
+  sofa: { w: 200, h: 46 }, // a couch that doesn't bounce: just run along it (Story Mode's picture-book room)
   round: { w: 120, h: 40 }, // a round café table (Story Mode's table hop: see spawnTableHop)
   saleCart: { w: 190, h: 64 }, // a wooden book sale cart (Story Mode's Friends Shop)
+  bin: { w: 120, h: 64 }, // a maple browsing bin of face-out picture books (Story Mode's picture-book room)
 };
 // Story Mode's table hop: a row of round tables with a gap between each, and something on the
 // floor in every gap (books, or a backpack), so the way through is tabletop to tabletop. The
@@ -135,6 +164,7 @@ const PLATFORMS = {
 const TABLE_HOP = { tables: 4, gap: [104, 124] };
 const ENDLESS_FURNITURE = ["cart", "bench", "chair", "table"]; // (Story Mode levels say which pieces they have)
 const TABLE_SLAB = 14; // the tabletop's thickness: the only solid part of the table (it's open underneath)
+const STEP_UP = 18; // the tallest step the book climbs by itself, running (a stepped platform's: see updatePlayer)
 // Book tunnels: a long wall of books hanging from the ceiling with a low gap at the floor. Too
 // tall to jump: duck in and keep ducking until you're out the other side. It's a solid bookshelf,
 // so running into it ends the run, like furniture does (see smashInto).
@@ -269,6 +299,7 @@ let wipeout = null; // speed reading into a puddle: { t, x, groundY, slammed } (
 let story = null;
 let standingOn = null; // the piece of furniture the book is standing on, if any
 let camY = 0; // the view following a couch bounce up: how far down the room is shifted (0: not at all)
+let camLift = 0; // how far the view rises while the book is up on something with a `lift` (see updatePlayer)
 let lostPages = []; // pages knocked loose by a bump, flying off: { x, y, vx, vy, rot, spin, life }
 let pageLoss = null; // { amount, life }: the page counter flashes red and shows "−3"
 let repairWait = REPAIR_FIRST_MS; // ms of being hurt until the next roll of tape can appear
@@ -923,6 +954,7 @@ function reset() {
   player.ducking = false;
   player.bounce = null; // (no couch bounce carried into a new run)
   camY = 0;
+  camLift = 0;
   duckHeld = false;
   obstacles = [];
   pickups = [];
@@ -1027,6 +1059,17 @@ function updatePlayer(dt) {
   standingOn = null;
   for (const o of obstacles) {
     if (o.type !== "platform") continue;
+    if (o.steps) {
+      // a stepped platform (Story Mode's terraces): its top under the book's middle, and the book
+      // climbs each step by itself (none is taller than STEP_UP)
+      const c = player.x + player.w / 2 - o.x,
+        s = o.steps.find(([a, b]) => c >= a && c < b);
+      if (s && prevBottom <= s[2] + STEP_UP && s[2] - player.h < support) {
+        support = s[2] - player.h;
+        standingOn = o;
+      }
+      continue;
+    }
     const over = player.x + 8 < o.x + o.w && player.x + player.w - 8 > o.x;
     if (over && prevBottom <= o.y + 2 && o.y - player.h < support) {
       support = o.y - player.h;
@@ -1050,7 +1093,11 @@ function updatePlayer(dt) {
   updateAccessories(dt);
   // the view follows a couch bounce up (just far enough to keep the book clear of the top bar),
   // and eases back down once it's coming down
-  const camWant = player.bounce ? Math.max(0, CAM_TOP[layout] - player.y) : 0;
+  // (and up on something with a `lift`, like Story Mode's parked cars, the view rises by that much,
+  // and stays up while the book hops from one to the next, until it's back on the floor)
+  if (standingOn && standingOn.lift) camLift = standingOn.lift;
+  else if (player.onGround) camLift = 0;
+  const camWant = player.bounce ? Math.max(camLift, CAM_TOP[layout] - player.y) : camLift;
   camY += (camWant - camY) * Math.min(1, dt * CAM_EASE);
   if (camY < 0.3) camY = 0;
 
@@ -1160,7 +1207,14 @@ function spawnFlyer() {
     phase: Math.random() * Math.PI * 2,
   };
   if (swoop) o.y = swoopBottom(o) - h;
-  else if (has("charge") && Math.random() < chance("charge", CHARGE_CHANCE)) {
+  else if (has("dive") && Math.random() < chance("dive", DIVE_CHANCE)) {
+    // comes down out of the sky; low or high, it doesn't show until it commits (see diveBottom)
+    o.dive = { low: Math.random() < 0.5 };
+    o.y = DIVE_START - h;
+    // it swoops in faster than the floor until it levels off: a head start, off past the right
+    // edge, so it still levels off just when it would have at the floor's pace (like a dart's)
+    o.x += (DIVE_EXTRA * (W + 10 - (player.x + player.w) - DIVE_LEVEL)) / speed;
+  } else if (has("charge") && Math.random() < chance("charge", CHARGE_CHANCE)) {
     const [a, b] = CHARGE_DELAY_MS;
     o.charge = { t: 0, at: a + Math.random() * (b - a) }; // t: ms on screen
     o.color = CHARGE_COLOR;
@@ -1197,8 +1251,11 @@ function updateObstacles(dt) {
             ? o.baseY + Math.sin(runTime * 0.008 + o.phase) * o.bob // a jostling flock
             : o.swoop
               ? swoopBottom(o) - o.h
-              : FLYER_BOTTOM - o.h + Math.sin(runTime * 0.006 + o.phase) * 2;
+              : o.dive
+                ? diveBottom(o) - o.h
+                : FLYER_BOTTOM - o.h + Math.sin(runTime * 0.006 + o.phase) * 2;
       if (o.dart) o.x -= DART_EXTRA * dt;
+      if (o.dive) o.x -= DIVE_EXTRA * Math.min(1, Math.max(0, (o.x - (player.x + player.w) - DIVE_LEVEL) / 60)) * dt; // (swooping in, easing off as it levels out)
       if (o.charge && o.x < W) {
         o.charge.t += dt;
         const { into, winding, charging } = chargeState(o);
@@ -1214,9 +1271,43 @@ function updateObstacles(dt) {
 
   // Spawn based on distance so gaps stay jumpable as speed rises.
   nextSpawn -= dx;
-  if (nextSpawn <= 0 && !(story && storyNearEnd())) {
+  const airTime = (2 * -JUMP_VELOCITY) / GRAVITY; // ms spent in a full jump
+  // A Story Mode level can set furniture at its real spot in a scene (see storyPlaced): it comes
+  // out when it's due, and nothing else comes out if it would still be in the way by then.
+  const placed =
+    story && typeof storyPlaced === "function" ? storyPlaced() : null;
+  let held = false;
+  if (placed && distance >= placed.due) {
+    // (a piece of furniture, or one of Story Mode's own pieces, which says how you get past it)
+    const p = withPageAllowance(false, () =>
+      PLATFORMS[placed.kind]
+        ? spawnPlatform(placed.kind, { look: placed.look, plain: true })
+        : storySpawnPiece(placed),
+    );
+    if (placed.toy) storyToyOn(obstacles[obstacles.length - 1], placed.toy); // (a toy sitting on it, to jump from up there)
+    story.placedOut++;
+    nextSpawn =
+      p.w +
+      gapBefore(
+        p.moves || (placed.kind === "couch" ? ["bounce"] : placed.toy ? ["high", "jump"] : ["high"]),
+        nextMoves(upcoming),
+        speed * airTime,
+      );
+    held = true; // (the thing that was coming comes after it instead)
+  } else if (placed) {
+    const piece = upcoming.startsWith("platform") ? upcoming.split(":")[1] : null,
+      reach =
+        piece === "tableHop"
+          ? 900
+          : piece
+            ? (PLATFORMS[piece] || PLATFORMS.couch).w
+            : upcoming === "tunnel"
+              ? TUNNEL_W[1]
+              : 120;
+    held = distance + reach + speed * airTime * (placed.clear ?? 2.3) > placed.due; // (2.3 jumps: more than any gap needs, unless the piece asks for more room)
+  }
+  if (nextSpawn <= 0 && !held && !(story && storyNearEnd())) {
     // (nothing new near the end of a story level)
-    const airTime = (2 * -JUMP_VELOCITY) / GRAVITY; // ms spent in a full jump
     let o = null,
       len, // how far it reaches past where it starts
       moves; // the ways you might be getting past it (see MIN_GAP)
@@ -1241,7 +1332,7 @@ function updateObstacles(dt) {
     } else {
       o = upcoming === "flyer" ? spawnFlyer() : spawnObstacle();
       len = o.w;
-      moves = o.swoop
+      moves = o.swoop || o.dive
         ? ["jump", "duck"]
         : o.type === "flyer"
           ? ["duck"]
@@ -1282,7 +1373,7 @@ function pickNext() {
 // How you might need to get past what's coming. (A flying book might turn out to be a swooper,
 // which sometimes needs a jump.)
 function nextMoves(kind) {
-  if (kind === "flyer") return has("swoop") ? ["duck", "jump"] : ["duck"];
+  if (kind === "flyer") return has("swoop") || has("dive") ? ["duck", "jump"] : ["duck"];
   if (kind.startsWith("platform")) return ["high"];
   if (kind === "tunnel" || kind === "flock-high" || kind === "flock-split")
     return ["duck"];
@@ -1366,8 +1457,11 @@ function gapBefore(prevMoves, upMoves, jumpLen) {
 // Sometimes there's more up there: a flying book skimming along the top or a stack of books
 // sitting on it (jump them), or a bookmark floating high above to jump for. The low table can be
 // ducked under too (pages there as well). Returns { w, jumpy } (jumpy: something up there to jump).
+// opts: `look` (a piece drawn its own way, like the picture-book room's navy couch) and `plain`
+// (nothing extra on top, just pages: a Story Mode piece set at its real spot, see storyPlaced).
 function spawnPlatform(
   kind = ENDLESS_FURNITURE[(Math.random() * ENDLESS_FURNITURE.length) | 0],
+  opts = {},
 ) {
   if (kind === "loadedTable") return spawnLoadedTable();
   if (kind === "tableHop") return spawnTableHop();
@@ -1375,6 +1469,7 @@ function spawnPlatform(
   const o = {
     type: "platform",
     kind,
+    look: opts.look,
     x: W + 10,
     y: FLOOR - h,
     w,
@@ -1387,7 +1482,7 @@ function spawnPlatform(
     couchPages(o);
     return { w, jumpy: false };
   }
-  const r = Math.random();
+  const r = opts.plain ? 1 : Math.random();
   const skim = (!story || has("flyer")) && r < SKIM_CHANCE, // (only where there are flying books)
     topStack = !skim && r < SKIM_CHANCE + TOP_STACK_CHANCE,
     perch =
@@ -1783,7 +1878,9 @@ function splash(b) {
 
 function hits(o) {
   if (o.type === "puddle") return false; // puddles soak instead (see checkPuddles)
+  if (o.steps) return false; // (a stepped platform is climbed, never run into: see updatePlayer)
   const p = playerBox();
+  if (o.type === "gate") return gateHits(o, p); // (Story Mode's parking gate: only its swinging arm)
   // furniture only counts if you run into its side: standing on top is fine
   if (o.type === "platform" && p.y + p.h <= o.y + 6) return false;
   const pad = 6; // forgiving hitbox
@@ -1923,7 +2020,7 @@ function placePickups(o, airTime) {
       ? Math.random() * 0.7
       : Math.random();
   if (o.type === "flyer") {
-    if (o.swoop || o.dart || o.charge) return; // nothing under the tricky ones, so nobody gets lured in
+    if (o.swoop || o.dart || o.charge || o.dive) return; // nothing under the tricky ones, so nobody gets lured in
     // A pair tucked right under the flying book, a reward for ducking.
     if (r < 0.5)
       for (let k = -0.5; k <= 0.5; k++)
@@ -2272,6 +2369,7 @@ function update(dt) {
   const wantBoost = power && power.type === "speed" ? SPEED_BOOST : 1;
   boost += (wantBoost - boost) * Math.min(1, dt / 250); // eases up and back down
   speed = baseSpeed * boost;
+  if (story) speed *= storyTipBrake(); // (slowing to a stop for a tip just ahead, or picking up again after one)
   distance += speed * dt;
   if (story) storyCheckEnd(); // reached the end of the level's library?
   if (story) storyWatchTips(); // (something new just ahead that the level explains: see storyWatchTips)
@@ -2748,6 +2846,19 @@ function makeButtons() {
   }
   // the pause screen: Resume, How to play and Quit in their places on its card (see drawPause)
   BUTTONS.paused = pauseButtons();
+  // Story Mode's level-complete card: Continue across the middle, with Play again and Chapters
+  // side by side under it (see drawCleared)
+  {
+    const L = CLEARED_CARD[layout],
+      c = clearedCard(),
+      x = W / 2 - L.btnW / 2,
+      half = (L.btnW - 12) / 2;
+    BUTTONS.cleared = [
+      { id: "continue", label: "Continue ›", x, y: c.y + L.cont, w: L.btnW, h: L.contH },
+      { id: "replay", label: "Play again", x, y: c.y + L.row, w: half, h: L.rowH },
+      { id: "map", label: "Chapters", x: x + half + 12, y: c.y + L.row, w: half, h: L.rowH },
+    ];
+  }
   // Settings: the gear in the start screen's top-left corner, and the Settings card's own buttons
   BUTTONS.ready.push({
     id: "settings",
@@ -4245,6 +4356,11 @@ function drawTallCeiling() {
 // layout's ceiling, with its row of soft lights just above the room.
 function drawCeilingAbove() {
   const top = -(WORLD_Y + TOP) - camY;
+  if (story && story.level.outdoor) {
+    // outdoors there's no ceiling: just more sky
+    R(0, top, W, -top + 2, "#3a83de");
+    return;
+  }
   const g = ctx.createLinearGradient(0, top, 0, 0);
   g.addColorStop(0, "#1a1512");
   g.addColorStop(1, "#2e2724");
@@ -4326,6 +4442,7 @@ function draw() {
     else if (b.kind === "power") drawPowerUp(b, bob);
     else drawBookmark(b.x, b.y + bob, b.w, b.h, b.color);
   }
+  if (story) drawGoalStar(); // (the big star waiting at the end of a story level)
 
   if (wipeout) drawWipeout();
   else if (smash) drawSmash();
@@ -4974,6 +5091,17 @@ const MIDRUN_CARD = {
   wide: { y: 52, w: 432, h: 262 },
   tall: { x: 16, y: 124, h: 486 },
 };
+// Story Mode's level-complete card (drawn by drawCleared in deweydash-story.js): its width, and
+// where each part goes, down from the card's top. (The tall layout's card is midrunCard.)
+const CLEARED_CARD = {
+  wide: { w: 480, label: 24, title: 52, sub: 69, rules: 78, stars: 104, starR: 17, starGap: 46, stats: 140, cont: 150, contH: 40, row: 196, rowH: 38, btnW: 280 },
+  tall: { label: 38, title: 76, sub: 102, rules: 116, stars: 172, starR: 30, starGap: 76, stats: 238, cont: 274, contH: 56, row: 342, rowH: 54, btnW: 320 },
+};
+function clearedCard() {
+  if (tall()) return midrunCard();
+  const m = MIDRUN_CARD.wide;
+  return { x: W / 2 - CLEARED_CARD.wide.w / 2, y: m.y, w: CLEARED_CARD.wide.w, h: m.h };
+}
 // The hint line's words: for keys, for a controller, or for a touch screen.
 const hintFor = (keys, pad, touch) => (padUI() ? pad : touchUI() ? touch : keys);
 // The story line, under a Story Mode card's heading.
@@ -6672,30 +6800,70 @@ function drawPlatform(o) {
   if (o.kind === "cart") drawCart(o);
   else if (o.kind === "bench") drawBench(o);
   else if (o.kind === "chair") drawReadingChair(o);
-  else if (o.kind === "couch") drawCouch(o);
+  else if (o.kind === "couch" || o.kind === "sofa") drawCouch(o);
   else if (o.kind === "round") drawRoundTable(o);
   else if (o.kind === "saleCart") drawSaleCart(o);
+  else if (o.kind === "bin") drawBrowsingBin(o);
   else drawReadingTable(o);
+}
+
+// A maple browsing bin on casters (the picture-book room's): picture books standing face-out in
+// two tiers, little drawer pulls along each tier's front, and a maple rim on top to land on.
+function drawBrowsingBin(o) {
+  const { x, y, w } = o;
+  R(x, y + 4, w, FLOOR - 8 - y - 4, "#d9b07a"); // the body
+  // a tier of books, face-out, leaning back a little in turn
+  const tier = (top, bottom, k) => {
+    R(x + 5, top, w - 10, bottom - top, "#a37a48");
+    for (let bx = x + 8, i = 0; bx < x + w - 22; i++) {
+      const bw = 16 + hash(i, k) * 4,
+        dy = (i % 2) * 2;
+      R(bx, top + 2 + dy, bw, bottom - top - 2 - dy, BRIGHT[(hash(i + 3, ((o.seed | 0) + k) | 0) * BRIGHT.length) | 0]);
+      R(bx + 2, top + 5 + dy, bw - 4, 3, "rgba(255, 255, 255, 0.3)"); // (its title)
+      bx += bw + 3;
+    }
+  };
+  tier(y + 8, y + 26, 1);
+  tier(y + 35, FLOOR - 18, 2);
+  for (const [ly, lh] of [[y + 26, 9], [FLOOR - 18, 9]]) {
+    R(x, ly, w, lh, "#e8c595"); // each tier's front…
+    for (let i = 0; i < 4; i++) R(x + w * (0.14 + i * 0.24) - 4, ly + 3, 8, 3, "#3a2a1e"); // …and its pulls
+  }
+  for (const wx of [x + 10, x + w - 10]) {
+    oval(wx, FLOOR - 4, 4, 4, "#111"); // casters
+    oval(wx, FLOOR - 4, 1.4, 1.4, "#555");
+  }
+  R(x - 2, y, w + 4, 7, "#e8c595"); // the rim (where you land)
+  R(x - 2, y, w + 4, 1.5, "rgba(255, 255, 255, 0.35)");
+  R(x - 2, y + 7, w + 4, 1.5, "#b98340");
 }
 
 // A round café table (the table hop): a wooden top on a single dark pedestal with a round foot,
 // two bistro chairs tucked in behind it, and a cup of coffee left on top.
+// (look "kids": the picture-book room's little table instead, with a red top, a grey pedestal and
+// maple chairs, and no coffee)
 function drawRoundTable(o) {
+  if (o.look === "steel") return drawSteelTable(o);
   const { x, y, w } = o,
-    cx = x + w / 2;
+    cx = x + w / 2,
+    kids = o.look === "kids",
+    leg = kids ? "#d29a55" : "#2c2f36",
+    hoop = kids ? "#e0ad68" : "#3a3d45",
+    post = kids ? "#6a6f75" : "#2c2f36";
   for (const sx of [x + 10, x + w - 34]) {
     // the chair backs peeking up behind: a bent-wood hoop on two legs
-    R(sx, y - 30, 3, 30, "#2c2f36");
-    R(sx + 21, y - 30, 3, 30, "#2c2f36");
-    R(sx, y - 32, 24, 4, "#3a3d45");
-    R(sx + 3, y - 20, 18, 3, "#3a3d45");
+    R(sx, y - 30, 3, 30, leg);
+    R(sx + 21, y - 30, 3, 30, leg);
+    R(sx, y - 32, 24, 4, hoop);
+    R(sx + 3, y - 20, 18, 3, hoop);
   }
-  R(cx - 4, y + 8, 8, FLOOR - y - 12, "#2c2f36"); // the pedestal
+  R(cx - 4, y + 8, 8, FLOOR - y - 12, post); // the pedestal
   R(cx - 4, y + 8, 2, FLOOR - y - 12, "rgba(255, 255, 255, 0.18)");
-  oval(cx, FLOOR - 3, w * 0.22, 4, "#2c2f36"); // its round foot
-  R(x + 2, y + 3, w - 4, 6, "#8f5f2e"); // the top's rim
-  oval(cx, y + 3, w / 2, 5, "#c48b4a"); // the top (where you run)
+  oval(cx, FLOOR - 3, w * 0.22, 4, post); // its round foot
+  R(x + 2, y + 3, w - 4, 6, kids ? "#8e2f27" : "#8f5f2e"); // the top's rim
+  oval(cx, y + 3, w / 2, 5, kids ? "#c4473a" : "#c48b4a"); // the top (where you run)
   oval(cx - 10, y + 2, w * 0.3, 2, "rgba(255, 255, 255, 0.25)");
+  if (kids) return;
   // a cup of coffee on its saucer
   const kx = cx + 22;
   oval(kx + 4, y - 1, 9, 2, "#f4efe6");
@@ -6704,48 +6872,54 @@ function drawRoundTable(o) {
   R(kx + 1, y - 11, 7, 2, "#6b4423");
 }
 
-// A wooden book sale cart (the Friends Shop's): a maple top to land on, a lower bin of books
-// leaning every which way with price stickers on their spines, a hand-lettered BOOK SALE sign
-// hanging off the front, and casters.
-function drawSaleCart(o) {
+// A stainless steel café table (the atrium outside the Meeting Room foyer): a round brushed-steel
+// top with a rolled rim, a chrome post, a four-pronged cross foot, and a little "no food or drink"
+// tent card standing at the far edge.
+function drawSteelTable(o) {
   const { x, y, w } = o,
-    bin = FLOOR - 18; // the top of the lower bin's floor
-  // the books in the bin, leaning, each with a yellow price sticker
-  for (let bx = x + 12, i = 0; bx < x + w - 18; i++) {
-    const bw = 8 + ((hash(i, o.seed) * 6) | 0),
-      bh = 22 + hash(i + 3, o.seed) * 14,
-      lean = (hash(i + 5, o.seed) - 0.5) * 0.35;
-    ctx.save();
-    ctx.translate(bx + bw / 2, bin);
-    ctx.rotate(lean);
-    R(-bw / 2, -bh, bw, bh, SPINES[(hash(i + 7, o.seed) * SPINES.length) | 0]);
-    R(-bw / 2 + 1, -bh + 3, bw - 2, 1.5, "rgba(255, 255, 255, 0.35)");
-    R(-bw / 2 + 1.5, -bh * 0.45, bw - 3, 4, "#f2c94e"); // the price sticker
-    ctx.restore();
-    bx += bw + 2;
-  }
-  R(x + 4, bin, w - 8, 6, "#8f5f2e"); // the bin's floor
-  R(x + 4, bin - 10, w - 8, 4, "#a36f37"); // its front rail
-  for (const ux of [x, x + w - 8]) {
-    R(ux, y + 4, 8, FLOOR - 10 - y, "#8f5f2e"); // the end panels
-    R(ux + 1, y + 4, 2, FLOOR - 10 - y, "rgba(255, 255, 255, 0.15)");
-  }
-  for (const wx of [x + 10, x + w - 10]) {
-    oval(wx, FLOOR - 4, 4, 4, "#111"); // casters
-    oval(wx, FLOOR - 4, 1.4, 1.4, "#555");
-  }
-  R(x - 3, y, w + 6, 7, "#c48b4a"); // the top (where you land)
-  R(x - 3, y, w + 6, 1.5, "rgba(255, 255, 255, 0.3)");
-  R(x - 3, y + 7, w + 6, 1.5, "#6e4520");
-  // the BOOK SALE sign, hanging off the front on two strings
-  const sx = x + w / 2 - 46,
-    sy = y + 16;
-  R(sx + 10, y + 8, 1.5, 8, "#3a2a1e");
-  R(sx + 80, y + 8, 1.5, 8, "#3a2a1e");
-  R(sx, sy, 92, 26, "#a8382f");
-  R(sx + 2, sy + 2, 88, 22, "#f7f0df");
-  label("BOOK SALE", sx + 46, sy + 13, 11, "#a8382f", "Fraunces, Georgia, serif");
-  label("$1 each", sx + 46, sy + 22, 8, "#3a2a1e", "Fraunces, Georgia, serif");
+    cx = x + w / 2,
+    chrome = ctx.createLinearGradient(cx - 5, 0, cx + 5, 0);
+  chrome.addColorStop(0, "#8d9399");
+  chrome.addColorStop(0.45, "#f1f3f5");
+  chrome.addColorStop(1, "#7d838a");
+  ctx.fillStyle = chrome;
+  ctx.fillRect(cx - 4, y + 8, 8, FLOOR - y - 14); // the post
+  // the cross foot: two prongs spread out to the sides, one toward you, one away
+  poly("#b9bec4", cx - 4, FLOOR - 8, cx - 46, FLOOR - 2, cx - 44, FLOOR, cx + 44, FLOOR, cx + 46, FLOOR - 2, cx + 4, FLOOR - 8);
+  R(cx - 46, FLOOR - 2, 92, 2, "#80868c");
+  poly("#d9dde1", cx - 5, FLOOR - 8, cx + 5, FLOOR - 8, cx + 9, FLOOR - 1, cx - 9, FLOOR - 1);
+  // the top: a brushed-steel disc seen nearly edge on, with its rolled rim
+  R(x + 1, y + 3, w - 2, 6, "#868c93");
+  R(x + 1, y + 3, w - 2, 1.5, "#e9ecef");
+  const top = ctx.createLinearGradient(x, 0, x + w, 0);
+  top.addColorStop(0, "#9aa0a6");
+  top.addColorStop(0.35, "#e6e9ec");
+  top.addColorStop(0.6, "#c3c8cd");
+  top.addColorStop(1, "#8f959b");
+  ctx.fillStyle = top;
+  ctx.beginPath();
+  ctx.ellipse(cx, y + 3, w / 2, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (let k = 1; k < 6; k++) R(x + (w * k) / 6, y + 1, 1, 3, "rgba(80, 86, 92, 0.25)"); // (its dimpled pattern)
+  // the tent card, at the far edge (past where you'd land)
+  const tx = x + w - 24;
+  poly("#f7f7f7", tx, y + 1, tx + 5, y - 13, tx + 12, y - 13, tx + 17, y + 1);
+  R(tx + 5, y - 11, 7, 1.5, "#7b2a8c");
+  oval(tx + 8.5, y - 6, 2.6, 2.6, "#c62a2f");
+  R(tx + 6.5, y - 6.5, 4, 1, "#f7f7f7");
+}
+
+// The Friends Shop's book sale cart, as it stands out front: a royal blue book truck (see
+// drawBookTruck) with its books face-out, covers to you, each with a yellow price sticker, and a
+// little white sign taped to the front of the top shelf: everything on the cart is a dollar.
+function drawSaleCart(o) {
+  const { x, y, w } = o;
+  drawBookTruck(x, y, w, FLOOR, SALE_BLUE, o.seed, 1, 16, true);
+  const sx = x + w / 2 - 24,
+    sy = y + 8;
+  R(sx, sy, 48, 15, "#f7f7f2");
+  R(sx + 18, sy - 1.5, 12, 3, "rgba(255, 255, 255, 0.6)"); // (the tape)
+  label("ALL $1", x + w / 2, sy + 11, 9, "#1d1d1f");
 }
 
 // A backpack lying on its side on the floor (the table hop): a rounded body, a front pocket with
@@ -6768,76 +6942,139 @@ function drawBackpack(o) {
 }
 
 // A long, low couch from the children's wing: a back behind, three plump seat cushions to run
-// along, rounded arms at the ends and a throw pillow.
+// along, rounded arms at the ends and a throw pillow. (look "navy": the picture-book room's navy
+// sofa, plain, on metal feet.)
+const COUCH_LOOKS = {
+  teal: { back: "#2a747a", backCushion: "#3a959c", pillow: "#f39c4a", base: "#256a70", seat: "#3fa2a8", arm: "#2f8088", feet: "#4a2c17" },
+  navy: { back: "#26355f", backCushion: "#31437a", pillow: null, base: "#22305a", seat: "#3d4f88", arm: "#2c3a68", feet: "#8a9096" },
+};
 function drawCouch(o) {
   const { x, w } = o,
+    c = COUCH_LOOKS[o.look] || COUCH_LOOKS.teal,
     seg = (w - 28) / 3,
     // just bounced on: the seat squishes down, then springs back
     sq = o.squishAt != null ? Math.max(0, 1 - (runTime - o.squishAt) / 260) : 0,
     y = o.y + Math.sin(sq * Math.PI) * 5;
-  ctx.fillStyle = "#2a747a"; // the back (behind you)
+  ctx.fillStyle = c.back; // the back (behind you)
   roundRect(x + 10, y - 30, w - 20, 38, 12);
   for (let i = 0; i < 3; i++) {
-    ctx.fillStyle = "#3a959c"; // back cushions
+    ctx.fillStyle = c.backCushion; // back cushions
     roundRect(x + 16 + i * seg, y - 24, seg - 6, 26, 9);
     ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
     roundRect(x + 22 + i * seg, y - 20, seg - 18, 4, 2);
   }
-  ctx.fillStyle = "#f39c4a"; // a throw pillow
-  roundRect(x + 22, y - 18, 26, 20, 7);
-  ctx.fillStyle = "#256a70"; // the base
+  if (c.pillow) {
+    ctx.fillStyle = c.pillow; // a throw pillow
+    roundRect(x + 22, y - 18, 26, 20, 7);
+  }
+  ctx.fillStyle = c.base; // the base
   roundRect(x + 2, y + 12, w - 4, FLOOR - 8 - y - 12, 6);
   for (let i = 0; i < 3; i++) {
-    ctx.fillStyle = "#3fa2a8"; // the seat cushions (where you run)
+    ctx.fillStyle = c.seat; // the seat cushions (where you run)
     roundRect(x + 14 + i * seg, y, seg - 4, 16, 6);
     ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
     roundRect(x + 19 + i * seg, y + 2, seg - 14, 3, 2);
   }
   for (const ax of [x - 4, x + w - 22]) {
-    ctx.fillStyle = "#2f8088"; // rounded arms
+    ctx.fillStyle = c.arm; // rounded arms
     roundRect(ax, y - 12, 26, FLOOR - 8 - (y - 12), 11);
     ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
     roundRect(ax + 5, y - 10, 16, 4, 2);
   }
   for (const fx of [x + 14, x + w / 2 - 4, x + w - 22])
-    R(fx, FLOOR - 8, 8, 8, "#4a2c17"); // little feet
+    R(fx, FLOOR - 8, 8, 8, c.feet); // little feet
 }
 
-// A black two-shelf book cart, like the ones in the picture books: thin black uprights, black
-// shelves, books standing on the lower shelf (packed right up under the top one, so it reads
-// clearly against the bookcases behind), small black wheels. The top shelf is kept clear: it's
-// what you land on and run along.
+// A library book truck, like the real ones: powder-coated steel in one of their colors (seafoam,
+// red, tan or black), a solid end panel at each end with a rounded handle loop rising above the
+// top shelf, three shelves with lips (the top one kept clear: it's what you land on), books on
+// the middle shelf and a few on the bottom, and grey casters on silver forks.
+const CART_COLORS = [
+  { body: "#9fd0cc", shade: "#6f9e9a", light: "#cdebe7" }, // seafoam
+  { body: "#a3182b", shade: "#6e0f1c", light: "#cf4a5e" }, // red
+  { body: "#cdbf98", shade: "#968a68", light: "#e8dfc4" }, // tan
+  { body: "#2a2b30", shade: "#141518", light: "#55575f" }, // black
+];
+const SALE_BLUE = { body: "#1f4fc4", shade: "#14357f", light: "#5a86e6" }; // (the Friends Shop's sale cart)
+// x: its left; top: its top shelf; floorY: the floor; c: a CART_COLORS entry; seed: picks its
+// books; s: its scale; rise: how far the handles stand above the top shelf; faceOut: the books
+// stand with their covers to you (a sale cart), not their spines.
+function drawBookTruck(x, top, w, floorY, c, seed, s = 1, rise = 16 * s, faceOut = false) {
+  const pw = 13 * s, // the end panels
+    lip = 5 * s,
+    bottom = floorY - 13 * s, // the bottom shelf
+    mid = top + (bottom - top) * 0.48,
+    inX = x + pw - 2 * s,
+    inW = w - 2 * pw + 4 * s,
+    k = seed | 0;
+  R(inX, top, inW, bottom - top + lip, c.shade); // the middle divider, behind the books
+  // books: the middle shelf packed, the bottom one with gaps
+  [[mid, mid - top - lip - 3 * s, 1], [bottom, bottom - mid - lip - 3 * s, 0.55]].forEach(([base, room, full], n) => {
+    if (faceOut) {
+      // covers out, a little apart, each with a title band, an author line and a yellow price sticker
+      for (let bx = inX + 4 * s, i = 0; bx < inX + inW - 24 * s; i++) {
+        const bw = (17 + hash(i, k + n * 17) * 5) * s,
+          bh = room * (0.86 + hash(i + 3, k + n * 5) * 0.14);
+        if (hash(i + 9, k + n) < (n ? 0.75 : 1)) {
+          R(bx, base - bh, bw, bh, SPINES[(hash(i + 7, k + n) * SPINES.length) | 0]);
+          R(bx + 2 * s, base - bh + 2 * s, bw - 4 * s, 3 * s, "rgba(255, 255, 255, 0.7)");
+          R(bx + 3 * s, base - 4 * s, bw - 8 * s, 1.5 * s, "rgba(255, 255, 255, 0.45)");
+          oval(bx + bw - 3 * s, base - bh + 3 * s, 2 * s, 2 * s, "#f2d23a");
+        }
+        bx += bw + 4 * s;
+      }
+      return;
+    }
+    for (let bx = inX + 3 * s, i = 0; bx < inX + inW - 9 * s; i++) {
+      const bw = (6 + hash(i, k + n * 17) * 6) * s;
+      if (hash(i + 9, k + n) < full) {
+        const bh = room * (0.68 + hash(i + 3, k + n * 5) * 0.32);
+        R(bx, base - bh, bw, bh, SPINES[(hash(i + 7, k + n) * SPINES.length) | 0]);
+        R(bx + s, base - bh + 3 * s, bw - 2 * s, 1.5 * s, "rgba(255, 255, 255, 0.35)");
+      }
+      bx += bw + s;
+    }
+  });
+  for (const sy of [mid, bottom]) {
+    R(inX, sy, inW, lip, c.body); // the shelves' lips
+    R(inX, sy, inW, 1.5 * s, c.light);
+  }
+  // the casters, under each end
+  for (const wx of [x + pw / 2, x + w - pw / 2]) {
+    R(wx - 2.5 * s, bottom + lip - s, 5 * s, 4 * s, "#c9ccd0"); // the fork
+    oval(wx, floorY - 4.5 * s, 4.5 * s, 4.5 * s, "#5a5d63");
+    oval(wx, floorY - 4.5 * s, 1.8 * s, 1.8 * s, "#c9ccd0");
+  }
+  // the end panels, each with its handle loop: a rounded tube standing up above the top shelf
+  for (const px of [x, x + w - pw]) {
+    R(px, top, pw, bottom + lip - top, c.body);
+    R(px + 1.5 * s, top + 4 * s, 2 * s, bottom - top - 4 * s, c.light);
+    R(px + pw - 2 * s, top, 2 * s, bottom + lip - top, c.shade);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const [color, lw, dx] of [[c.body, 4 * s, 0], [c.light, 1.2 * s, -0.8 * s]]) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.moveTo(px + 2 * s + dx, top);
+      ctx.lineTo(px + 2 * s + dx, top - rise + pw / 2);
+      ctx.arc(px + pw / 2, top - rise + pw / 2, pw / 2 - 2 * s - dx, Math.PI, 0);
+      ctx.lineTo(px + pw - 2 * s, top);
+      ctx.stroke();
+    }
+  }
+  R(inX - 2 * s, top, inW + 4 * s, 6 * s, c.body); // the top shelf (where you land)
+  R(inX - 2 * s, top, inW + 4 * s, 1.5 * s, c.light);
+  R(inX - 2 * s, top + 6 * s, inW + 4 * s, 1.5 * s, c.shade);
+}
 function drawCart(o) {
-  const { x, y, w } = o;
-  const shelf = FLOOR - 16; // top of the lower shelf
-  // books standing on the lower shelf, all different heights, up to just under the top shelf
-  for (let bx = x + 8, i = 0; bx < x + w - 12; i++) {
-    const bw = 7 + ((hash(i, o.seed) * 6) | 0),
-      bh = shelf - y - 12 - hash(i + 3, o.seed) * 16;
-    R(
-      bx,
-      shelf - bh,
-      bw,
-      bh,
-      SPINES[(hash(i + 7, o.seed) * SPINES.length) | 0],
-    );
-    R(bx + 1, shelf - bh + 3, bw - 2, 1.5, "rgba(255, 255, 255, 0.35)");
-    bx += bw + 1;
-  }
-  R(x, shelf, w, 5, "#1f1f22"); // the lower shelf
-  // the uprights at each end (and one in the middle, on a cart this long)
-  for (const ux of [x, x + w / 2 - 2, x + w - 5])
-    R(ux, y, 5, FLOOR - 7 - y, "#2a2a2e");
-  for (const wx of [x + 8, x + w / 2, x + w - 8]) {
-    oval(wx, FLOOR - 5, 5, 5, "#111"); // wheels
-    oval(wx, FLOOR - 5, 1.6, 1.6, "#555");
-  }
-  R(x - 2, y, w + 4, 6, "#1f1f22"); // the top shelf (where you land)
-  R(x - 2, y, w + 4, 1.5, "rgba(255, 255, 255, 0.18)");
+  drawBookTruck(o.x, o.y, o.w, FLOOR, CART_COLORS[(o.seed * 7) % CART_COLORS.length | 0], o.seed);
 }
 
-// A long padded reading bench with button tufting, on wooden legs.
+// A long padded reading bench with button tufting, on wooden legs. (look "curved": the picture-book
+// room's curved navy bench instead.)
 function drawBench(o) {
+  if (o.look === "curved") return drawCurvedBench(o);
   const { x, y, w } = o;
   for (const lx of [x + 10, x + w / 2 - 3, x + w - 16])
     R(lx, y + 18, 6, FLOOR - y - 18, "#6e4520"); // legs
@@ -6848,6 +7085,26 @@ function drawBench(o) {
   roundRect(x + 4, y + 1, w - 8, 3, 2);
   for (let bx = x + 18; bx < x + w - 10; bx += 26)
     oval(bx, y + 8, 1.6, 1.6, "#2b3768"); // buttons
+}
+
+// The picture-book room's curved navy bench, seen side on: a flat top to run along, its front
+// curving away in the middle, on thin metal legs.
+function drawCurvedBench(o) {
+  const { x, y, w } = o,
+    base = y + 22;
+  for (const lx of [x + 16, x + w * 0.38, x + w * 0.62, x + w - 20])
+    R(lx, base - 4, 3, FLOOR - base + 4, "#a9aeb3");
+  ctx.fillStyle = "#2c3a68";
+  ctx.beginPath();
+  ctx.moveTo(x, y + 4);
+  ctx.lineTo(x + w, y + 4);
+  ctx.lineTo(x + w, base);
+  ctx.quadraticCurveTo(x + w / 2, base - 9, x, base);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#3d4f88"; // the top (where you run)
+  roundRect(x, y, w, 7, 3);
+  R(x + 4, y + 1, w - 8, 1.5, "rgba(255, 255, 255, 0.2)");
 }
 
 // A big comfy reading chair, seen from the front: a tall back behind, a deep seat to run along,
