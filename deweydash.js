@@ -249,6 +249,8 @@ let distance = 0; // total scrolled distance, drives the background
 let duckHeld = false; // is the duck key / touch held?
 let lives = LIVES;
 let hurtTime = 0; // ms left of blinking after a bump
+let safeTime = 0; // ms left of getting past what the hardcover blocked (no blinking: you weren't hurt)
+let shards = []; // the hardcover's pieces, flying off as it shatters: { x, y, vx, vy, rot, spin, pts, color, life }
 let shake = 0; // ms left of screen shake
 let heartPop = null; // { index, life }: the heart that was just lost, popping away
 let shedTimer = 0; // on the last heart, the book drops a loose page now and then
@@ -383,7 +385,8 @@ const sfx = {
 // A bouncy "storybook chiptune" loop at 150 BPM, two of the book's hops to a beat. It follows
 // the game: plucks and bass on the start screen, the full tune while running, an extra
 // sparkly layer later in a run, muffled when paused, a dip on a bump, and a little "aww" at
-// game over, then a slow, wistful music-box tune on the game-over screen (see OVER_MELODY).
+// game over, then a slow, wistful music-box tune on the game-over screen (see OVER_MELODY). A new
+// best gets a fanfare and a bright victory lap instead (see BEST_MELODY).
 // The Sound button turns it off with everything else.
 const MUSIC_BPM = 150;
 const MUSIC_VOLUME = 0.55; // overall music level (the sound effects aren't affected)
@@ -538,10 +541,86 @@ const OVER_MELODY = [
   ],
 ];
 const OVER_DELAY = 1.6; // seconds after the run ends before it starts (once the "aww" has finished)
+// A new best in Endless gets its own: a "ta-da!" fanfare instead of the "aww", then a bright,
+// bouncy victory lap in C major, with bells and a little sparkle. 8 bars: C  F  G  C | Am  F  G  C.
+const BEST_BPM = 128;
+const BEST_STEP = 60 / BEST_BPM / 4;
+const BEST_VOLUME = MUSIC_VOLUME * 0.85;
+const BEST_CHORDS = [
+  [60, 64, 67],
+  [60, 65, 69],
+  [59, 62, 67],
+  [60, 64, 67],
+  [57, 60, 64],
+  [57, 60, 65],
+  [59, 62, 67],
+  [60, 64, 67],
+];
+const BEST_BASS = [48, 41, 43, 48, 45, 41, 43, 48];
+const BEST_MELODY = [
+  [
+    [0, 72, 3],
+    [3, 76, 1],
+    [4, 79, 4],
+    [8, 84, 4],
+    [12, 79, 4],
+  ],
+  [
+    [0, 81, 3],
+    [3, 79, 1],
+    [4, 77, 2],
+    [6, 76, 2],
+    [8, 77, 4],
+    [12, 81, 4],
+  ],
+  [
+    [0, 79, 3],
+    [3, 77, 1],
+    [4, 76, 2],
+    [6, 74, 2],
+    [8, 71, 2],
+    [10, 74, 2],
+    [12, 79, 4],
+  ],
+  [
+    [0, 76, 4],
+    [4, 72, 4],
+    [8, 79, 8],
+  ],
+  [
+    [0, 76, 3],
+    [3, 77, 1],
+    [4, 79, 4],
+    [8, 81, 4],
+    [12, 84, 4],
+  ],
+  [
+    [0, 84, 3],
+    [3, 81, 1],
+    [4, 77, 4],
+    [8, 81, 2],
+    [10, 79, 2],
+    [12, 77, 4],
+  ],
+  [
+    [0, 74, 2],
+    [2, 76, 2],
+    [4, 77, 2],
+    [6, 79, 2],
+    [8, 83, 4],
+    [12, 86, 4],
+  ],
+  [
+    [0, 84, 8],
+    [8, 79, 4],
+    [12, 72, 4],
+  ],
+];
+const BEST_DELAY = 2.0; // seconds after the run ends before the victory lap starts (once the fanfare's rung out)
 let music = null; // the music's audio nodes, made the first time it plays
 let musicStep = 0, // where we are in the loop (128 sixteenths = 8 bars)
   musicNext = 0, // when the next 16th is due, on the audio clock
-  musicMode = "", // menu | run | build | paused | over
+  musicMode = "", // menu | run | build | paused | over | best (game over, with a new best)
   musicLevel = -1, // the volume last asked for
   musicUnlocked = false; // browsers only allow sound after the player taps or presses a key
 
@@ -665,6 +744,45 @@ function scheduleOverStep(step, t) {
   if (s % 4 === 0) mNote(s % 8 === 0 ? 1250 : 940, t, 0.03, "sine", 0.018);
 }
 
+// Everything that plays on one 16th note of the new-best victory lap.
+function scheduleBestStep(step, t) {
+  const bar = Math.floor(step / 16) % 8,
+    s = step % 16;
+  const chord = BEST_CHORDS[bar],
+    root = BEST_BASS[bar];
+  // bass: bouncing, like the run's
+  if (s === 0 || s === 8) mNote(noteHz(root), t, BEST_STEP * 3, "triangle", 0.085);
+  if (s === 6 || s === 14) mNote(noteHz(root + 12), t, BEST_STEP * 1.5, "triangle", 0.055);
+  // bells: the chord climbing up on the 8ths, an octave higher, ringing on
+  if (s % 2 === 0) mNote(noteHz(chord[(s / 2) % 3] + 12), t, 0.45, "sine", 0.022);
+  // the tune, with a quiet sine an octave up for shine
+  for (const [ms, n, len] of BEST_MELODY[bar])
+    if (ms === s) {
+      mNote(noteHz(n), t, BEST_STEP * len * 0.9, "triangle", 0.05, 0.01);
+      mNote(noteHz(n + 12), t, BEST_STEP * len * 0.7, "sine", 0.012, 0.01);
+    }
+  // light percussion: a kick, a clap-ish woodblock on 2 and 4, and hats
+  if (s === 0 || s === 8) mThump(t);
+  if (s === 4 || s === 12) mNote(1500, t, 0.035, "sine", 0.04);
+  if (s % 4 === 2) mHat(t, 0.022);
+  // every other bar ends with a little sparkle running up
+  if (bar % 2 === 1 && s === 14)
+    [0, 1, 2, 3].forEach((i) =>
+      mNote(noteHz(chord[i % 3] + 24 + (i === 3 ? 12 : 0)), t + i * BEST_STEP * 0.5, 0.18, "sine", 0.014),
+    );
+}
+
+// A new best: "ta-da!" A quick run up to a big held chord, with a sparkle on top.
+function playBestSting(t) {
+  [67, 72, 76, 79].forEach((n, i) => mNote(noteHz(n), t + i * 0.09, 0.16, "square", 0.04, 0.005));
+  const hit = t + 0.4;
+  [60, 64, 67, 72].forEach((n) => mNote(noteHz(n), hit, 1.3, "triangle", 0.05, 0.01)); // the chord
+  mNote(noteHz(84), hit, 1.2, "square", 0.035, 0.01); // the top note
+  mNote(noteHz(48), hit, 1.0, "triangle", 0.09, 0.01); // and a low C under it
+  mThump(hit);
+  [96, 100, 103, 108].forEach((n, i) => mNote(noteHz(n), hit + 0.12 + i * 0.07, 0.25, "sine", 0.016)); // sparkle
+}
+
 // A little "aww" for game over: three notes stepping down.
 function playMusicSting(t) {
   [67, 63, 60].forEach((n, i) =>
@@ -687,7 +805,9 @@ function updateMusic() {
   if (!musicUnlocked || ((muted || !settings.music) && !music)) return; // no audio until sound (and music) is on
   const mode =
     state === "over"
-      ? "over"
+      ? newBest && !story
+        ? "best"
+        : "over"
       : state === "paused" ||
           (state === "howto" && howtoFrom === "paused") ||
           (state === "settings" && settingsFrom === "paused")
@@ -705,7 +825,12 @@ function updateMusic() {
       // then the game-over tune, from the top, once the "aww" (and a long wipeout) has played out
       musicStep = 0;
       musicNext = now + Math.max(OVER_DELAY, deathMs / 1000 + 0.2);
-    } else if (musicMode === "over" || musicMode === "") {
+    } else if (mode === "best") {
+      playBestSting(now + 0.05);
+      // then the victory lap, from the top, once the fanfare has rung out
+      musicStep = 0;
+      musicNext = now + Math.max(BEST_DELAY, deathMs / 1000 + 0.2);
+    } else if (musicMode === "over" || musicMode === "best" || musicMode === "") {
       musicStep = 0; // a fresh start after game over (or the very first time)
       musicNext = now + 0.05;
     }
@@ -724,7 +849,9 @@ function updateMusic() {
         ? MUSIC_VOLUME * 0.6
         : mode === "over"
           ? OVER_VOLUME
-          : MUSIC_VOLUME;
+          : mode === "best"
+            ? BEST_VOLUME
+            : MUSIC_VOLUME;
   if (level !== musicLevel) {
     m.out.gain.setTargetAtTime(level, now, 0.08);
     musicLevel = level;
@@ -733,10 +860,11 @@ function updateMusic() {
   if (musicNext < now - 0.2) musicNext = now + 0.05; // fell behind (the tab was hidden): pick up from now
   while (musicNext < now + 0.15) {
     if (mode === "over") scheduleOverStep(musicStep, musicNext);
+    else if (mode === "best") scheduleBestStep(musicStep, musicNext);
     else
       scheduleMusicStep(musicStep, musicNext, mode === "paused" ? "run" : mode);
     musicStep = (musicStep + 1) % 128;
-    musicNext += mode === "over" ? OVER_STEP : MUSIC_STEP;
+    musicNext += mode === "over" ? OVER_STEP : mode === "best" ? BEST_STEP : MUSIC_STEP;
   }
 }
 // The first tap or key press is allowed to start sound, so the music can begin.
@@ -805,6 +933,8 @@ function reset() {
   upcoming = "stack";
   lives = LIVES;
   hurtTime = 0;
+  safeTime = 0;
+  shards = [];
   shake = 0;
   heartPop = null;
   shedTimer = 0;
@@ -1521,7 +1651,7 @@ function wipeOut(o) {
   sfx.wipeout();
   heartPop = { index: 0, count: lives, life: 500 }; // every heart left pops at once
   lives = 0;
-  wipeout = { t: 0, x: player.x, groundY: player.y + player.h, slammed: false };
+  wipeout = { t: 0, x: player.x, groundY: GROUND_Y + player.h, slammed: false }; // (slammed down on the floor, where the puddle is, even from a jump)
   player.ducking = false;
   duckHeld = false;
   popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Wipeout!", life: 1100 });
@@ -1899,16 +2029,105 @@ function knockAway(o) {
   sfx.knock();
   popups.push({ x: cx, y: o.y - 6, text: "Whoosh!", life: 600 });
 }
-// The hardcover takes a bump: it's used up, and the book blinks safely past.
+// The hardcover takes a bump: it shatters, and the book carries on safely past what it hit. (No
+// blinking, and no heart lost: the book itself wasn't touched.)
 function blockHit() {
   power = null;
-  hurtTime = HURT_MS;
+  safeTime = HURT_MS;
   shake = 140;
   sfx.block();
   const b = playerBox();
-  burst(b.x + b.w / 2, b.y + b.h / 2, 14, POWERS.shield.color, 5);
-  burst(b.x + b.w / 2, b.y + b.h / 2, 8, GOLD, 4);
+  shatterShield(b);
   popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Blocked!", life: 800 });
+}
+// The see-through cover around the book (see drawPowerAura) breaking into pieces: shards from all
+// the way around its edge fly outward, spinning, then fall and fade; its two gold corners too.
+const SHIELD_PAD = 9; // (how far the cover stands out from the book)
+function shatterShield(b) {
+  const x0 = b.x - SHIELD_PAD,
+    y0 = b.y - SHIELD_PAD,
+    w = b.w + SHIELD_PAD * 2,
+    h = b.h + SHIELD_PAD * 2,
+    cx = x0 + w / 2,
+    cy = y0 + h / 2,
+    n = 14;
+  const shard = (x, y, size, color) => {
+    const dx = x - cx,
+      dy = y - cy,
+      d = Math.hypot(dx, dy) || 1,
+      v = 0.16 + Math.random() * 0.14,
+      pts = [];
+    for (let k = 0; k < 3; k++) {
+      // a jagged triangle
+      const a = (k * Math.PI * 2) / 3 + Math.random() * 0.8,
+        r = size * (0.6 + Math.random() * 0.5);
+      pts.push(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    shards.push({
+      x,
+      y,
+      vx: (dx / d) * v + 0.04, // (a little forward: the book's still running)
+      vy: (dy / d) * v - 0.12,
+      rot: Math.random() * Math.PI,
+      spin: (Math.random() - 0.5) * 0.03,
+      pts,
+      color,
+      life: 650 + Math.random() * 200,
+    });
+  };
+  for (let i = 0; i < n; i++) {
+    // evenly around the cover's edge
+    let t = ((i + Math.random() * 0.5) / n) * 2 * (w + h);
+    let x, y;
+    if (t < w) (x = x0 + t), (y = y0);
+    else if ((t -= w) < h) (x = x0 + w), (y = y0 + t);
+    else if ((t -= h) < w) (x = x0 + w - t), (y = y0 + h);
+    else (x = x0), (y = y0 + h - (t - w));
+    shard(x, y, 5 + Math.random() * 4, "blue");
+  }
+  shard(x0 + w - 3, y0 + 3, 5, GOLD); // the gold corners
+  shard(x0 + 3, y0 + h - 3, 5, GOLD);
+  shards.flash = { x0, y0, w, h, life: 160 }; // the cover's outline, lit up white for an instant as it breaks
+}
+function updateShards(dt) {
+  for (const s of shards) {
+    s.vy += 0.0011 * dt;
+    s.x += s.vx * dt - speed * dt * 0.3; // (left behind a little as the run goes on)
+    s.y += s.vy * dt;
+    s.rot += s.spin * dt;
+    s.life -= dt;
+  }
+  const flash = shards.flash;
+  shards = shards.filter((s) => s.life > 0);
+  if (flash && (flash.life -= dt) > 0) shards.flash = flash;
+}
+function drawShards() {
+  const f = shards.flash;
+  if (f) {
+    ctx.strokeStyle = `rgba(255, 255, 255, ${f.life / 160})`;
+    ctx.lineWidth = 3;
+    roundRectPath(f.x0, f.y0, f.w, f.h, 12);
+    ctx.stroke();
+  }
+  for (const s of shards) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, s.life / 300); // (fading out at the end)
+    ctx.translate(s.x, s.y);
+    ctx.rotate(s.rot);
+    ctx.beginPath();
+    ctx.moveTo(s.pts[0], s.pts[1]);
+    ctx.lineTo(s.pts[2], s.pts[3]);
+    ctx.lineTo(s.pts[4], s.pts[5]);
+    ctx.closePath();
+    ctx.fillStyle = s.color === "blue" ? "rgba(127, 176, 255, 0.55)" : s.color;
+    ctx.fill();
+    if (s.color === "blue") {
+      ctx.strokeStyle = "rgba(220, 236, 255, 0.95)"; // (a bright edge, like broken glass)
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 // Book tape: win back a heart (never more than LIVES).
@@ -1969,6 +2188,7 @@ function updateParticles(dt) {
   if (heartPop && (heartPop.life -= dt) <= 0) heartPop = null;
   if (heartGain && (heartGain.life -= dt) <= 0) heartGain = null;
   updateLostPages(dt);
+  updateShards(dt);
 }
 
 // ---------- Game loop ----------
@@ -2000,6 +2220,7 @@ function update(dt) {
   updatePower(dt);
 
   if (hurtTime > 0) hurtTime -= dt;
+  if (safeTime > 0) safeTime -= dt;
   if (healTime > 0) healTime -= dt;
   if (slipTime > 0) {
     slipTime -= dt;
@@ -2021,7 +2242,7 @@ function update(dt) {
 
   checkPuddles();
   if (state !== "running") return; // wiped out in a puddle: the run's over
-  if (hurtTime <= 0) {
+  if (hurtTime <= 0 && safeTime <= 0) {
     const hit = obstacles.find(hits);
     const using = power && power.type;
     if (hit) {
@@ -2048,7 +2269,16 @@ function smashInto(o) {
   // Usually it's the front face. But standing up inside a book tunnel hits the shelf overhead:
   // then the book stays where it is rather than snapping back to the tunnel's entrance.
   const faceX = o.x < player.x ? player.x + player.w : o.x;
-  smash = { t: 0, final: true, faceX, groundY: player.y + player.h };
+  // Hit in mid-air (jumping into a table's side, or a shelf), it drops to whatever's under it as it
+  // goes over: the floor, or the top of a table it's above (where it'll lie, bounced back from faceX).
+  const feet = player.y + player.h,
+    left = faceX - 40 - 20,
+    right = faceX - 10;
+  let floor = GROUND_Y + player.h;
+  for (const p of obstacles)
+    if (p !== o && p.type === "platform" && p.x < right && p.x + p.w > left && p.y >= feet - 2 && p.y < floor)
+      floor = p.y;
+  smash = { t: 0, final: true, faceX, groundY: feet, floorY: floor, vy: Math.max(0, player.vy) };
   player.ducking = false;
   duckHeld = false;
   shake = 260;
@@ -2068,6 +2298,22 @@ function smashInto(o) {
   popups.push({ x: b.x + b.w / 2, y: b.y - 8, text: "Thunk!", life: 900 });
   burst(b.x + b.w / 2, b.y + b.h / 2, 10, PAPER, 6);
   gameOver(true);
+}
+
+// The smash's clock, and (if it happened in mid-air) its drop to the floor under it: falling as a
+// jump does, with a puff of dust as it lands.
+function updateSmash(dt) {
+  const sm = smash;
+  sm.t += dt;
+  if (sm.groundY >= sm.floorY) return;
+  sm.vy += GRAVITY * dt;
+  sm.groundY += sm.vy * dt;
+  if (sm.groundY >= sm.floorY) {
+    sm.groundY = sm.floorY;
+    burst(sm.faceX - 40, sm.floorY, 6, PAPER);
+    sfx.land();
+    shake = Math.max(shake, 120);
+  }
 }
 
 // A bump costs one heart. The last heart ends the run.
@@ -2150,6 +2396,7 @@ function gameOver(stayPut = false) {
   player.ducking = false; // it tumbles as the standing book
   player.vy = 0;
   newBest = saveBest();
+  if (!newBest) nudge = pickFrom(TRY_AGAIN_NUDGES); // (for the game-over card)
   overTime = 0;
   selected.over = 0;
 }
@@ -2187,6 +2434,56 @@ function drawTumble() {
 // Each menu screen has a row of buttons. Pick one with the mouse or a tap, or with
 // ← → (or Tab, Shift+Tab) and Enter / Space. Esc goes back.
 let newBest = false;
+// A new best's game-over card: one of these under the star, picked at random each time.
+const NEW_BEST_CHEERS = [
+  "Way to go!",
+  "I bet you can't do it again.",
+  "Dewey would be proud!",
+  "Now that's a page-turner!",
+  "That one's going in the record books!",
+  "Bookworms everywhere are cheering.",
+  "Check it out: a brand-new record!",
+  "Shelve that score somewhere safe!",
+  "Can you top that? Let's find out!",
+  "Overdue? More like overachiever!",
+  "Somebody give this book an award!",
+  "You're a library legend!",
+  "The librarians are taking notes.",
+  "Fastest book in the stacks!",
+  "Read 'em and weep!",
+  "That's one for the history section!",
+  "Not bad. Not bad at all.",
+  "You just wrote a new chapter!",
+  "Gold star for you!",
+  "Bet your friends can't beat that.",
+];
+// Any other Endless game over: one of these in place of "Out of hearts!", picked at random each
+// time (with your best still shown underneath, so you know what to aim for).
+const TRY_AGAIN_NUDGES = [
+  "Shake off the dust and try again!",
+  "Every great book has a few rough drafts.",
+  "So close! One more go?",
+  "Even Dewey trips over a book cart sometimes.",
+  "Plot twist: the next run is the one.",
+  "Don't close the book on it yet!",
+  "Practice makes page-perfect.",
+  "That's just chapter one. Keep reading!",
+  "The pages are still out there. Go get 'em!",
+  "Back on the shelf? Not yet!",
+  "Every bookworm starts somewhere.",
+  "Dust off that cover and dash again!",
+  "Your best run is still on the shelf.",
+  "Oof! Those stacks came out of nowhere.",
+  "Take a deep breath. You've got this.",
+  "Missed a few pages? There's always next time.",
+  "Turn the page and try again!",
+  "A little slip. A big comeback coming?",
+  "Second drafts are always better.",
+  "No late fees for trying again!",
+];
+const pickFrom = (list) => list[(Math.random() * list.length) | 0];
+let cheer = NEW_BEST_CHEERS[0], // (this run's, on a new best)
+  nudge = TRY_AGAIN_NUDGES[0]; // (this run's, otherwise)
 let overTime = 0; // ms since the run ended
 const DEATH_MS = 900; // let the crash play out (pages flying, the book tumbling away) first…
 const OVER_FADE_MS = 300; // …then fade the game-over panel in over this long
@@ -2228,6 +2525,7 @@ function saveBest() {
   if (story) return false; // (Endless Mode's best only: a story level has stars instead)
   if (pages <= best) return false;
   best = pages;
+  cheer = pickFrom(NEW_BEST_CHEERS); // (for the game-over card)
   safeSet("runner-best-pages", best);
   return true;
 }
@@ -3244,7 +3542,7 @@ function frame(now) {
   else if (state === "countdown") updateCountdown(dt);
   else if (state === "over") {
     updateTumble(dt);
-    if (smash) smash.t += dt; // a final smash keeps animating (the book lies there, seeing stars)
+    if (smash) updateSmash(dt); // a final smash keeps animating (the book lies there, seeing stars)
     if (wipeout) updateWipeout(dt); // so does a wipeout (the flips, the slam, the halo)
     updateParticles(dt);
     overTime += dt;
@@ -3947,6 +4245,7 @@ function draw() {
       drawPowerAura();
     }
   } else drawTumble();
+  drawShards(); // (the hardcover breaking: see shatterShield)
 
   for (const l of lostPages) {
     ctx.globalAlpha = Math.min(1, l.life / 300); // fade out at the end
@@ -4081,7 +4380,8 @@ function draw() {
 // with a soft shadow, dark ink, a red double rule under the title and a red ribbon bookmark.
 const INK = "#3a2a1e", // text on the cards
   INK_SOFT = "#7a6a55", // quieter text
-  CARD_RED = "#a8382f"; // the rules, ribbon and stamp
+  CARD_RED = "#a8382f", // the rules, ribbon and stamp
+  STAMP_GOLD = "#9c6c0e"; // a new best's stamp: a deep gold, dark enough to read on the cream card
 
 // A rounded rectangle's outline, to stroke (roundRect fills).
 function roundRectPath(x, y, w, h, r) {
@@ -4590,11 +4890,12 @@ const storyLine = (lv) =>
   `Chapter ${lv.chapter} · Level ${lv.num} · ${lv.name}`;
 // The run's numbers in a row, each over its label, split by thin red lines. items: [value, label],
 // the value a number or words, or "hearts" for the hearts left. (y: the numbers' baseline.)
+// (starred: a new best: the number bigger and in gold, with sparkles twinkling either side)
 function drawStatRow(cx, y, items) {
   const big = tall(),
     colW = big ? 124 : 120,
     x0 = cx - (items.length * colW) / 2;
-  items.forEach(([v, label], i) => {
+  items.forEach(([v, label, starred], i) => {
     const x = x0 + colW * (i + 0.5);
     if (v === "hearts") {
       const s = big ? 8 : 7,
@@ -4605,15 +4906,28 @@ function drawStatRow(cx, y, items) {
         ctx.fill();
       }
     } else {
+      let size = String(v).length > 5 ? (big ? 22 : 20) : big ? 28 : 26;
+      if (starred) size = String(v).length > 3 ? (big ? 36 : 34) : big ? 46 : 44;
       ctx.textAlign = "center";
-      ctx.fillStyle = INK;
-      ctx.font = `bold ${String(v).length > 5 ? (big ? 22 : 20) : big ? 28 : 26}px Fraunces, Georgia, serif`;
+      ctx.fillStyle = starred ? STAMP_GOLD : INK;
+      ctx.font = `bold ${size}px Fraunces, Georgia, serif`;
       ctx.fillText(String(v), x, y);
+      if (starred) {
+        // a big sparkle and a little one on each side, twinkling in turn
+        const half = ctx.measureText(String(v)).width / 2,
+          midY = y - size * 0.36,
+          t = overTime * 0.004;
+        const tw = (k) => (reduceMotion() ? 1 : 0.75 + 0.25 * Math.sin(t + k * 1.9));
+        sparkle(x - half - 14, midY + 2, 7 * tw(0), GOLD);
+        sparkle(x - half - 6, midY - 12, 4 * tw(1), GOLD);
+        sparkle(x + half + 14, midY - 4, 7 * tw(2), GOLD);
+        sparkle(x + half + 7, midY + 10, 4 * tw(3), GOLD);
+      }
     }
     ctx.textAlign = "center";
     ctx.fillStyle = INK_SOFT;
     ctx.font = `${big ? 13 : 12}px Fraunces, Georgia, serif`;
-    ctx.fillText(label, x, y + 17);
+    ctx.fillText(label, x, y + (starred ? 22 : 17)); // (a little lower under the big gold number)
     if (i > 0) {
       ctx.fillStyle = "rgba(168, 56, 47, 0.3)";
       ctx.fillRect(x0 + colW * i - 0.5, y - 26, 1, 48);
@@ -4628,9 +4942,10 @@ function cardSub(text, y) {
   ctx.fillText(text, W / 2, y);
 }
 // One more line, under the numbers.
+// (red: true for the card's red, or a color of its own)
 function cardLine(text, y, red = false) {
   ctx.textAlign = "center";
-  ctx.fillStyle = red ? CARD_RED : INK_SOFT;
+  ctx.fillStyle = typeof red === "string" ? red : red ? CARD_RED : INK_SOFT;
   ctx.font = `bold ${tall() ? 15 : 14}px Fraunces, Georgia, serif`;
   ctx.fillText(text, W / 2, y);
 }
@@ -5818,10 +6133,14 @@ function iconStar(x, y) {
   }
   poly(GOLD, ...pts);
 }
+// (a small wet floor sign, as in the game: see drawWetSign)
 function iconWetFloor(x, y) {
-  oval(x + 5, y + 10, 9, 3, "#4f93cf");
-  poly("#f2c230", x - 4, y - 12, x + 4, y + 9, x - 12, y + 9);
-  poly("#1a1a1a", x - 4, y - 5, x, y + 4, x - 8, y + 4);
+  oval(x + 6, y + 10, 10, 3, "#4f93cf"); // a puddle beside it
+  poly(SIGN_SHADE, x - 1, y - 11, x + 7, y + 9, x + 3, y + 9); // the back board
+  poly(SIGN_YELLOW, x - 9, y - 12, x + 1, y - 12, x + 5, y + 9, x - 13, y + 9); // the front board
+  ctx.fillStyle = SIGN_INK;
+  roundRect(x - 6, y - 10.5, 4, 1.8, 0.9); // handle slot
+  slipFigure(x - 4, y - 7, 0.78);
 }
 
 // How faded-in the game-over card is: 0 not yet (the crash is still playing) … 1 showing.
@@ -5840,7 +6159,10 @@ function drawGameOver() {
     big = tall(),
     lv = story && story.level;
   drawCard(c.x, c.y, c.w, c.h);
-  // the stamp is the card's title: "OVERDUE", slammed down as the card appears (then the rule)
+  // the stamp is the card's title: "OVERDUE", slammed down as the card appears (then the rule).
+  // A new best in Endless gets "NEW BEST" instead, in gold, and its number in a gold star.
+  const beat = !lv && newBest && best > 0,
+    ink = beat ? STAMP_GOLD : CARD_RED;
   const sp = Math.min(1, Math.max(0, (overTime - deathMs - 120) / 220)),
     stampY = c.y + (big ? 50 : 42);
   if (sp > 0) {
@@ -5850,36 +6172,42 @@ function drawGameOver() {
     ctx.translate(W / 2, stampY);
     ctx.rotate(-0.05);
     ctx.scale(scale, scale);
-    ctx.strokeStyle = CARD_RED;
+    ctx.strokeStyle = ink;
     ctx.lineWidth = 3;
     ctx.strokeRect(-104, -24, 208, 48);
     ctx.lineWidth = 1;
     ctx.strokeRect(-98, -18, 196, 36);
-    ctx.fillStyle = CARD_RED;
+    ctx.fillStyle = ink;
     ctx.font = "bold 30px Fraunces, Georgia, serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("OVERDUE", 0, 2);
+    ctx.fillText(beat ? "NEW BEST" : "OVERDUE", 0, 2);
     ctx.restore();
+    // a new best: little glints twinkling at the stamp's corners once it's down
+    if (beat && sp >= 1) {
+      const t = overTime - deathMs - 340;
+      [[-104, -24], [104, 24], [104, -24]].forEach(([dx, dy], i) => {
+        const k = (t / 900 + i / 3) % 1,
+          r = Math.sin(k * Math.PI) * 5;
+        if (r > 0.5) sparkle(W / 2 + dx * Math.cos(-0.05) - dy * Math.sin(-0.05), stampY + dy * Math.cos(-0.05) + dx * Math.sin(-0.05), r, GOLD);
+      });
+    }
   }
   cardRules(c.x, stampY + 30, c.w);
-  cardSub(
-    lv ? storyLine(lv) : "Out of hearts! Your run has ended.",
-    stampY + 52,
-  );
+  // (a new best: no line here, so the star has room; the stamp and the line under it say it all)
+  if (!beat) cardSub(lv ? storyLine(lv) : nudge, stampY + 52);
   drawStatRow(W / 2, stampY + (big ? 98 : 88), [
-    [pages, pages === 1 ? "page found" : "pages found"],
+    [pages, pages === 1 ? "page found" : "pages found", beat],
     ...(lv ? [[`${Math.round(storyProgress() * 100)}%`, "of the level"]] : []),
   ]);
-  const beat = !lv && newBest && best > 0;
   cardLine(
     lv
       ? "So close! Try it again."
       : beat
-        ? "★ New best! ★"
+        ? cheer
         : `Best: ${best} pages`,
     stampY + (big ? 146 : 130),
-    beat,
+    beat ? STAMP_GOLD : false,
   );
 
   drawButtons();
@@ -6394,39 +6722,84 @@ function drawTunnel(o) {
   ctx.fillText("READING NOOK", px, bottom - 3);
 }
 
-// A yellow fold-out wet floor sign: a caution triangle with "!", and a wavy water line.
+// A yellow fold-out wet floor sign, the kind every janitor's closet has: an A-frame board (narrow
+// at the top, with a handle slot), the slipping-person picture, and WET FLOOR in black letters.
+const SIGN_YELLOW = "#f6c623",
+  SIGN_SHADE = "#c2960f", // (the back board, seen past the front one)
+  SIGN_INK = "#1a1a1a";
 function drawWetSign(o) {
-  const { x, y, w, h } = o;
-  oval(x + w / 2, FLOOR - 1, w * 0.6, 3, "rgba(0, 0, 0, 0.25)"); // shadow
-  poly("#b8901c", x + 6, y + 2, x + w - 2, FLOOR, x + w - 8, FLOOR); // back leg
-  poly("#f2c230", x + w / 2, y, x + w - 4, FLOOR, x + 4, FLOOR); // front panel
-  ctx.strokeStyle = "#1a1a1a";
-  ctx.lineWidth = 1.5;
+  const { x, y, w, h } = o,
+    cx = x + w / 2,
+    top = y + 2, // (the board's top edge)
+    tw = 9, // half its width at the top…
+    bw = w / 2 - 1; // …and at the floor
+  oval(cx + 2, FLOOR - 1, w * 0.62, 3, "rgba(0, 0, 0, 0.25)"); // shadow
+  // the back board, folded out behind: its far edge peeks out on the right
+  poly(SIGN_SHADE, cx + tw - 2, top + 1, cx + bw + 3, FLOOR, cx + bw - 3, FLOOR);
+  // the front board
   ctx.beginPath();
-  ctx.moveTo(x + w / 2, y);
-  ctx.lineTo(x + w - 4, FLOOR);
-  ctx.lineTo(x + 4, FLOOR);
+  ctx.moveTo(cx - tw + 2, top);
+  ctx.lineTo(cx + tw - 2, top);
+  ctx.quadraticCurveTo(cx + tw, top, cx + tw, top + 2); // (rounded top corners)
+  ctx.lineTo(cx + bw, FLOOR);
+  ctx.lineTo(cx - bw, FLOOR);
+  ctx.lineTo(cx - tw, top + 2);
+  ctx.quadraticCurveTo(cx - tw, top, cx - tw + 2, top);
   ctx.closePath();
+  ctx.fillStyle = SIGN_YELLOW;
+  ctx.fill();
+  ctx.strokeStyle = SIGN_INK;
+  ctx.lineWidth = 1.2;
   ctx.stroke();
-  R(x + w / 2 - 4, y - 3, 8, 4, "#1a1a1a"); // handle
-  // caution triangle with "!"
-  const cx = x + w / 2,
-    ty = y + 14;
-  poly("#1a1a1a", cx, ty, cx + 8, ty + 13, cx - 8, ty + 13);
-  poly("#f2c230", cx, ty + 3, cx + 5, ty + 11, cx - 5, ty + 11);
-  R(cx - 0.75, ty + 5, 1.5, 3.5, "#1a1a1a");
-  R(cx - 0.75, ty + 9.3, 1.5, 1.2, "#1a1a1a");
-  // a wavy water line near the bottom
-  ctx.strokeStyle = "#3d7fb8";
-  ctx.lineWidth = 1.5;
+  // the handle: a slot through the top
+  ctx.fillStyle = SIGN_INK;
+  roundRect(cx - 4, top + 2.5, 8, 3, 1.5);
+  // the slipping person
+  slipFigure(cx, y + 11, 1);
+  // WET FLOOR, in two lines at the bottom
+  ctx.fillStyle = SIGN_INK;
+  ctx.textAlign = "center";
+  ctx.font = "900 8px system-ui, sans-serif";
+  ctx.fillText("WET", cx, y + h - 9);
+  ctx.font = "900 6px system-ui, sans-serif";
+  ctx.fillText("FLOOR", cx, y + h - 2.5);
+}
+// The wet floor sign's picture, in black: someone whose feet have shot out from under them, arms
+// flung up, falling back, with a splash at their feet. (cx: its middle; top: the top of the head;
+// s: its size, 1 being about 17 tall.)
+function slipFigure(cx, top, s) {
+  ctx.save();
+  ctx.translate(cx, top);
+  ctx.scale(s, s);
+  ctx.strokeStyle = SIGN_INK;
+  ctx.fillStyle = SIGN_INK;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  oval(-3.5, 2.2, 2.3, 2.3, SIGN_INK); // head, tipped back
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  for (let i = 0; i <= 12; i++) {
-    const wx = cx - 9 + i * 1.5,
-      wy = y + h - 9 + Math.sin(i * 1.2) * 1.5;
-    if (i === 0) ctx.moveTo(wx, wy);
-    else ctx.lineTo(wx, wy);
-  }
+  ctx.moveTo(-2.5, 4.5); // body, leaning back
+  ctx.lineTo(0.5, 10);
+  ctx.moveTo(0.5, 10); // the front leg, kicked up
+  ctx.lineTo(4.5, 9.5);
+  ctx.lineTo(7, 6.5);
+  ctx.moveTo(0.5, 10); // the back leg, sliding out
+  ctx.lineTo(2.5, 14.5);
+  ctx.moveTo(-1.8, 6); // arms flung out
+  ctx.lineTo(-7, 4);
+  ctx.moveTo(-1.5, 6);
+  ctx.lineTo(2.5, 3);
   ctx.stroke();
+  // the wet floor under them, and the splash
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-8, 16.5);
+  ctx.lineTo(8, 16.5);
+  ctx.stroke();
+  oval(5.5, 14.2, 1, 1.4, SIGN_INK);
+  oval(7.8, 13.2, 0.8, 1.1, SIGN_INK);
+  oval(-0.5, 14.4, 0.8, 1.1, SIGN_INK);
+  ctx.restore();
 }
 
 // A puddle on the floor: a bright blue pool with a white rim and a shimmer (it ripples once splashed).
@@ -6766,7 +7139,7 @@ function drawPowerAura() {
     }
   } else if (power.type === "shield") {
     // a see-through blue cover around the book
-    const pad = 9;
+    const pad = SHIELD_PAD;
     ctx.fillStyle = "rgba(75, 121, 217, 0.18)";
     roundRect(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2, 12);
     ctx.strokeStyle = `rgba(127, 176, 255, ${0.6 + 0.3 * Math.sin(runTime * 0.01)})`;
