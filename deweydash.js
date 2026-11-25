@@ -2601,7 +2601,7 @@ const BUTTON_Y = {
   },
   tall: {
     ready: 340,
-    chars: 494,
+    chars: 512,
     paused: 288,
     howto: 532,
     over: 344,
@@ -2609,6 +2609,12 @@ const BUTTON_Y = {
     cleared: 356,
     tip: 556,
   },
+};
+// The Characters screen's card (x is centred), its title's baseline and its red rules, from the
+// card's top. On a phone the title row is taller, to fit the round ‹ button beside the title.
+const CHARS_CARD = {
+  wide: { w: 620, y: 12, h: 296, title: 30, rules: 38 },
+  tall: { w: 420, y: 26, h: 580, title: 42, rules: 64 },
 };
 let BUTTONS = {};
 function makeButtons() {
@@ -2639,21 +2645,6 @@ function makeButtons() {
         h: 48,
       },
     ];
-    // the Characters screen: Back and Play side by side, big enough to tap, inside its card
-    const bw = 170,
-      gap = 16,
-      cy = BUTTON_Y.tall.chars;
-    BUTTONS.chars = [
-      { id: "go", label: "Play", x: W / 2 - bw - gap / 2, y: cy, w: bw, h: 54 },
-      {
-        id: "charsBack",
-        label: "Back",
-        x: W / 2 + gap / 2,
-        y: cy,
-        w: bw,
-        h: 54,
-      },
-    ];
   } else {
     const pw = 196, // each start button
       hw = 150, // How to play
@@ -2672,6 +2663,23 @@ function makeButtons() {
         h: 46,
       },
     ];
+  }
+  // The Characters screen: one Play button, the card's only main action (as wide as the books on
+  // a phone, centred under them otherwise), and a round ‹ in the card's top-left corner to go
+  // back, in the same style as How to play's ✕. 44 across on a phone (big enough to tap; the
+  // title row is tall enough for it, see CHARS_CARD); smaller with a mouse, to clear the rules.
+  {
+    const c = CHARS_CARD[layout],
+      cx = W / 2 - c.w / 2;
+    BUTTONS.chars = tall()
+      ? [
+          { id: "go", label: "Play", x: W / 2 - 187, y: BUTTON_Y.tall.chars, w: 374, h: 54 },
+          { id: "charsBack", label: "Back", back: true, x: cx + 14, y: c.y + 12, w: 44, h: 44 },
+        ]
+      : [
+          { id: "go", label: "Play", x: W / 2 - 100, y: BUTTON_Y.wide.chars, w: 200, h: 42 },
+          { id: "charsBack", label: "Back", back: true, x: cx + 10, y: c.y + 5, w: 30, h: 30 },
+        ];
   }
   // the pause screen: Resume, How to play and Quit in their places on its card (see drawPause)
   BUTTONS.paused = pauseButtons();
@@ -4526,6 +4534,7 @@ function drawButtonList() {
     if (story && state === "over")
       b = { ...b, label: b.id === "again" ? "Try again" : "Chapters" };
     if (b.close) return drawCloseButton(b, on);
+    if (b.back) return drawCloseButton(b, on, "back");
     if (b.tips) return drawTipsButton(b, on);
     if (state === "howto" && b.id === "prev" && howtoScreen === 0) {
       // nothing before the first screen: Back is there, but faded
@@ -6040,8 +6049,9 @@ function drawTipsButton(b, on) {
   ctx.fillText(b.label, ix + iw + gap, cy + 5);
 }
 
-// The ✕ that closes How to play: a round dark button in the corner.
-function drawCloseButton(b, on) {
+// The ✕ that closes How to play: a round dark button in the corner. With icon "back", a ‹
+// instead (the Characters screen's way back).
+function drawCloseButton(b, on, icon = "close") {
   const r = b.w / 2,
     cx = b.x + r,
     cy = b.y + r;
@@ -6057,11 +6067,19 @@ function drawCloseButton(b, on) {
   ctx.strokeStyle = PAPER;
   ctx.lineWidth = 2.2;
   ctx.lineCap = "round";
+  ctx.lineJoin = "round";
   ctx.beginPath();
-  ctx.moveTo(cx - a, cy - a);
-  ctx.lineTo(cx + a, cy + a);
-  ctx.moveTo(cx + a, cy - a);
-  ctx.lineTo(cx - a, cy + a);
+  if (icon === "back") {
+    // ‹ (nudged right a touch, so it looks centred)
+    ctx.moveTo(cx + a * 0.6, cy - a * 1.15);
+    ctx.lineTo(cx - a * 0.6, cy);
+    ctx.lineTo(cx + a * 0.6, cy + a * 1.15);
+  } else {
+    ctx.moveTo(cx - a, cy - a);
+    ctx.lineTo(cx + a, cy + a);
+    ctx.moveTo(cx + a, cy - a);
+    ctx.lineTo(cx - a, cy + a);
+  }
   ctx.stroke();
 }
 
@@ -7777,7 +7795,7 @@ let charHover = -1;
 // The character cards on the Characters screen (shared by drawing and tapping).
 // Wide: one row of four. Tall: a 2 × 2 grid.
 const CARD = { w: 136, h: 160, gap: 12, y: 64 };
-const CARD_TALL = { w: 180, h: 190, gap: 14, y: 82 };
+const CARD_TALL = { w: 180, h: 190, gap: 14, y: 100 };
 function cardRect(i) {
   if (tall()) {
     const c = CARD_TALL,
@@ -7801,16 +7819,17 @@ function cardRect(i) {
 
 function drawCharacters() {
   dimBehindCard();
-  const pw = tall() ? 420 : 620,
+  const c = CHARS_CARD[layout],
+    pw = c.w,
     px = W / 2 - pw / 2,
-    py = tall() ? 26 : 12,
-    ph = tall() ? 562 : 296;
+    py = c.y,
+    ph = c.h;
   drawCard(px, py, pw, ph);
   ctx.textAlign = "center";
   ctx.fillStyle = INK;
   ctx.font = "bold 22px Fraunces, Georgia, serif";
-  ctx.fillText("Choose your book", W / 2, py + 30);
-  cardRules(px, py + 38, pw);
+  ctx.fillText("Choose your book", W / 2, py + c.title);
+  cardRules(px, py + c.rules, pw);
 
   CHARACTERS.forEach((c, i) => {
     const on = i === charIndex,
@@ -7858,7 +7877,7 @@ function drawCharacters() {
   hint(
     tall()
       ? "Tap a book to pick it, then Play"
-      : "← → or tap to pick · Enter or Space to play · Esc to go back",
+      : "← → or click to pick · Tab between Play and ‹ · Enter to choose · Esc to go back",
     py + ph - 10,
   );
 }
@@ -8434,11 +8453,22 @@ document.addEventListener("keydown", (e) => {
     }
     // Story Mode's chapter book: ← → flip chapters, ↑ ↓ go down its contents (see storyLevelsKey)
     if (state === "levels" && storyLevelsKey(e)) return;
-    // on the Characters screen the arrows flip through the characters
-    if (state === "chars" && moveKeys.includes(e.code)) {
-      e.preventDefault();
-      pickCharacter(charIndex + (back ? -1 : 1));
-      return;
+    // The Characters screen: ← → flip through the books (whichever button is lit), and
+    // ↑ ↓ / Tab move between its two buttons, Play (at the bottom) and ‹ (the top corner).
+    // Enter / Space then choose the lit one (below).
+    if (state === "chars") {
+      const k = e.code;
+      if (["ArrowLeft", "ArrowRight", "KeyA", "KeyD"].includes(k)) {
+        e.preventDefault();
+        pickCharacter(charIndex + (k === "ArrowLeft" || k === "KeyA" ? -1 : 1));
+        return;
+      }
+      if (["ArrowUp", "ArrowDown", "KeyW", "KeyS", "Tab"].includes(k)) {
+        e.preventDefault();
+        keyNav = true;
+        highlight(state, selected.chars === 0 ? 1 : 0);
+        return;
+      }
     }
     if (
       selected[state] < 0 &&
