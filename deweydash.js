@@ -126,7 +126,13 @@ const PLATFORMS = {
   chair: { w: 190, h: 50 }, // a big comfy reading chair (you run along the seat)
   table: { w: 180, h: FLOOR - GROUND_Y }, // a low reading table: run along the top, or duck and slide underneath
   couch: { w: 240, h: 46 }, // a long, low couch (Story Mode's children's wing): run along the cushions
+  round: { w: 120, h: 40 }, // a round café table (Story Mode's table hop: see spawnTableHop)
+  saleCart: { w: 190, h: 64 }, // a wooden book sale cart (Story Mode's Friends Shop)
 };
+// Story Mode's table hop: a row of round tables with a gap between each, and something on the
+// floor in every gap (books, or a backpack), so the way through is tabletop to tabletop. The
+// tables are as solid as any furniture: come in low and you smash into the side.
+const TABLE_HOP = { tables: 4, gap: [104, 124] };
 const ENDLESS_FURNITURE = ["cart", "bench", "chair", "table"]; // (Story Mode levels say which pieces they have)
 const TABLE_SLAB = 14; // the tabletop's thickness: the only solid part of the table (it's open underneath)
 // Book tunnels: a long wall of books hanging from the ceiling with a low gap at the floor. Too
@@ -1257,10 +1263,11 @@ function pickNext() {
   const scripted =
     story && typeof storyOpening === "function" ? storyOpening() : null;
   if (scripted) return scripted;
-  // (a Story Mode level can put particular furniture in particular scenes: see storyFurniture)
+  // (a Story Mode level can put particular furniture in particular scenes, or a wet floor: see
+  // storyFurniture)
   const piece =
     story && typeof storyFurniture === "function" ? storyFurniture() : null;
-  if (piece) return "platform:" + piece;
+  if (piece) return piece === "wet" ? "wet" : "platform:" + piece;
   if (has("wet") && Math.random() < chance("wet", WET_CHANCE)) return "wet";
   if (has("platform") && Math.random() < chance("platform", PLATFORM_CHANCE))
     return "platform";
@@ -1363,6 +1370,7 @@ function spawnPlatform(
   kind = ENDLESS_FURNITURE[(Math.random() * ENDLESS_FURNITURE.length) | 0],
 ) {
   if (kind === "loadedTable") return spawnLoadedTable();
+  if (kind === "tableHop") return spawnTableHop();
   const { w, h } = PLATFORMS[kind];
   const o = {
     type: "platform",
@@ -1472,6 +1480,59 @@ function spawnLoadedTable() {
   return { w, jumpy: false };
 }
 
+// The table hop (see TABLE_HOP): round tables in a row, and in every gap between them something
+// on the floor that fills most of it: a low pile of books, or (in the middle gap) a backpack with
+// a couple of books beside it. Hop from top to top; drop in, and you land on it. Pages wait at the
+// top of each hop (in Story Mode just the one, at the best of them). Returns { w, jumpy }.
+function spawnTableHop() {
+  const { w, h } = PLATFORMS.round,
+    top = FLOOR - h,
+    standTop = top - player.h, // the book's top, standing on a table
+    between = (r) => r[0] + Math.random() * (r[1] - r[0]),
+    start = W + 10,
+    marked = story && storyBookmark("hop"); // (one of the level's bookmarks, over the middle gap)
+  let x = start;
+  for (let i = 0; i < TABLE_HOP.tables; i++) {
+    obstacles.push({ type: "platform", kind: "round", x, y: top, w, h, books: [], seed: Math.random() * 1000 });
+    x += w;
+    if (i === TABLE_HOP.tables - 1) break;
+    const gap = between(TABLE_HOP.gap),
+      hx = x + 12,
+      hw = gap - 24; // (narrower than the book: drop in anywhere and you land on it)
+    if (i === 1) {
+      // a backpack lying on its side, and a couple of books spilled out beside it
+      const bw = 58;
+      obstacles.push({
+        type: "bag",
+        x: hx,
+        y: FLOOR - 28,
+        w: bw,
+        h: 28,
+        books: [],
+        color: ["#c92a2f", "#2f62b8", "#4f7942"][(Math.random() * 3) | 0],
+      });
+      const s = makeStack(hx + bw + 4, hw - bw - 4, 14);
+      obstacles.push({ type: "stack", x: hx + bw + 4, y: FLOOR - s.h, w: hw - bw - 4, h: s.h, books: s.books });
+    } else {
+      // a low pile of books (lower than the tables, so it never gets in the way of a hop)
+      const books = [];
+      let ph = 0;
+      for (let sx = hx; sx < hx + hw - 10; sx += 30) {
+        const s = makeStack(sx, Math.min(28, hx + hw - sx), 14 + Math.random() * 6); // (two or three books high)
+        books.push(...s.books);
+        ph = Math.max(ph, s.h);
+      }
+      obstacles.push({ type: "stack", x: hx, y: FLOOR - ph, w: hw, h: ph, books });
+    }
+    // a page high over this gap, where any good hop across it passes; or, over the middle gap, one
+    // of the level's bookmarks, so high that only a full jump from the tabletop reaches it
+    if (marked && i === 1) addStoryBookmark(x + gap / 2, standTop - 170);
+    else addPickup(x + gap / 2, standTop - 110);
+    x += gap;
+  }
+  return { w: x - start, jumpy: true };
+}
+
 // A couch's pages: a couple on the seat leading in, then a trail along the path of a bounce
 // (worked out from the bounce itself and the run's speed, from a bounce near the start of the
 // couch): up, over the top, and down. Half the time there's a bookmark at the very top.
@@ -1523,8 +1584,9 @@ function spawnTunnel() {
   return w;
 }
 
-// A wet floor sign, then 1–3 puddles, each with an arc of pages over it (jump them to keep
-// your pages dry). Returns how far the stretch reaches, to the end of the last puddle.
+// A wet floor sign, then 1–3 puddles (or as many as a Story Mode level's `puddles` range says),
+// each with an arc of pages over it (jump them to keep your pages dry). Returns how far the
+// stretch reaches, to the end of the last puddle.
 function spawnWetFloor() {
   const airTime = (2 * -JUMP_VELOCITY) / GRAVITY;
   const sign = {
@@ -1536,7 +1598,8 @@ function spawnWetFloor() {
     books: [],
   };
   obstacles.push(sign);
-  const count = 1 + Math.floor(Math.random() * 3);
+  const [fewest, most] = (story && story.level.puddles) || [1, 3],
+    count = fewest + Math.floor(Math.random() * (most - fewest + 1));
   const between = (r) => r[0] + Math.random() * (r[1] - r[0]);
   let px = sign.x + 260;
   for (let i = 0; i < count; i++) {
@@ -1895,8 +1958,8 @@ function placePickups(o, airTime) {
       });
       repairWait = REPAIR_EVERY_MS;
     } else if (powerUp) {
-      // so does a power-up
-      const types = Object.keys(POWERS);
+      // so does a power-up (a Story Mode level can say which kinds it has: `powers`)
+      const types = (story && story.level.powers) || Object.keys(POWERS);
       pickups.push({
         kind: "power",
         type: types[(Math.random() * types.length) | 0],
@@ -4226,6 +4289,7 @@ function draw() {
       drawFlyingBook(o, o.skimY == null); // (no floor shadow when it's up on furniture)
     else if (o.type === "tunnel") drawTunnel(o);
     else if (o.type === "sign") drawWetSign(o);
+    else if (o.type === "bag") drawBackpack(o);
     else if (o.type === "platform") drawPlatform(o);
     else for (const b of o.books) drawLyingBook(b);
   }
@@ -5898,6 +5962,61 @@ function drawHowtoPic(r, x, y, w, h, now) {
       );
   } else if (r.pic === "power") {
     drawPowerIcon(r.power, cx, y + (h - 12) / 2, 22 * s);
+  } else if (r.pic === "shieldBreak") {
+    // the hardcover at work, again and again: the book runs in wearing it, bumps a book stack,
+    // and the cover shatters (as in shatterShield) instead of the book getting hurt
+    const p = loop(2600),
+      hitAt = 0.45, // (the bump)
+      ok = 1.15 * s,
+      sx = x + w * 0.7; // the stack's middle
+    for (let j = 0; j < 3; j++)
+      drawLyingBook({
+        x: sx - 14 * ok + (j % 2) * 2 * ok,
+        y: floorY - (j + 1) * 7 * ok,
+        w: 28 * ok - (j % 2) * 4 * ok,
+        h: 7 * ok,
+        color: SPINES[j % SPINES.length],
+      });
+    const x0 = x + w * 0.18,
+      stop = sx - 14 * ok - 20 * bk, // (its front against the stack)
+      bx = x0 + (stop - x0) * Math.min(1, p / hitAt);
+    book(bx, floorY, bk, { run: p < hitAt });
+    const pad = SHIELD_PAD * bk,
+      c0x = bx - 20 * bk - pad,
+      c0y = floorY - 50 * bk - pad,
+      cw = 40 * bk + pad * 2,
+      ch = 44 * bk + pad * 2,
+      mx = c0x + cw / 2,
+      my = c0y + ch / 2;
+    if (p < hitAt) {
+      // the see-through cover, with its gold corners (as drawPowerAura draws it)
+      ctx.fillStyle = "rgba(75, 121, 217, 0.18)";
+      roundRect(c0x, c0y, cw, ch, 12 * bk);
+      ctx.strokeStyle = `rgba(127, 176, 255, ${0.6 + 0.3 * Math.sin(now * 0.01)})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      poly(GOLD, c0x + cw, c0y, c0x + cw, c0y + 8 * bk, c0x + cw - 8 * bk, c0y);
+      poly(GOLD, c0x, c0y + ch, c0x, c0y + ch - 8 * bk, c0x + 8 * bk, c0y + ch);
+    } else {
+      // …and the bump: the cover flies apart in pieces, spinning, falling and fading
+      const q = (p - hitAt) / (1 - hitAt);
+      ctx.save();
+      ctx.globalAlpha *= Math.max(0, 1 - q * 1.3);
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2 + 0.3,
+          d = cw * 0.5 + q * 36 * s;
+        ctx.save();
+        ctx.translate(mx + Math.cos(a) * d, my + Math.sin(a) * d * 0.8 + q * q * 26 * s);
+        ctx.rotate(q * 6 + i);
+        poly(i % 4 === 0 ? GOLD : "rgba(127, 176, 255, 0.9)", -4 * s, -3 * s, 4 * s, -1 * s, -1 * s, 4 * s);
+        ctx.restore();
+      }
+      ctx.textAlign = "center";
+      ctx.fillStyle = INK;
+      ctx.font = `bold ${12 * s}px Fraunces, Georgia, serif`;
+      ctx.fillText("Blocked!", mx, c0y - 4 * s - q * 8 * s);
+      ctx.restore();
+    }
   }
 
   // the keys that do it (keyboards and controllers only), as keycaps in the top right corner;
@@ -6537,7 +6656,98 @@ function drawPlatform(o) {
   else if (o.kind === "bench") drawBench(o);
   else if (o.kind === "chair") drawReadingChair(o);
   else if (o.kind === "couch") drawCouch(o);
+  else if (o.kind === "round") drawRoundTable(o);
+  else if (o.kind === "saleCart") drawSaleCart(o);
   else drawReadingTable(o);
+}
+
+// A round café table (the table hop): a wooden top on a single dark pedestal with a round foot,
+// two bistro chairs tucked in behind it, and a cup of coffee left on top.
+function drawRoundTable(o) {
+  const { x, y, w } = o,
+    cx = x + w / 2;
+  for (const sx of [x + 10, x + w - 34]) {
+    // the chair backs peeking up behind: a bent-wood hoop on two legs
+    R(sx, y - 30, 3, 30, "#2c2f36");
+    R(sx + 21, y - 30, 3, 30, "#2c2f36");
+    R(sx, y - 32, 24, 4, "#3a3d45");
+    R(sx + 3, y - 20, 18, 3, "#3a3d45");
+  }
+  R(cx - 4, y + 8, 8, FLOOR - y - 12, "#2c2f36"); // the pedestal
+  R(cx - 4, y + 8, 2, FLOOR - y - 12, "rgba(255, 255, 255, 0.18)");
+  oval(cx, FLOOR - 3, w * 0.22, 4, "#2c2f36"); // its round foot
+  R(x + 2, y + 3, w - 4, 6, "#8f5f2e"); // the top's rim
+  oval(cx, y + 3, w / 2, 5, "#c48b4a"); // the top (where you run)
+  oval(cx - 10, y + 2, w * 0.3, 2, "rgba(255, 255, 255, 0.25)");
+  // a cup of coffee on its saucer
+  const kx = cx + 22;
+  oval(kx + 4, y - 1, 9, 2, "#f4efe6");
+  R(kx, y - 11, 9, 10, "#f4efe6");
+  R(kx + 9, y - 9, 3, 5, "#f4efe6");
+  R(kx + 1, y - 11, 7, 2, "#6b4423");
+}
+
+// A wooden book sale cart (the Friends Shop's): a maple top to land on, a lower bin of books
+// leaning every which way with price stickers on their spines, a hand-lettered BOOK SALE sign
+// hanging off the front, and casters.
+function drawSaleCart(o) {
+  const { x, y, w } = o,
+    bin = FLOOR - 18; // the top of the lower bin's floor
+  // the books in the bin, leaning, each with a yellow price sticker
+  for (let bx = x + 12, i = 0; bx < x + w - 18; i++) {
+    const bw = 8 + ((hash(i, o.seed) * 6) | 0),
+      bh = 22 + hash(i + 3, o.seed) * 14,
+      lean = (hash(i + 5, o.seed) - 0.5) * 0.35;
+    ctx.save();
+    ctx.translate(bx + bw / 2, bin);
+    ctx.rotate(lean);
+    R(-bw / 2, -bh, bw, bh, SPINES[(hash(i + 7, o.seed) * SPINES.length) | 0]);
+    R(-bw / 2 + 1, -bh + 3, bw - 2, 1.5, "rgba(255, 255, 255, 0.35)");
+    R(-bw / 2 + 1.5, -bh * 0.45, bw - 3, 4, "#f2c94e"); // the price sticker
+    ctx.restore();
+    bx += bw + 2;
+  }
+  R(x + 4, bin, w - 8, 6, "#8f5f2e"); // the bin's floor
+  R(x + 4, bin - 10, w - 8, 4, "#a36f37"); // its front rail
+  for (const ux of [x, x + w - 8]) {
+    R(ux, y + 4, 8, FLOOR - 10 - y, "#8f5f2e"); // the end panels
+    R(ux + 1, y + 4, 2, FLOOR - 10 - y, "rgba(255, 255, 255, 0.15)");
+  }
+  for (const wx of [x + 10, x + w - 10]) {
+    oval(wx, FLOOR - 4, 4, 4, "#111"); // casters
+    oval(wx, FLOOR - 4, 1.4, 1.4, "#555");
+  }
+  R(x - 3, y, w + 6, 7, "#c48b4a"); // the top (where you land)
+  R(x - 3, y, w + 6, 1.5, "rgba(255, 255, 255, 0.3)");
+  R(x - 3, y + 7, w + 6, 1.5, "#6e4520");
+  // the BOOK SALE sign, hanging off the front on two strings
+  const sx = x + w / 2 - 46,
+    sy = y + 16;
+  R(sx + 10, y + 8, 1.5, 8, "#3a2a1e");
+  R(sx + 80, y + 8, 1.5, 8, "#3a2a1e");
+  R(sx, sy, 92, 26, "#a8382f");
+  R(sx + 2, sy + 2, 88, 22, "#f7f0df");
+  label("BOOK SALE", sx + 46, sy + 13, 11, "#a8382f", "Fraunces, Georgia, serif");
+  label("$1 each", sx + 46, sy + 22, 8, "#3a2a1e", "Fraunces, Georgia, serif");
+}
+
+// A backpack lying on its side on the floor (the table hop): a rounded body, a front pocket with
+// a zip, and a carry loop on top.
+function drawBackpack(o) {
+  const { x, y, w, h } = o;
+  oval(x + w / 2, FLOOR - 1, w * 0.5, 3, "rgba(0, 0, 0, 0.25)");
+  ctx.fillStyle = o.color;
+  roundRect(x, y, w, h, 10);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.22)"; // the front pocket
+  roundRect(x + w * 0.42, y + h * 0.32, w * 0.5, h * 0.58, 6);
+  R(x + w * 0.42 + 4, y + h * 0.32 + 4, w * 0.5 - 8, 1.5, "#e8e2d4"); // its zip
+  R(x + w * 0.42 + 6, y + h * 0.32 + 4, 2, 6, "#d4a64a"); // the pull
+  ctx.strokeStyle = "#2a2520"; // the carry loop
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x + 12, y + 2, 6, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  R(x + 4, y + 6, w * 0.3, 2, "rgba(255, 255, 255, 0.2)");
 }
 
 // A long, low couch from the children's wing: a back behind, three plump seat cushions to run

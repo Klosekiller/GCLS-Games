@@ -47,7 +47,9 @@ function resetStoryProgress() {
 // Each level is a run through a fixed series of scenes, start to finish ([draw, width] each; the
 // scenery scrolls at BG_PARALLAX of the floor's speed, so 1000 px of scene is about 11 seconds).
 // `features`: the hazards it has, and how many ms in each one starts (see FEATURES in deweydash.js).
-// `chances`: how often some of them turn up, if not the usual. `powerUps: false`: none in this level.
+// `chances`: how often some of them turn up, if not the usual. `powerUps: false`: none turn up along
+// the way (a `powerFirst` one, set out at the start, still does). `powers`: which kinds it has.
+// `powerFirst`: the level starts with its power-up, at running height, before anything else.
 // `pages`: how many pages there are to find in the whole level, if it's a set number. `lastPage`: one
 // of them is kept back for the very end: on the floor in the clear stretch before the goal, a freebie.
 // `opening`: the first few things, in order (each a `kind` as pickNext names them), with the gap
@@ -56,8 +58,9 @@ function resetStoryProgress() {
 // about it, then counts down again so you can get ready. `briefing`: a pop-up going over the level's
 // goals before its countdown (STORY_TIPS.goals).
 // `bookmarks`: the bookmarks to find (collectables, not pages), each in some `scenes`, at a `spot`
-// that's never easy: "high" (over a stack, only a full, well-timed jump reaches it) or "couch" (the
-// top of a couch bounce). See storyBookmark.
+// that's never easy: "high" (over a stack, only a full, well-timed jump reaches it), "couch" (the
+// top of a couch bounce) or "hop" (high over the middle gap of a table hop: a full jump from a
+// tabletop). See storyBookmark.
 // `furniture`: which pieces turn up where (see storyFurniture): zones, each a run of `scenes` (by
 // index), the `kinds` of furniture there, how often (`chance`), how many (`min`, `max`), and any
 // pieces it must have (`need`: { kind: how many }) or can have at most (`limit`: { kind: how many }).
@@ -121,11 +124,34 @@ const LEVELS = [
       [sceneDesk, 1000],
       [sceneBookDrop, 900],
       [sceneFriendsShop, 1000],
+      [sceneSeating, 900],
       [sceneLobby, 900],
       [sceneGlobeDoor, 900],
     ],
-    features: { double: 0, flyer: 0, wet: 10000, swoop: 18000, tunnel: 26000 },
-    chances: { flyer: 0.3, wet: 0.14, tunnel: 0.14 },
+    // no flying books yet (they haven't turned up in the story so far) and no hanging bookshelves
+    // (book tunnels): just book stacks, single and wide
+    features: { double: 0 },
+    pages: 10, // ten pages to find in the whole level (see storyPageAllowance)
+    powers: ["shield"], // the only power-up so far: the hardcover…
+    powerFirst: true, // …and it's the first thing you meet: at running height, before anything else…
+    powerUps: false, // …and the only one in the level (no more turn up over the stacks later)
+    tips: ["hardcover"], // a pop-up about it, just before you reach it (see storyWatchTips)
+    // one wet floor by the book drop, with two or three puddles past its sign; the Friends Shop's
+    // book sale carts in front of it; and in the seating area, the table hop: round tables to hop
+    // across, with books and a backpack on the floor between them (see spawnTableHop)
+    puddles: [2, 3],
+    // three bookmarks: high over a stack by the desk or book drop, at the top of a full hop over the
+    // table hop's middle gap (above the backpack), and high over a stack by the globe
+    bookmarks: [
+      { scenes: [0, 1], spot: "high" },
+      { scenes: [3], spot: "hop" },
+      { scenes: [4, 5], spot: "high" },
+    ],
+    furniture: [
+      { scenes: [1], kinds: ["wet"], min: 1, max: 1, chance: 0.4 },
+      { scenes: [2], kinds: ["saleCart"], min: 2, max: 2, chance: 0.5 },
+      { scenes: [3], kinds: ["tableHop"], min: 1, max: 1, chance: 1 },
+    ],
     goal: "enter",
     intro: "chase",
   },
@@ -204,6 +230,18 @@ function beginLevel(i, again = false) {
     markFlights: [], // bookmarks just found, on their way up to their slots in the top bar (see storyBookmarkFlight)
   };
   useDewey();
+  if (level.powerFirst)
+    // its power-up is the very first thing: floating at running height (just run into it),
+    // well before the first stack, with nothing before it
+    pickups.push({
+      kind: "power",
+      type: level.powers ? level.powers[0] : "shield",
+      x: W + 40,
+      y: GROUND_Y + (player.h - 26) / 2,
+      w: 26,
+      h: 26,
+      phase: Math.random() * Math.PI * 2,
+    });
   distance = 0; // (the scenery starts at the first scene)
   state = "countdown";
   countTime = 0;
@@ -373,7 +411,7 @@ const CLEARED_GRACE_MS = 900; // its buttons work after this (once the stars hav
 function levelCleared() {
   const id = story.level.id;
   const found = story.pagesThere ? Math.min(1, pages / story.pagesThere) : 1;
-  const stars = 1 + (found >= 0.5) + (found >= 0.8); // finishing is a star; half the pages, two; most of them, three
+  const stars = 1 + (found >= 0.5) + (found >= 1); // finishing is a star; half the pages, two; every page, three
   const before = progress.stars[id] || 0;
   story.result = { stars, found, newBest: stars > before, bookmarks: story.bookmarksFound };
   progress.stars[id] = Math.max(stars, before);
@@ -1135,8 +1173,7 @@ function drawCleared() {
   drawStatRow(W / 2, c.y + (big ? 176 : 128), [
     [`${pages} of ${story.pagesThere}`, "pages found"],
     ...(marks ? [[`${story.bookmarksFound} of ${marks}`, "bookmarks"]] : []),
-    ["hearts", lives === 1 ? "heart left" : "hearts left"],
-  ]);
+  ]); // (centred: the pages alone, or the pages and bookmarks side by side)
   cardLine(r.newBest ? "★ New best! ★" : `Best: ${"★".repeat(progress.stars[story.level.id])}`, c.y + (big ? 216 : 166), r.newBest);
   if (clearedTime >= CLEARED_GRACE_MS * 0.6) drawButtons();
   hint(
@@ -1226,6 +1263,26 @@ const STORY_TIPS = {
     ahead: 260,
     is: (o) => o.type === "platform" && o.kind === "couch",
   },
+  hardcover: {
+    name: "Hardcover ahead!",
+    line: "A glowing power-up, right in your path. Run into it to grab it!",
+    cards: () => [
+      {
+        title: "Hardcover",
+        how: `Run into it to grab it. A tough cover wraps around you for up to ${POWERS.shield.ms / 1000} seconds.`,
+        pic: "power",
+        power: "shield",
+      },
+      {
+        title: "It takes the bump",
+        how: "Your next bump breaks the cover instead of hurting you: no heart or pages lost.",
+        pic: "shieldBreak",
+      },
+    ],
+    ahead: 300,
+    pickup: true, // (watching the pickups, not the obstacles)
+    is: (p) => p.kind === "power",
+  },
   // (not watched for: shown as a level with `briefing` starts, before its countdown)
   goals: {
     name: "Your goals",
@@ -1238,7 +1295,7 @@ const STORY_TIPS = {
       return [
         {
           title: n != null ? `Find ${n} pages` : "Find Dewey's pages",
-          how: n != null ? `Reach the end for ★, ${Math.ceil(n * 0.5)} pages for ★★, ${Math.ceil(n * 0.8)} for ★★★.` : "The more you find, the more stars you earn.",
+          how: n != null ? `Reach the end for ★, ${Math.ceil(n * 0.5)} pages for ★★, all ${n} for ★★★.` : "The more you find, the more stars you earn.",
           pic: "run",
           items: iconPage,
           count: 1,
@@ -1292,7 +1349,8 @@ function storyWatchTips() {
   for (const name of tips) {
     if (story.tipsShown[name]) continue;
     const t = STORY_TIPS[name],
-      o = obstacles.find((ob) => t.is(ob) && ob.x > player.x + player.w);
+      watch = t.pickup ? pickups : obstacles, // (most tips are about an obstacle; some, a pickup)
+      o = watch.find((ob) => t.is(ob) && ob.x > player.x + player.w);
     if (o && o.x - (player.x + player.w) <= t.ahead) {
       story.tipsShown[name] = true;
       openStoryTip(name);
@@ -2051,6 +2109,58 @@ function sceneFriendsShop(x, w) {
   for (let mx = x + 616; mx < x + 900; mx += 56) R(mx, CEIL + 14, 3, FLOOR - CEIL - 72, "#c9d0d6");
   for (let i = 0; i < 5; i++) oval(x + 640 + i * 56, CEIL + 110, 26, 18, i % 2 ? "#a8cf92" : "#bcdca8");
   for (const cx of [x + 640, x + 770]) drawBlueCart(cx, FLOOR);
+}
+// The seating area between the Friends Shop and the globe (where the old café was, now just
+// somewhere to sit; see reference/hughes-main/LAYOUT.md): a warm accent wall with made-up prints
+// and a long bench, pendant lights over where the round tables stand (the table hop: see
+// spawnTableHop), tall windows onto the lawn, and big potted plants.
+function sceneSeating(x, w) {
+  R(x, 0, w, CEIL, "#e6e4de");
+  recessedLights(x, w, CEIL - 8, 110);
+  R(x, CEIL, w, FLOOR - CEIL, "#4b5058");
+  tiles(x, w, "#3e3633", "#2d2725");
+  // the accent wall, with three framed prints (made-up art: a sun, hills, a wave)
+  R(x + 30, CEIL, 400, FLOOR - CEIL, "#8a5a3c");
+  for (let i = 0; i < 3; i++) {
+    const fx = x + 66 + i * 122;
+    R(fx, CEIL + 28, 92, 66, "#2a1d14");
+    R(fx + 5, CEIL + 33, 82, 56, "#f4efe6");
+    if (i === 0) {
+      R(fx + 5, CEIL + 33, 82, 56, "#f2d48a");
+      oval(fx + 46, CEIL + 64, 16, 16, "#e07b39");
+    } else if (i === 1) {
+      oval(fx + 30, CEIL + 89, 30, 22, "#669456");
+      oval(fx + 60, CEIL + 89, 28, 30, "#4f7942");
+    } else {
+      R(fx + 5, CEIL + 64, 82, 25, "#4f93cf");
+      oval(fx + 30, CEIL + 64, 20, 8, "#9fd0f2");
+      oval(fx + 62, CEIL + 66, 16, 6, "#9fd0f2");
+    }
+  }
+  // the long upholstered bench along the wall
+  R(x + 50, FLOOR - 66, 360, 26, "#5e7a6b"); // the back cushion
+  R(x + 50, FLOOR - 40, 360, 16, "#4c6758"); // the seat
+  R(x + 50, FLOOR - 40, 360, 2, "rgba(255, 255, 255, 0.2)");
+  for (const lx of [x + 58, x + 225, x + 396]) R(lx, FLOOR - 24, 6, 22, "#2a1d14");
+  // the tall windows, and the lawn and trees outside
+  R(x + 470, CEIL + 8, 400, FLOOR - CEIL - 20, "#c9d0d6");
+  R(x + 476, CEIL + 14, 388, FLOOR - CEIL - 32, "#dff0f4");
+  R(x + 476, FLOOR - 64, 388, 46, "#a8cf92");
+  for (let i = 0; i < 4; i++) oval(x + 520 + i * 100, FLOOR - 82, 34, 28, i % 2 ? "#7fae6a" : "#8fbd78");
+  for (let mx = x + 476; mx < x + 864; mx += 78) R(mx, CEIL + 14, 4, FLOOR - CEIL - 32, "#c9d0d6");
+  // pendant lights hanging over the tables
+  for (const px of [x + 300, x + 560, x + 760]) {
+    R(px, CEIL, 2, 26, "#555");
+    poly("#d4a64a", px - 16, CEIL + 40, px + 18, CEIL + 40, px + 9, CEIL + 26, px - 7, CEIL + 26);
+    oval(px + 1, CEIL + 41, 10, 3, "#fff2bf");
+  }
+  // big potted plants at either end of the windows
+  for (const px of [x + 448, x + 878]) {
+    poly("#b5893b", px - 14, FLOOR - 36, px + 14, FLOOR - 36, px + 11, FLOOR - 4, px - 11, FLOOR - 4);
+    oval(px, FLOOR - 58, 20, 24, "#4f7942");
+    oval(px - 10, FLOOR - 74, 12, 16, "#669456");
+    oval(px + 10, FLOOR - 70, 12, 16, "#5b8a4a");
+  }
 }
 // A blue rolling cart of new books standing face-out.
 function drawBlueCart(x, floorY) {
