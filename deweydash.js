@@ -2888,7 +2888,8 @@ function setMode(m) {
 
 // ---------- Settings (the start screen's gear) ----------
 // Music and Sound effects switch on and off separately (the Sound button still turns all sound
-// on and off); Reduce motion calms the shakes, blinks and flashes; Reset progress clears what's
+// on and off); Reduce motion calms the shakes, blinks and flashes; Cartoon mode repaints the whole
+// game in ink and watercolor (see inkWash); Reset progress clears what's
 // saved, after a second press to confirm. The switches are remembered between visits.
 const settings = {
   music: safeGet("deweydash-music") !== "0",
@@ -2898,14 +2899,22 @@ const settings = {
     safeGet("deweydash-reduce-motion") === null
       ? !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
       : safeGet("deweydash-reduce-motion") === "1",
+  cartoon: safeGet("deweydash-cartoon") === "1", // Cartoon mode: the whole game in ink and watercolor (see inkWash)
 };
-const SETTING_KEYS = { music: "deweydash-music", effects: "deweydash-effects", motion: "deweydash-reduce-motion" };
+const SETTING_KEYS = {
+  music: "deweydash-music",
+  effects: "deweydash-effects",
+  motion: "deweydash-reduce-motion",
+  cartoon: "deweydash-cartoon",
+};
+// The switches that are simply on or off (not tied to the Sound button).
+const PLAIN_SETTING = (k) => k === "motion" || k === "cartoon";
 soundSettings.effectsOff = !settings.effects; // (tone, in common.js, checks it)
 const reduceMotion = () => settings.motion;
 // What a switch shows. Music and Sound effects show whether they're actually heard: the game
 // starts with all sound off (see setupSound), so they start "Off" until sound is turned on.
 function settingShown(k) {
-  return k === "motion" ? settings.motion : !muted && settings[k];
+  return PLAIN_SETTING(k) ? settings[k] : !muted && settings[k];
 }
 // The Sound button and the two switches always agree: Sound is on exactly when Music or Sound
 // effects (or both) can be heard.
@@ -2924,8 +2933,10 @@ soundSettings.onMute = (nowMuted) => {
 };
 function toggleSetting(k) {
   if (!(k in settings)) return;
-  if (k === "motion") settings.motion = !settings.motion;
-  else if (settingShown(k)) {
+  if (PLAIN_SETTING(k)) {
+    settings[k] = !settings[k];
+    safeSet(SETTING_KEYS[k], settings[k] ? "1" : "0");
+  } else if (settingShown(k)) {
     settings[k] = false; // heard: switch it off…
     saveSoundSwitches();
     if (!settings.music && !settings.effects) toggleMute(); // …and if that was the last, Sound goes off too
@@ -2935,7 +2946,6 @@ function toggleSetting(k) {
     saveSoundSwitches();
     if (muted) toggleMute();
   }
-  if (k === "motion") safeSet(SETTING_KEYS.motion, settings.motion ? "1" : "0");
 }
 // Reset progress: the first press arms it (the button turns red and asks again), a second press
 // within a few seconds erases. (Two presses rather than a hold, so it works the same with a
@@ -3056,22 +3066,25 @@ function drawGear(x, y, r, color) {
   ctx.restore();
 }
 
-// The Settings card: three switches, Reset progress, and Back.
+// The Settings card: four switches, Reset progress, and Back. (Wide, the rows are packed a little
+// closer so all four fit the 320-high layout.)
 const SETTING_ROWS = [
   ["music", "Music", "The background tunes"],
   ["effects", "Sound effects", "Jumps, pages, bumps and buttons"],
   ["motion", "Reduce motion", "Fewer shakes, blinks and flashes"],
+  ["cartoon", "Cartoon mode", "The whole game in ink and watercolor"],
 ];
 function settingsLayout() {
   const big = tall(),
     w = big ? W - 32 : 440,
-    h = big ? 470 : 296,
+    h = big ? 532 : 308,
     x = W / 2 - w / 2,
-    y = big ? 70 : 12,
-    rowH = big ? 62 : 42,
-    top = y + (big ? 122 : 100), // the first row's middle (under the SOUND heading)
+    y = big ? 70 : 6,
+    rowH = big ? 62 : 36,
+    top = y + (big ? 122 : 96), // the first row's middle (under the SOUND heading)
     tw = big ? 96 : 88, // a switch
-    th = big ? 38 : 30;
+    th = big ? 38 : 28,
+    n = SETTING_ROWS.length;
   return {
     x,
     y,
@@ -3079,7 +3092,7 @@ function settingsLayout() {
     h,
     soundY: top - (big ? 36 : 27), // the SOUND heading's baseline, over Music and Sound effects
     rows: SETTING_ROWS.map(([k], i) => ({ k, x: x + w - 28 - tw, y: top + i * rowH - th / 2, w: tw, h: th })),
-    reset: { x: x + 28, y: top + 3 * rowH - th / 2 + (big ? 4 : -4), w: w - 56, h: th },
+    reset: { x: x + 28, y: big ? top + n * rowH - th / 2 + 4 : top + (n - 1) * rowH + 22, w: w - 56, h: th },
     back: { x: W / 2 - 70, y: y + h - (big ? 66 : 46), w: 140, h: big ? 46 : 34 },
   };
 }
@@ -3636,8 +3649,12 @@ function frame(now) {
   ctx.save();
   ctx.scale(RES, RES);
   ctx.translate(0, TOP); // (full screen: the layout sits in the middle)
+  // Cartoon mode (deweydash-ink.js): while it's on, every filled shape is drawn in ink and
+  // watercolor, and the paper goes over the finished frame
+  if (typeof inkBegin === "function") inkBegin(settings.cartoon, now);
   draw();
   drawTransition();
+  if (typeof inkEnd === "function") inkEnd();
   ctx.restore();
   requestAnimationFrame(frame);
 }
@@ -7639,6 +7656,9 @@ function drawCharacter(
     flail = null, // slipping: each leg's angle from straight down (negative kicks it forward)
   } = {},
 ) {
+  // Cartoon mode draws Dewey by hand, as on the design canvas's "Dewey art styles" page
+  if (c.id === "dash" && typeof CARTOON !== "undefined" && CARTOON.on && !CARTOON.paused)
+    return inkDewey(px, py, pw, ph, { duck, step, wear, bob, lift, flutter, legs, accessory, flail });
   // legs. While running, the body bounces up by `bob`, so a planted leg stretches to keep its
   // foot on the floor, and a leg is lifted off it by `lift`.
   ctx.fillStyle = "#1e2b2c";
